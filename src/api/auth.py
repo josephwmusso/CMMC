@@ -1,0 +1,219 @@
+"""
+src/api/auth.py
+
+JWT authentication for the CMMC API.
+Endpoints:
+  POST /api/auth/register  — Create user account
+  POST /api/auth/login     — Authenticate and get JWT
+  GET  /api/auth/me        — Return current user info
+
+All sensitive routes use Depends(get_current_user) to enforce auth.
+"""
+import os
+from datetime import datetime, timedelta, timezone
+from typing import Optional
+
+from fastapi import APIRouter, Depends, HTTPException, status
+from fastapi.security import OAuth2PasswordBearer, OAuth2PasswordRequestForm
+from jose import JWTError, jwt
+from passlib.context import CryptContext
+from pydantic import BaseModel
+from sqlalchemy import text
+from sqlalchemy.orm import Session
+
+from src.db.session import get_db
+
+router = APIRouter(prefix="/api/auth", tags=["Authentication"])
+
+# ── Config ──────────────────────────────────────────────────────────────────
+JWT_SECRET_KEY = os.getenv("JWT_SECRET_KEY", "dev-secret-change-in-production")
+JWT_ALGORITHM = os.getenv("JWT_ALGORITHM", "HS256")
+JWT_EXPIRE_MINUTES = int(os.getenv("JWT_EXPIRE_MINUTES", "480"))
+
+pwd_context = CryptContext(schemes=["bcrypt"], deprecated="auto")
+oauth2_scheme = OAuth2PasswordBearer(tokenUrl="/api/auth/login", auto_error=False)
+
+DEV_MODE = JWT_SECRET_KEY == "dev-secret-change-in-production"
+DEV_USER = {
+    "id": "dev-user",
+    "email": "david.kim@apex-defense.us",
+    "org_id": "9de53b587b23450b87af",
+    "full_name": "Dev User",
+    "is_admin": True,
+}
+
+
+# ── Pydantic models ─────────────────────────────────────────────────────────
+
+class UserCreate(BaseModel):
+    email: str
+    password: str
+    org_id: str
+    full_name: str = ""
+
+
+class UserOut(BaseModel):
+    id: str
+    email: str
+    org_id: str
+    full_name: str
+    is_admin: bool
+
+
+class Token(BaseModel):
+    access_token: str
+    token_type: str
+    user: UserOut
+
+
+# ── Password helpers ────────────────────────────────────────────────────────
+
+def hash_password(password: str) -> str:
+    return pwd_context.hash(password)
+
+
+def verify_password(plain: str, hashed: str) -> bool:
+    return pwd_context.verify(plain, hashed)
+
+
+# ── JWT helpers ─────────────────────────────────────────────────────────────
+
+def create_access_token(data: dict, expires_delta: Optional[timedelta] = None) -> str:
+    payload = data.copy()
+    expire = datetime.now(timezone.utc) + (expires_delta or timedelta(minutes=JWT_EXPIRE_MINUTES))
+    payload["exp"] = expire
+    return jwt.encode(payload, JWT_SECRET_KEY, algorithm=JWT_ALGORITHM)
+
+
+# ── DB helpers ──────────────────────────────────────────────────────────────
+
+def get_user_by_email(db: Session, email: str) -> Optional[dict]:
+    row = db.execute(
+        text("SELECT id, email, org_id, full_name, hashed_password, is_admin FROM users WHERE email = :email"),
+        {"email": email},
+    ).fetchone()
+    if not row:
+        return None
+    return dict(zip(["id", "email", "org_id", "full_name", "hashed_password", "is_admin"], row))
+
+
+# ── FastAPI dependency ───────────────────────────────────────────────────────
+
+def get_current_user(token: Optional[str] = Depends(oauth2_scheme), db: Session = Depends(get_db)) -> dict:
+    """
+    Validate JWT and return the current user dict.
+    In dev mode (default JWT secret), allows unauthenticated access
+    with the Apex Defense demo org so the frontend works without login.
+    Raises 401 on invalid/expired token in production.
+    """
+    # Dev mode bypass: no token provided and using default dev secret
+    if token is None:
+        if DEV_MODE:
+            return DEV_USER
+        raise HTTPException(
+            status_code=status.HTTP_401_UNAUTHORIZED,
+            detail="Not authenticated",
+            headers={"WWW-Authenticate": "Bearer"},
+        )
+
+    credentials_error = HTTPException(
+        status_code=status.HTTP_401_UNAUTHORIZED,
+        detail="Could not validate credentials",
+        headers={"WWW-Authenticate": "Bearer"},
+    )
+    try:
+        payload = jwt.decode(token, JWT_SECRET_KEY, algorithms=[JWT_ALGORITHM])
+        user_id: str = payload.get("sub")
+        org_id: str = payload.get("org_id")
+        if user_id is None:
+            raise credentials_error
+    except JWTError:
+        raise credentials_error
+
+    row = db.execute(
+        text("SELECT id, email, org_id, full_name, is_admin FROM users WHERE id = :id"),
+        {"id": user_id},
+    ).fetchone()
+    if not row:
+        raise credentials_error
+
+    return dict(zip(["id", "email", "org_id", "full_name", "is_admin"], row))
+
+
+def verify_org_access(org_id: str, current_user: dict) -> None:
+    """
+    Ensure the authenticated user belongs to org_id (or is admin).
+    Raises 403 if not.
+    """
+    if current_user["org_id"] != org_id and not current_user.get("is_admin"):
+        raise HTTPException(status_code=403, detail="Access denied to this organization")
+
+
+# ── Routes ───────────────────────────────────────────────────────────────────
+
+@router.post("/register", response_model=UserOut)
+def register(user_in: UserCreate, db: Session = Depends(get_db)):
+    """Create a new user account."""
+    existing = get_user_by_email(db, user_in.email)
+    if existing:
+        raise HTTPException(400, "Email already registered")
+
+    import uuid
+    user_id = f"USR-{uuid.uuid4().hex[:12].upper()}"
+    hashed_pw = hash_password(user_in.password)
+
+    db.execute(
+        text(
+            """
+            INSERT INTO users (id, email, org_id, full_name, hashed_password, is_admin, created_at)
+            VALUES (:id, :email, :org_id, :full_name, :hashed_password, false, NOW())
+            """
+        ),
+        {
+            "id": user_id,
+            "email": user_in.email,
+            "org_id": user_in.org_id,
+            "full_name": user_in.full_name,
+            "hashed_password": hashed_pw,
+        },
+    )
+    db.commit()
+
+    return UserOut(
+        id=user_id,
+        email=user_in.email,
+        org_id=user_in.org_id,
+        full_name=user_in.full_name,
+        is_admin=False,
+    )
+
+
+@router.post("/login", response_model=Token)
+def login(form_data: OAuth2PasswordRequestForm = Depends(), db: Session = Depends(get_db)):
+    """Authenticate and return a JWT bearer token."""
+    user = get_user_by_email(db, form_data.username)
+    if not user or not verify_password(form_data.password, user["hashed_password"]):
+        raise HTTPException(
+            status_code=status.HTTP_401_UNAUTHORIZED,
+            detail="Incorrect email or password",
+            headers={"WWW-Authenticate": "Bearer"},
+        )
+
+    token = create_access_token({"sub": user["id"], "org_id": user["org_id"]})
+    return Token(
+        access_token=token,
+        token_type="bearer",
+        user=UserOut(
+            id=user["id"],
+            email=user["email"],
+            org_id=user["org_id"],
+            full_name=user["full_name"],
+            is_admin=user["is_admin"],
+        ),
+    )
+
+
+@router.get("/me", response_model=UserOut)
+def get_me(current_user: dict = Depends(get_current_user)):
+    """Return the currently authenticated user."""
+    return UserOut(**{k: current_user[k] for k in UserOut.model_fields})

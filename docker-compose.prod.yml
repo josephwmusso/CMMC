@@ -1,0 +1,91 @@
+version: "3.9"
+
+services:
+  postgres:
+    image: postgres:16
+    environment:
+      POSTGRES_USER: cmmc
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD}
+      POSTGRES_DB: cmmc
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U cmmc"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+  qdrant:
+    image: qdrant/qdrant:latest
+    volumes:
+      - qdrant_data:/qdrant/storage
+    ports:
+      - "6333:6333"
+
+  temporal:
+    image: temporalio/auto-setup:latest
+    environment:
+      - DB=postgres12
+      - DB_PORT=5432
+      - POSTGRES_USER=cmmc
+      - POSTGRES_PWD=${POSTGRES_PASSWORD}
+      - POSTGRES_SEEDS=postgres
+    depends_on:
+      postgres:
+        condition: service_healthy
+
+  api:
+    build:
+      context: .
+      dockerfile: docker/Dockerfile.api
+    env_file: .env
+    environment:
+      DATABASE_URL: postgresql://cmmc:${POSTGRES_PASSWORD}@postgres:5432/cmmc
+      QDRANT_HOST: qdrant
+      TEMPORAL_HOST: temporal:7233
+    ports:
+      - "8000:8000"
+    volumes:
+      - evidence_data:/app/data/evidence
+      - export_data:/app/data/exports
+    depends_on:
+      postgres:
+        condition: service_healthy
+
+  dashboard:
+    build:
+      context: .
+      dockerfile: docker/Dockerfile.dashboard
+    env_file: .env
+    environment:
+      DATABASE_URL: postgresql://cmmc:${POSTGRES_PASSWORD}@postgres:5432/cmmc
+      API_BASE_URL: http://api:8000
+    ports:
+      - "8501:8501"
+    volumes:
+      - evidence_data:/app/data/evidence
+      - export_data:/app/data/exports
+    depends_on:
+      - api
+
+  worker:
+    build:
+      context: .
+      dockerfile: docker/Dockerfile.worker
+    env_file: .env
+    environment:
+      DATABASE_URL: postgresql://cmmc:${POSTGRES_PASSWORD}@postgres:5432/cmmc
+      QDRANT_HOST: qdrant
+      TEMPORAL_HOST: temporal:7233
+    volumes:
+      - evidence_data:/app/data/evidence
+      - export_data:/app/data/exports
+    depends_on:
+      - temporal
+      - postgres
+
+volumes:
+  postgres_data:
+  qdrant_data:
+  evidence_data:
+  export_data:
