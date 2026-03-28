@@ -50,3 +50,20 @@ app.include_router(document_router)
 @app.get("/health")
 def health():
     return {"status": "ok", "version": "0.9.0"}
+
+
+# ── Serve React frontend in production ────────────────────────────────────────
+# This must be AFTER all API routes so /api/* takes priority.
+from fastapi.staticfiles import StaticFiles
+from fastapi.responses import FileResponse
+
+frontend_dir = os.path.join(os.path.dirname(__file__), '..', '..', 'frontend', 'dist')
+if os.path.exists(frontend_dir):
+    app.mount("/assets", StaticFiles(directory=os.path.join(frontend_dir, "assets")), name="assets")
+
+    @app.get("/{path:path}")
+    async def serve_frontend(path: str):
+        file_path = os.path.join(frontend_dir, path)
+        if os.path.isfile(file_path):
+            return FileResponse(file_path)
+        return FileResponse(os.path.join(frontend_dir, "index.html"))

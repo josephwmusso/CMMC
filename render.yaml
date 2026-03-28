@@ -1,8 +1,8 @@
 services:
   - type: web
-    name: cmmc-platform-api
+    name: cmmc-platform
     runtime: python
-    buildCommand: pip install -r requirements.txt
+    buildCommand: pip install -r requirements.txt && cd frontend && npm install && npm run build
     startCommand: bash scripts/render_startup.sh
     envVars:
       - key: ANTHROPIC_API_KEY
@@ -17,22 +17,8 @@ services:
         value: "anthropic"
       - key: PYTHON_VERSION
         value: "3.11.0"
-
-  - type: web
-    name: cmmc-platform-frontend
-    runtime: static
-    buildCommand: cd frontend && npm install && npm run build
-    staticPublishPath: frontend/dist
-    routes:
-      - type: rewrite
-        source: /api/*
-        destination: https://cmmc-platform-api.onrender.com/api/*
-      - type: rewrite
-        source: /health
-        destination: https://cmmc-platform-api.onrender.com/health
-      - type: rewrite
-        source: /*
-        destination: /index.html
+      - key: NODE_VERSION
+        value: "20"
 
 databases:
   - name: cmmc-db
