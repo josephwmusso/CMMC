@@ -23,8 +23,8 @@ openai>=1.50.0
 # ── Vector Store ──
 qdrant-client>=1.12.0
 
-# ── Embeddings ──
-sentence-transformers>=3.0.0
+# ── Embeddings (skip on Render — too large for free tier) ──
+# sentence-transformers>=3.0.0  # ~2GB with PyTorch, install locally only
 
 # ── Document Generation ──
 python-docx>=1.1.0
@@ -34,8 +34,8 @@ fpdf2>=2.8.0
 pydantic>=2.10.0
 httpx>=0.28.0
 
-# ── Temporal Workflows ──
-temporalio>=1.8.0
+# ── Temporal Workflows (skip on Render — needs Rust toolchain) ──
+# temporalio>=1.8.0  # Install locally only, requires Rust compiler
 
 # ── Testing ──
 pytest>=8.0.0

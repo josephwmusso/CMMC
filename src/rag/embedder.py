@@ -11,7 +11,10 @@ import os
 import time
 from typing import List
 
-from sentence_transformers import SentenceTransformer
+try:
+    from sentence_transformers import SentenceTransformer
+except ImportError:
+    SentenceTransformer = None  # Not installed on Render free tier
 
 # Model selection
 MODEL_NAME = os.getenv(
