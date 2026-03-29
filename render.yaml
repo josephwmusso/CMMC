@@ -3,7 +3,7 @@ services:
     name: cmmc-platform
     runtime: python
     buildCommand: pip install -r requirements.txt && cd frontend && npm install && npm run build
-    startCommand: bash scripts/render_startup.sh
+    startCommand: python scripts/render_startup.py
     envVars:
       - key: ANTHROPIC_API_KEY
         sync: false
