@@ -1,6 +1,6 @@
 import { useState, useEffect, useRef } from 'react';
-import { Upload, Download, Check, Lock, Loader2 } from 'lucide-react';
-import { listArtifacts, uploadEvidence, transitionArtifact, downloadArtifact } from '../api/client';
+import { Upload, Download, Check, Lock, Loader2, Shield, FileText, X, Eye } from 'lucide-react';
+import { listArtifacts, uploadEvidence, transitionArtifact, downloadArtifact, generateManifest, downloadManifest, verifyAuditChain, previewArtifact } from '../api/client';
 
 const STATE_COLORS: Record<string, string> = {
   PUBLISHED: 'bg-emerald-500/10 text-emerald-400/80 border-emerald-500/20',
@@ -24,6 +24,11 @@ export function Evidence() {
   const [stateFilter, setStateFilter] = useState('All States');
   const [uploading, setUploading] = useState(false);
   const [dragActive, setDragActive] = useState(false);
+  const [manifestLoading, setManifestLoading] = useState(false);
+  const [auditResult, setAuditResult] = useState<any>(null);
+  const [auditLoading, setAuditLoading] = useState(false);
+  const [previewData, setPreviewData] = useState<any>(null);
+  const [previewLoading, setPreviewLoading] = useState(false);
   const fileInputRef = useRef<HTMLInputElement>(null);
 
   const loadData = async () => {
@@ -45,6 +50,26 @@ export function Evidence() {
     try { await transitionArtifact(id, newState); await loadData(); } catch (e: any) { alert(e.message); }
   };
 
+  const handleGenerateManifest = async () => {
+    setManifestLoading(true);
+    try {
+      const result = await generateManifest();
+      alert(`Manifest generated: ${result.artifact_count} artifacts`);
+    } catch (e: any) { alert(e.message); } finally { setManifestLoading(false); }
+  };
+
+  const handleVerifyAudit = async () => {
+    setAuditLoading(true);
+    try { const result = await verifyAuditChain(); setAuditResult(result); }
+    catch (e: any) { alert(e.message); } finally { setAuditLoading(false); }
+  };
+
+  const handlePreview = async (id: string) => {
+    setPreviewLoading(true);
+    try { const data = await previewArtifact(id); setPreviewData(data); }
+    catch (e: any) { alert(e.message); setPreviewData(null); } finally { setPreviewLoading(false); }
+  };
+
   const stateCounts = ['All States', 'PUBLISHED', 'APPROVED', 'REVIEWED', 'DRAFT'].map(s => ({
     state: s, count: s === 'All States' ? artifacts.length : artifacts.filter(a => a.state === s).length,
   }));
@@ -64,13 +89,40 @@ export function Evidence() {
           <h1 className="text-xl font-medium text-zinc-100 mb-1">Evidence</h1>
           <p className="text-sm text-zinc-500">Manage compliance artifacts and documentation</p>
         </div>
-        <button onClick={() => fileInputRef.current?.click()} disabled={uploading}
-          className="px-4 py-2 bg-zinc-800 hover:bg-zinc-700 rounded-lg text-sm font-medium text-zinc-300 transition-colors flex items-center gap-2">
-          {uploading ? <Loader2 className="w-4 h-4 animate-spin" /> : <Upload className="w-4 h-4" />}
-          {uploading ? 'Uploading...' : 'Upload Evidence'}
-        </button>
+        <div className="flex items-center gap-2">
+          <button onClick={handleVerifyAudit} disabled={auditLoading}
+            className="px-3 py-2 bg-zinc-800 hover:bg-zinc-700 border border-zinc-700 rounded-lg text-sm text-zinc-300 transition-colors flex items-center gap-2">
+            {auditLoading ? <Loader2 className="w-4 h-4 animate-spin" /> : <Shield className="w-4 h-4" />} Verify Chain
+          </button>
+          <button onClick={handleGenerateManifest} disabled={manifestLoading}
+            className="px-3 py-2 bg-zinc-800 hover:bg-zinc-700 border border-zinc-700 rounded-lg text-sm text-zinc-300 transition-colors flex items-center gap-2">
+            {manifestLoading ? <Loader2 className="w-4 h-4 animate-spin" /> : <FileText className="w-4 h-4" />} Manifest
+          </button>
+          <button onClick={() => downloadManifest()}
+            className="px-3 py-2 bg-zinc-800 hover:bg-zinc-700 border border-zinc-700 rounded-lg text-sm text-zinc-300 transition-colors flex items-center gap-2">
+            <Download className="w-4 h-4" /> Download
+          </button>
+          <div className="w-px h-6 bg-zinc-700" />
+          <button onClick={() => fileInputRef.current?.click()} disabled={uploading}
+            className="px-4 py-2 bg-blue-500/80 hover:bg-blue-500 disabled:opacity-50 rounded-lg text-sm font-medium text-white transition-colors flex items-center gap-2">
+            {uploading ? <Loader2 className="w-4 h-4 animate-spin" /> : <Upload className="w-4 h-4" />}
+            {uploading ? 'Uploading...' : 'Upload'}
+          </button>
+        </div>
         <input ref={fileInputRef} type="file" multiple className="hidden" onChange={e => e.target.files && handleUpload(e.target.files)} />
       </div>
+
+      {auditResult && (
+        <div className={`mb-4 flex items-center justify-between px-4 py-3 rounded-lg border ${auditResult.valid ? 'bg-emerald-500/10 border-emerald-500/20' : 'bg-red-500/10 border-red-500/20'}`}>
+          <div className="flex items-center gap-2">
+            <Shield className={`w-4 h-4 ${auditResult.valid ? 'text-emerald-400' : 'text-red-400'}`} />
+            <span className={`text-sm font-medium ${auditResult.valid ? 'text-emerald-400' : 'text-red-400'}`}>
+              {auditResult.valid ? 'Audit chain verified — all hashes valid' : `Chain integrity issue: ${auditResult.status}`}
+            </span>
+          </div>
+          <button onClick={() => setAuditResult(null)} className="text-zinc-500 hover:text-zinc-300"><X className="w-4 h-4" /></button>
+        </div>
+      )}
 
       <div className="mb-6 flex items-center justify-between">
         <div className="flex items-center gap-6">
@@ -122,6 +174,9 @@ export function Evidence() {
                 <td className="px-6 py-4 text-sm text-zinc-500">{formatBytes(item.file_size_bytes)}</td>
                 <td className="px-6 py-4">
                   <div className="flex items-center justify-end gap-2">
+                    <button onClick={() => handlePreview(item.id)} className="p-1.5 hover:bg-zinc-800 rounded transition-colors" title="Preview">
+                      <Eye className="w-4 h-4 text-zinc-500" />
+                    </button>
                     {NEXT_STATE[item.state] && (
                       <button onClick={() => handleTransition(item.id, NEXT_STATE[item.state])} className="p-1.5 hover:bg-zinc-800 rounded transition-colors" title={`Advance to ${NEXT_STATE[item.state]}`}>
                         <Check className="w-4 h-4 text-zinc-500" />
@@ -138,6 +193,32 @@ export function Evidence() {
         </table>
       </div>
       <div className="mt-4 text-xs text-zinc-600">Showing {filtered.length} of {artifacts.length} artifacts</div>
+
+      {/* Preview Modal */}
+      {(previewData || previewLoading) && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/70 backdrop-blur-sm" onClick={() => { setPreviewData(null); setPreviewLoading(false); }}>
+          <div className="bg-zinc-900 border border-zinc-700 rounded-xl w-[700px] max-h-[80vh] flex flex-col" onClick={e => e.stopPropagation()}>
+            <div className="flex items-center justify-between px-5 py-4 border-b border-zinc-800">
+              <div className="text-sm font-medium text-zinc-200">{previewData?.filename || 'Loading...'}</div>
+              <button onClick={() => { setPreviewData(null); setPreviewLoading(false); }} className="text-zinc-500 hover:text-zinc-300"><X className="w-4 h-4" /></button>
+            </div>
+            <div className="flex-1 overflow-auto p-5">
+              {previewLoading ? (
+                <div className="flex items-center justify-center py-12"><Loader2 className="w-6 h-6 text-zinc-500 animate-spin" /></div>
+              ) : previewData?.content_type === 'image' ? (
+                <img src={`data:${previewData.mime};base64,${previewData.content}`} alt={previewData.filename} className="max-w-full rounded" />
+              ) : previewData?.content_type === 'text' ? (
+                <pre className="text-sm text-zinc-300 font-mono whitespace-pre-wrap leading-relaxed">{previewData.content}</pre>
+              ) : (
+                <div className="text-center py-12 text-zinc-500">
+                  <FileText className="w-10 h-10 mx-auto mb-3 text-zinc-700" />
+                  <div className="text-sm">Binary file — download to view</div>
+                </div>
+              )}
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 }

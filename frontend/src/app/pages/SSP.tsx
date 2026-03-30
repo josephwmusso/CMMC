@@ -99,14 +99,15 @@ export function SSP() {
           <button
             onClick={handleGenerate}
             disabled={generating}
-            className="w-full relative overflow-hidden rounded-lg p-[1px] transition-all hover:scale-[1.01] active:scale-[0.99]"
-            style={{ background: 'linear-gradient(135deg, #3b82f6, #8b5cf6, #3b82f6)' }}
+            className="w-full rounded-lg px-4 py-2.5 text-sm font-medium text-white transition-all hover:scale-[1.01] active:scale-[0.99] flex items-center justify-center gap-2 border-0 disabled:opacity-50"
+            style={{
+              background: 'linear-gradient(135deg, #3b82f6 0%, #8b5cf6 50%, #6366f1 100%)',
+              boxShadow: '0 2px 12px rgba(99,102,241,0.3), inset 0 1px 0 rgba(255,255,255,0.1)',
+            }}
           >
-            <div className="flex items-center justify-center gap-2 bg-zinc-950/90 rounded-[7px] px-4 py-2.5 text-sm font-medium text-zinc-200">
-              {generating ? <Loader2 className="w-4 h-4 animate-spin" /> : <Sparkles className="w-4 h-4 text-blue-400" />}
-              {generating ? 'Generating...' : 'AI Generate All'}
-              <span className="px-1.5 py-0.5 bg-blue-500/15 border border-blue-500/25 rounded text-[9px] font-bold text-blue-400 uppercase tracking-wider ml-1">AI</span>
-            </div>
+            {generating ? <Loader2 className="w-4 h-4 animate-spin" /> : <Sparkles className="w-4 h-4" />}
+            {generating ? 'Generating...' : 'AI Generate All'}
+            <span className="px-1.5 py-0.5 bg-white/15 rounded text-[9px] font-bold uppercase tracking-wider ml-1">AI</span>
           </button>
         </div>
         <div className="h-px bg-zinc-800 mx-6 mb-4" />

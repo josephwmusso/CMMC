@@ -36,6 +36,7 @@ def run_migrations():
     """Run all migration scripts."""
     scripts = [
         "scripts/init_db.py",
+        "scripts/add_frameworks_table.py",
         "scripts/init_questionnaire_db.py",
         "scripts/init_document_engine_db.py",
     ]

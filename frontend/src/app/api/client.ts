@@ -75,7 +75,7 @@ export async function generateFullSSP() {
   return fetchJSON('/api/ssp/generate-full', {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({ org_id: ORG_ID }),
+    body: JSON.stringify({ org_profile: { org_id: ORG_ID }, export_docx: true }),
   });
 }
 
@@ -89,14 +89,8 @@ export async function exportSSPAsPdf() {
 }
 
 export async function exportSSPAsDocx() {
-  const blob = await fetchBlob(`/api/ssp/export-pdf?org_id=${ORG_ID}`);
-  // Try the latest DOCX endpoint
-  try {
-    const b = await fetchBlob('/api/ssp/export-latest');
-    triggerDownload(b, `SSP_Apex_Defense_${new Date().toISOString().slice(0,10)}.docx`);
-  } catch {
-    triggerDownload(blob, `SSP_Apex_Defense_${new Date().toISOString().slice(0,10)}.pdf`);
-  }
+  const blob = await fetchBlob('/api/ssp/export-latest');
+  triggerDownload(blob, `SSP_Apex_Defense_${new Date().toISOString().slice(0,10)}.docx`);
 }
 
 export async function getSSPNarrative(controlId: string) {

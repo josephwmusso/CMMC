@@ -1,7 +1,7 @@
 import { useState, useEffect } from 'react';
 import { useNavigate } from 'react-router';
 import { Download, Loader2, AlertTriangle, ChevronRight, ArrowRight, Shield, Clock, TrendingDown, CheckCircle2 } from 'lucide-react';
-import { getPoamSummary, exportPoamPdf, exportPoamDocx } from '../api/client';
+import { getPoamSummary, exportPoamPdf, exportPoamDocx, generatePoam } from '../api/client';
 
 const RISK_COLORS: Record<string, { border: string; bg: string; text: string; dot: string }> = {
   CRITICAL: { border: 'border-l-red-500', bg: 'bg-red-500/10', text: 'text-red-400', dot: 'bg-red-500' },
@@ -47,22 +47,31 @@ export function POAM() {
   const [sortBy, setSortBy] = useState<'urgency' | 'risk' | 'deadline'>('urgency');
   const [expandedId, setExpandedId] = useState<string | null>(null);
   const [exporting, setExporting] = useState<string | null>(null);
+  const [generatingPoam, setGeneratingPoam] = useState(false);
 
-  useEffect(() => {
-    async function load() {
-      try {
-        const data = await getPoamSummary();
-        setItems(data.items || []);
-        setStatusCounts(data.status_counts || {});
-      } catch {} finally { setLoading(false); }
-    }
-    load();
-  }, []);
+  const loadPoam = async () => {
+    try {
+      const data = await getPoamSummary();
+      setItems(data.items || []);
+      setStatusCounts(data.status_counts || {});
+    } catch {} finally { setLoading(false); }
+  };
+
+  useEffect(() => { loadPoam(); }, []);
 
   const handleExport = async (type: 'pdf' | 'docx') => {
     setExporting(type);
     try { type === 'pdf' ? await exportPoamPdf() : await exportPoamDocx(); }
     catch (e: any) { alert(e.message); } finally { setExporting(null); }
+  };
+
+  const handleGeneratePoam = async () => {
+    setGeneratingPoam(true);
+    try {
+      const result = await generatePoam();
+      alert(`POA&M generated: ${result.created} items created, ${result.skipped} skipped`);
+      await loadPoam();
+    } catch (e: any) { alert(e.message); } finally { setGeneratingPoam(false); }
   };
 
   // Compute derived data
@@ -130,12 +139,17 @@ export function POAM() {
           <p className="text-sm text-zinc-500">Track and remediate compliance gaps</p>
         </div>
         <div className="flex items-center gap-3">
+          <button onClick={handleGeneratePoam} disabled={generatingPoam}
+            className="px-4 py-2 bg-blue-500/80 hover:bg-blue-500 disabled:opacity-50 rounded-lg text-sm font-medium text-white transition-colors flex items-center gap-2">
+            {generatingPoam ? <Loader2 className="w-4 h-4 animate-spin" /> : <Shield className="w-4 h-4" />}
+            {generatingPoam ? 'Generating...' : 'Generate POA&M'}
+          </button>
           <button onClick={() => handleExport('pdf')} disabled={!!exporting}
             className="px-4 py-2 bg-zinc-800 hover:bg-zinc-700 border border-zinc-700 rounded-lg text-sm text-zinc-300 transition-colors flex items-center gap-2">
             {exporting === 'pdf' ? <Loader2 className="w-4 h-4 animate-spin" /> : <Download className="w-4 h-4" />} PDF
           </button>
           <button onClick={() => handleExport('docx')} disabled={!!exporting}
-            className="px-4 py-2 bg-blue-400/80 hover:bg-blue-400 rounded-lg text-sm font-medium text-white transition-colors flex items-center gap-2">
+            className="px-4 py-2 bg-zinc-800 hover:bg-zinc-700 border border-zinc-700 rounded-lg text-sm text-zinc-300 transition-colors flex items-center gap-2">
             {exporting === 'docx' ? <Loader2 className="w-4 h-4 animate-spin" /> : <Download className="w-4 h-4" />} DOCX
           </button>
         </div>
@@ -212,7 +226,18 @@ export function POAM() {
       </div>
 
       {/* Card List */}
-      {sorted.length === 0 ? (
+      {items.length === 0 ? (
+        <div className="text-center py-16">
+          <Shield className="w-12 h-12 text-zinc-700 mx-auto mb-4" />
+          <div className="text-zinc-400 mb-2">No POA&M items yet</div>
+          <div className="text-sm text-zinc-600 mb-6">Generate POA&M items from your SSP gap assessment data</div>
+          <button onClick={handleGeneratePoam} disabled={generatingPoam}
+            className="px-5 py-2.5 bg-blue-500/80 hover:bg-blue-500 disabled:opacity-50 rounded-lg text-sm font-medium text-white transition-colors inline-flex items-center gap-2">
+            {generatingPoam ? <Loader2 className="w-4 h-4 animate-spin" /> : <Shield className="w-4 h-4" />}
+            {generatingPoam ? 'Generating...' : 'Generate POA&M Items'}
+          </button>
+        </div>
+      ) : sorted.length === 0 ? (
         <div className="text-center py-16">
           <CheckCircle2 className="w-12 h-12 text-emerald-400/30 mx-auto mb-4" />
           <div className="text-zinc-400 mb-1">No items match your filters</div>
