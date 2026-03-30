@@ -1,6 +1,6 @@
 import { CheckCircle, AlertCircle, Shield, Database, Network, Cpu, Loader2, Download } from 'lucide-react';
 import { useState, useEffect } from 'react';
-import { getHealth, verifyAuditChain, generateManifest, downloadManifest } from '../api/client';
+import { getHealth, verifyAuditChain, generateManifest, downloadManifest, getComplianceOverview, getCompanyProfile } from '../api/client';
 
 export function Settings() {
   const [healthStatus, setHealthStatus] = useState<'checking' | 'healthy' | 'unreachable'>('checking');
@@ -9,11 +9,19 @@ export function Settings() {
   const [auditLoading, setAuditLoading] = useState(false);
   const [manifestLoading, setManifestLoading] = useState(false);
   const [manifestResult, setManifestResult] = useState<any>(null);
+  const [orgInfo, setOrgInfo] = useState<any>({});
+  const [controlCount, setControlCount] = useState(110);
 
   useEffect(() => {
     getHealth()
       .then(d => { setHealthStatus('healthy'); setHealthVersion(d.version || ''); })
       .catch(() => setHealthStatus('unreachable'));
+    getComplianceOverview()
+      .then(d => { setControlCount(d.sprs?.total || 110); setOrgInfo(prev => ({ ...prev, score: d.sprs?.score })); })
+      .catch(() => {});
+    getCompanyProfile()
+      .then(d => setOrgInfo(prev => ({ ...prev, company_name: d.company_name, employee_count: d.employee_count, primary_location: d.primary_location })))
+      .catch(() => {});
   }, []);
 
   const handleVerifyAudit = async () => {
@@ -126,12 +134,12 @@ export function Settings() {
         <h2 className="text-sm font-medium text-zinc-400 mb-4 uppercase tracking-wider">Platform Info</h2>
         <div className="bg-zinc-900/50 border border-zinc-800 rounded-xl overflow-hidden divide-y divide-zinc-800">
           {[
-            ['Organization', 'Apex Defense Solutions'],
-            ['Org ID', '9de53b587b23450b87af'],
+            ['Organization', orgInfo.company_name || 'Apex Defense Solutions'],
+            ['Employees', orgInfo.employee_count ? String(orgInfo.employee_count) : '—'],
+            ['Location', orgInfo.primary_location || '—'],
             ['Framework', 'CMMC Level 2 (NIST 800-171 Rev 2)'],
-            ['Controls', '110'],
-            ['Database', 'PostgreSQL 16 (localhost:5432)'],
-            ['Vector Store', 'Qdrant (localhost:6333)'],
+            ['Controls', String(controlCount)],
+            ['SPRS Score', orgInfo.score !== undefined ? String(orgInfo.score) : '—'],
             ['Version', healthVersion || '0.9.0'],
           ].map(([label, value]) => (
             <div key={label} className="flex items-center justify-between px-6 py-3">

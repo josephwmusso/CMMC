@@ -1,6 +1,6 @@
-import { useState, useEffect, useRef } from 'react';
-import { Upload, Download, Check, Lock, Loader2, Shield, FileText, X, Eye } from 'lucide-react';
-import { listArtifacts, uploadEvidence, transitionArtifact, downloadArtifact, generateManifest, downloadManifest, verifyAuditChain, previewArtifact } from '../api/client';
+import React, { useState, useEffect, useRef } from 'react';
+import { Upload, Download, Check, Lock, Loader2, Shield, FileText, X, Eye, Link2 } from 'lucide-react';
+import { listArtifacts, uploadEvidence, transitionArtifact, downloadArtifact, generateManifest, downloadManifest, verifyAuditChain, previewArtifact, linkEvidenceToControls } from '../api/client';
 
 const STATE_COLORS: Record<string, string> = {
   PUBLISHED: 'bg-emerald-500/10 text-emerald-400/80 border-emerald-500/20',
@@ -29,6 +29,8 @@ export function Evidence() {
   const [auditLoading, setAuditLoading] = useState(false);
   const [previewData, setPreviewData] = useState<any>(null);
   const [previewLoading, setPreviewLoading] = useState(false);
+  const [linkingId, setLinkingId] = useState<string | null>(null);
+  const [linkInput, setLinkInput] = useState('');
   const fileInputRef = useRef<HTMLInputElement>(null);
 
   const loadData = async () => {
@@ -68,6 +70,17 @@ export function Evidence() {
     setPreviewLoading(true);
     try { const data = await previewArtifact(id); setPreviewData(data); }
     catch (e: any) { alert(e.message); setPreviewData(null); } finally { setPreviewLoading(false); }
+  };
+
+  const handleLinkControls = async (artifactId: string) => {
+    const ids = linkInput.split(',').map(s => s.trim()).filter(Boolean);
+    if (ids.length === 0) return;
+    try {
+      const result = await linkEvidenceToControls(artifactId, ids);
+      alert(`Linked ${result.links_created} control(s)`);
+      setLinkingId(null);
+      setLinkInput('');
+    } catch (e: any) { alert(e.message); }
   };
 
   const stateCounts = ['All States', 'PUBLISHED', 'APPROVED', 'REVIEWED', 'DRAFT'].map(s => ({
@@ -164,8 +177,8 @@ export function Evidence() {
             </tr>
           </thead>
           <tbody className="divide-y divide-zinc-800">
-            {filtered.map(item => (
-              <tr key={item.id} className="hover:bg-zinc-800/30 transition-colors">
+            {filtered.map(item => (<React.Fragment key={item.id}>
+              <tr className="hover:bg-zinc-800/30 transition-colors">
                 <td className="px-6 py-4"><div className="flex items-center gap-2"><Lock className="w-3.5 h-3.5 text-emerald-400/80" /><span className="text-sm text-zinc-300">{item.filename}</span></div></td>
                 <td className="px-6 py-4"><span className="px-2 py-0.5 bg-zinc-800 rounded text-xs text-zinc-400">{item.evidence_type || 'N/A'}</span></td>
                 <td className="px-6 py-4 text-sm text-zinc-500">{item.source_system || 'manual'}</td>
@@ -176,6 +189,9 @@ export function Evidence() {
                   <div className="flex items-center justify-end gap-2">
                     <button onClick={() => handlePreview(item.id)} className="p-1.5 hover:bg-zinc-800 rounded transition-colors" title="Preview">
                       <Eye className="w-4 h-4 text-zinc-500" />
+                    </button>
+                    <button onClick={() => { setLinkingId(linkingId === item.id ? null : item.id); setLinkInput(''); }} className="p-1.5 hover:bg-zinc-800 rounded transition-colors" title="Link Controls">
+                      <Link2 className="w-4 h-4 text-zinc-500" />
                     </button>
                     {NEXT_STATE[item.state] && (
                       <button onClick={() => handleTransition(item.id, NEXT_STATE[item.state])} className="p-1.5 hover:bg-zinc-800 rounded transition-colors" title={`Advance to ${NEXT_STATE[item.state]}`}>
@@ -188,7 +204,20 @@ export function Evidence() {
                   </div>
                 </td>
               </tr>
-            ))}
+              {linkingId === item.id && (
+                <tr className="bg-zinc-900/80">
+                  <td colSpan={7} className="px-6 py-3">
+                    <div className="flex items-center gap-3">
+                      <span className="text-xs text-zinc-500">Link to controls:</span>
+                      <input type="text" value={linkInput} onChange={e => setLinkInput(e.target.value)}
+                        placeholder="AC.L2-3.1.1, SC.L2-3.13.11, ..." className="flex-1 px-3 py-1.5 bg-black border border-zinc-700 rounded text-sm text-zinc-300 placeholder:text-zinc-600 focus:outline-none focus:border-zinc-600" />
+                      <button onClick={() => handleLinkControls(item.id)} className="px-3 py-1.5 bg-blue-500/80 hover:bg-blue-500 rounded text-sm text-white">Link</button>
+                      <button onClick={() => setLinkingId(null)} className="px-3 py-1.5 bg-zinc-800 hover:bg-zinc-700 rounded text-sm text-zinc-400">Cancel</button>
+                    </div>
+                  </td>
+                </tr>
+              )}
+            </React.Fragment>))}
           </tbody>
         </table>
       </div>

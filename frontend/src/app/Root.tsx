@@ -1,9 +1,24 @@
 import { Outlet, Link, useLocation, useNavigate } from 'react-router';
 import { Home, FileText, Shield, AlertTriangle, FileCheck, Settings, ChevronRight } from 'lucide-react';
+import { useState, useEffect } from 'react';
+import { getComplianceOverview } from './api/client';
 
 export function Root() {
   const location = useLocation();
   const navigate = useNavigate();
+  const [sprsScore, setSprsScore] = useState<number | null>(null);
+  const [sprsTotal, setSprsTotal] = useState(110);
+  const [orgName, setOrgName] = useState('');
+
+  useEffect(() => {
+    getComplianceOverview()
+      .then(d => {
+        setSprsScore(d.sprs?.score ?? null);
+        setSprsTotal(d.sprs?.total ?? 110);
+        setOrgName(d.sprs?.org_name || 'Apex Defense Solutions');
+      })
+      .catch(() => {});
+  }, [location.pathname]);
 
   const menuItems = [
     { icon: Home, label: 'Overview', path: '/' },
@@ -31,7 +46,7 @@ export function Root() {
             <div className="w-7 h-7 rounded-full bg-zinc-800 border border-zinc-700 flex items-center justify-center text-xs font-medium text-zinc-400 group-hover:border-zinc-600">
               AD
             </div>
-            <span className="text-sm text-zinc-500 group-hover:text-zinc-300 transition-colors">Apex Defense Solutions</span>
+            <span className="text-sm text-zinc-500 group-hover:text-zinc-300 transition-colors">{orgName || 'Loading...'}</span>
             <ChevronRight className="w-3.5 h-3.5 text-zinc-600 group-hover:text-zinc-400 transition-colors" />
           </button>
         </header>
@@ -43,11 +58,14 @@ export function Root() {
             <div className="mb-6 pb-4 border-b border-zinc-800">
               <div className="text-xs text-zinc-600 uppercase tracking-wider mb-2">SPRS Score</div>
               <div className="flex items-end gap-2 mb-2">
-                <div className="text-3xl font-medium text-zinc-100">63</div>
-                <div className="text-sm text-zinc-600 pb-1">/ 110</div>
+                <div className="text-3xl font-medium text-zinc-100">{sprsScore ?? '—'}</div>
+                <div className="text-sm text-zinc-600 pb-1">/ {sprsTotal}</div>
               </div>
               <div className="h-1 bg-zinc-800 rounded-full overflow-hidden">
-                <div className="h-full bg-orange-400/80 rounded-full" style={{ width: '57%' }} />
+                <div className="h-full rounded-full transition-all" style={{
+                  width: sprsScore !== null ? `${Math.max(0, ((sprsScore + 203) / 313) * 100)}%` : '0%',
+                  background: sprsScore !== null && sprsScore >= 88 ? '#34d399' : sprsScore !== null && sprsScore >= 50 ? '#fb923c' : '#ef4444',
+                }} />
               </div>
             </div>
 
@@ -76,9 +94,9 @@ export function Root() {
             <div className="mt-auto pt-6 border-t border-zinc-800">
               <div className="text-xs text-zinc-600">
                 <button onClick={() => navigate('/settings')} className="font-medium text-zinc-500 hover:text-zinc-300 transition-colors mb-1 cursor-pointer">
-                  Apex Defense
+                  {orgName || 'Organization'}
                 </button>
-                <div>Org ID: ADS-2026</div>
+                <div>CMMC Level 2</div>
                 <div className="mt-2 opacity-50">v0.9.0</div>
               </div>
             </div>

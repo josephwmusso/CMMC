@@ -93,6 +93,14 @@ def create_default_org():
         conn.close()
 
 
+def ensure_data_dirs():
+    """Create data directories needed at runtime."""
+    dirs = ["data/evidence", "data/exports"]
+    for d in dirs:
+        os.makedirs(d, exist_ok=True)
+        print(f"  Data dir ready: {d}")
+
+
 def start_server():
     """Start uvicorn."""
     port = os.environ.get("PORT", "8001")
@@ -114,6 +122,7 @@ if __name__ == "__main__":
     run_migrations()
     load_nist_data()
     create_default_org()
+    ensure_data_dirs()
 
     print("=== Startup complete ===")
     start_server()

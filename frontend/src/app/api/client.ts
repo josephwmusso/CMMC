@@ -43,10 +43,6 @@ export async function getComplianceOverview() {
   return fetchJSON(`/api/scoring/overview?org_id=${ORG_ID}`);
 }
 
-export async function getSprsScore() {
-  return fetchJSON(`/api/scoring/sprs?org_id=${ORG_ID}`);
-}
-
 export async function getGaps() {
   return fetchJSON(`/api/scoring/gaps?org_id=${ORG_ID}`);
 }
@@ -104,10 +100,6 @@ export async function listArtifacts(state?: string | null, limit = 500) {
   return fetchJSON(url);
 }
 
-export async function getArtifact(id: string) {
-  return fetchJSON(`/api/evidence/${id}`);
-}
-
 export async function previewArtifact(id: string) {
   return fetchJSON(`/api/evidence/${id}/preview`);
 }
@@ -133,6 +125,14 @@ export async function downloadArtifact(id: string, filename?: string) {
 
 export async function getEvidenceByControl(controlId: string) {
   return fetchJSON(`/api/evidence/by-control/${controlId}`);
+}
+
+export async function linkEvidenceToControls(artifactId: string, controlIds: string[]) {
+  return fetchJSON(`/api/evidence/${artifactId}/link-controls`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ control_ids: controlIds }),
+  });
 }
 
 export async function verifyAuditChain() {

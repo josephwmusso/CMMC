@@ -1,6 +1,6 @@
 import { ChevronLeft, ChevronRight, AlertTriangle, Check, Building2, Shield, Server, Loader2, HelpCircle } from 'lucide-react';
 import { useState, useEffect, useCallback } from 'react';
-import { createIntakeSession, getIntakeModule, saveIntakeResponses } from '../api/client';
+import { createIntakeSession, getIntakeModule, saveIntakeResponses, getCompanyProfile } from '../api/client';
 
 const MODULES = [
   { id: 0, label: 'Foundation', icon: Building2 },
@@ -18,6 +18,7 @@ export function SetupWizard() {
   const [completed, setCompleted] = useState(false);
   const [flags, setFlags] = useState<any[]>([]);
   const [progress, setProgress] = useState({ answered: 0, gaps: 0 });
+  const [companyProfile, setCompanyProfile] = useState<any>(null);
 
   const questions = moduleData[activeModule]?.questions || [];
   const answers = moduleData[activeModule]?.answers || {};
@@ -25,6 +26,8 @@ export function SetupWizard() {
   useEffect(() => {
     async function init() {
       try {
+        // Load saved company profile if it exists
+        try { const profile = await getCompanyProfile(); setCompanyProfile(profile); } catch {}
         const sess = await createIntakeSession();
         setSessionId(sess.session_id);
         await loadModule(sess.session_id, 0);
@@ -148,6 +151,13 @@ export function SetupWizard() {
 
       {/* Main */}
       <main className="flex-1 w-full max-w-3xl mx-auto p-8">
+        {/* Saved Profile Notice */}
+        {companyProfile?.company_name && (
+          <div className="mb-4 px-4 py-3 bg-blue-500/10 border border-blue-500/20 rounded-lg flex items-center gap-2">
+            <Building2 className="w-4 h-4 text-blue-400" />
+            <span className="text-sm text-blue-400">Previous profile loaded: <strong>{companyProfile.company_name}</strong> — answers pre-filled where available</span>
+          </div>
+        )}
         {/* Progress */}
         <div className="mb-6">
           <div className="h-1 bg-zinc-800 rounded-full overflow-hidden">

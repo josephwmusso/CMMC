@@ -22,6 +22,7 @@ from pydantic import BaseModel, Field
 from sqlalchemy.orm import Session
 
 from src.db.session import get_db
+from src.api.auth import get_current_user
 from src.agents.llm_client import get_llm
 from src.agents.ssp_generator_v2 import SSPGenerator
 from src.agents.ssp_prompts_v2 import DEMO_ORG_PROFILE
@@ -31,11 +32,55 @@ logger = logging.getLogger(__name__)
 
 router = APIRouter(prefix="/api/ssp", tags=["SSP Generation"])
 
-# In-memory job tracker (replace with Postgres/Redis in production)
-_jobs: dict = {}
-
+# Database-backed job tracker (persists across workers/restarts)
 EXPORT_DIR = os.path.join("data", "exports")
 os.makedirs(EXPORT_DIR, exist_ok=True)
+
+
+def _ensure_jobs_table():
+    """Create ssp_jobs table if it doesn't exist."""
+    from sqlalchemy import text
+    from src.db.session import engine
+    with engine.begin() as conn:
+        conn.execute(text("""
+            CREATE TABLE IF NOT EXISTS ssp_jobs (
+                job_id VARCHAR(20) PRIMARY KEY,
+                status VARCHAR(20) NOT NULL DEFAULT 'pending',
+                progress TEXT NOT NULL DEFAULT 'Starting...',
+                controls_done INTEGER NOT NULL DEFAULT 0,
+                controls_total INTEGER NOT NULL DEFAULT 0,
+                docx_path TEXT,
+                started_at TIMESTAMPTZ,
+                completed_at TIMESTAMPTZ,
+                error TEXT
+            )
+        """))
+
+_ensure_jobs_table()
+
+
+def _get_job(job_id: str) -> dict | None:
+    from sqlalchemy import text
+    from src.db.session import engine
+    with engine.connect() as conn:
+        row = conn.execute(text("SELECT * FROM ssp_jobs WHERE job_id = :jid"), {"jid": job_id}).fetchone()
+        if not row:
+            return None
+        return dict(row._mapping)
+
+
+def _set_job(job_id: str, **kwargs):
+    from sqlalchemy import text
+    from src.db.session import engine
+    with engine.begin() as conn:
+        existing = conn.execute(text("SELECT 1 FROM ssp_jobs WHERE job_id = :jid"), {"jid": job_id}).fetchone()
+        if existing:
+            sets = ", ".join(f"{k} = :{k}" for k in kwargs)
+            conn.execute(text(f"UPDATE ssp_jobs SET {sets} WHERE job_id = :jid"), {"jid": job_id, **kwargs})
+        else:
+            cols = ", ".join(["job_id"] + list(kwargs.keys()))
+            vals = ", ".join([":jid"] + [f":{k}" for k in kwargs])
+            conn.execute(text(f"INSERT INTO ssp_jobs ({cols}) VALUES ({vals})"), {"jid": job_id, **kwargs})
 
 
 # ---------------------------------------------------------------------------
@@ -137,15 +182,13 @@ def _run_full_ssp(job_id: str, org_profile: dict, control_ids: Optional[list[str
 
     db = SessionLocal()
     try:
-        _jobs[job_id]["status"] = "running"
+        _set_job(job_id, status="running")
 
         llm = get_llm()
         generator = SSPGenerator(llm=llm)
 
         def progress_cb(current, total, control_id):
-            _jobs[job_id]["controls_done"] = current
-            _jobs[job_id]["controls_total"] = total
-            _jobs[job_id]["progress"] = f"{current}/{total} — {control_id}"
+            _set_job(job_id, controls_done=current, controls_total=total, progress=f"{current}/{total} — {control_id}")
 
         results = generator.generate_full_ssp(
             org_profile=org_profile,
@@ -161,17 +204,15 @@ def _run_full_ssp(job_id: str, org_profile: dict, control_ids: Optional[list[str
             filename = f"SSP_{org_profile.get('org_name', 'org').replace(' ', '_')}_{timestamp}.docx"
             docx_path = os.path.join(EXPORT_DIR, filename)
             export_ssp_to_docx(results, org_profile, docx_path)
-            _jobs[job_id]["docx_path"] = filename
+            _set_job(job_id, docx_path=filename)
 
-        _jobs[job_id]["status"] = "completed"
-        _jobs[job_id]["completed_at"] = datetime.datetime.utcnow().isoformat()
+        _set_job(job_id, status="completed", completed_at=datetime.datetime.utcnow().isoformat())
 
         logger.info(f"Job {job_id} completed. DOCX: {docx_path}")
 
     except Exception as e:
         logger.error(f"Job {job_id} failed: {e}")
-        _jobs[job_id]["status"] = "failed"
-        _jobs[job_id]["error"] = str(e)
+        _set_job(job_id, status="failed", error=str(e))
     finally:
         db.close()
 
@@ -185,16 +226,9 @@ def generate_full_ssp(req: FullSSPRequest, background_tasks: BackgroundTasks):
     job_id = str(uuid.uuid4())[:8]
     org = req.org_profile.to_dict()
 
-    _jobs[job_id] = {
-        "status": "pending",
-        "progress": "Starting...",
-        "controls_done": 0,
-        "controls_total": 0,
-        "docx_path": None,
-        "started_at": datetime.datetime.utcnow().isoformat(),
-        "completed_at": None,
-        "error": None,
-    }
+    started = datetime.datetime.utcnow().isoformat()
+    _set_job(job_id, status="pending", progress="Starting...", controls_done=0,
+             controls_total=0, started_at=started)
 
     background_tasks.add_task(
         _run_full_ssp,
@@ -204,7 +238,8 @@ def generate_full_ssp(req: FullSSPRequest, background_tasks: BackgroundTasks):
         export_docx=req.export_docx,
     )
 
-    return JobStatus(job_id=job_id, **_jobs[job_id])
+    return JobStatus(job_id=job_id, status="pending", progress="Starting...",
+                     controls_done=0, controls_total=0, started_at=started)
 
 
 # ---------------------------------------------------------------------------
@@ -217,10 +252,15 @@ async def generate_full_ssp_temporal(req: FullSSPRequest):
     Returns a workflow_id — track progress in Temporal UI at http://localhost:8080
     or poll GET /api/ssp/status?job_id=... (backed by Temporal query).
     """
-    import asyncio
-    from temporalio.client import Client
-    from src.workflows.ssp_workflow import SSPGenerationWorkflow, SSPWorkflowInput, TASK_QUEUE
-    from configs.settings import TEMPORAL_HOST
+    try:
+        from temporalio.client import Client
+        from src.workflows.ssp_workflow import SSPGenerationWorkflow, SSPWorkflowInput, TASK_QUEUE
+        from configs.settings import TEMPORAL_HOST
+    except ImportError:
+        raise HTTPException(
+            status_code=501,
+            detail="Temporal is not available in this deployment. Use /api/ssp/generate-full instead.",
+        )
 
     org = req.org_profile.to_dict()
     workflow_id = f"ssp-{org.get('org_id', 'default')}-{datetime.datetime.utcnow().strftime('%Y%m%d%H%M%S')}"
@@ -246,29 +286,34 @@ async def generate_full_ssp_temporal(req: FullSSPRequest):
         task_queue=TASK_QUEUE,
     )
 
-    _jobs[workflow_id] = {
-        "status": "running",
-        "progress": f"Temporal workflow started: {workflow_id}",
-        "controls_done": 0,
-        "controls_total": len(req.control_ids) if req.control_ids else 110,
-        "docx_path": None,
-        "started_at": datetime.datetime.utcnow().isoformat(),
-        "completed_at": None,
-        "error": None,
-        "temporal_ui": f"http://localhost:8080/namespaces/default/workflows/{workflow_id}",
-    }
+    total = len(req.control_ids) if req.control_ids else 110
+    started = datetime.datetime.utcnow().isoformat()
+    _set_job(workflow_id, status="running", progress=f"Temporal workflow started: {workflow_id}",
+             controls_done=0, controls_total=total, started_at=started)
 
     logger.info(f"Temporal workflow started: {workflow_id}")
-    return JobStatus(job_id=workflow_id, **{k: v for k, v in _jobs[workflow_id].items() if k != "temporal_ui"})
+    return JobStatus(job_id=workflow_id, status="running", progress=f"Temporal workflow started: {workflow_id}",
+                     controls_done=0, controls_total=total, started_at=started)
 
 
 @router.get("/status", response_model=JobStatus)
 def get_job_status(job_id: str):
     """Check the status of an SSP generation job."""
-    if job_id not in _jobs:
+    job = _get_job(job_id)
+    if not job:
         raise HTTPException(status_code=404, detail=f"Job {job_id} not found")
 
-    return JobStatus(job_id=job_id, **_jobs[job_id])
+    return JobStatus(
+        job_id=job["job_id"],
+        status=job["status"],
+        progress=job["progress"],
+        controls_done=job["controls_done"],
+        controls_total=job["controls_total"],
+        docx_path=job.get("docx_path"),
+        started_at=str(job["started_at"]) if job.get("started_at") else None,
+        completed_at=str(job["completed_at"]) if job.get("completed_at") else None,
+        error=job.get("error"),
+    )
 
 
 @router.get("/exports")
@@ -282,7 +327,7 @@ def list_exports():
 
 
 @router.get("/export-latest")
-def export_latest(db: Session = Depends(get_db)):
+def export_latest(db: Session = Depends(get_db), current_user: dict = Depends(get_current_user)):
     """Generate a fresh DOCX from the current ssp_sections in the DB and return it.
 
     This is the primary download endpoint — it always builds from live DB data.
@@ -292,12 +337,12 @@ def export_latest(db: Session = Depends(get_db)):
 
     rows = db.execute(text("""
         SELECT ss.control_id, ss.implementation_status, ss.narrative,
-               ss.evidence_refs, ss.gaps, c.title, c.family_abbrev
+               ss.citations, c.title, c.family_abbrev
         FROM ssp_sections ss
         JOIN controls c ON c.id = ss.control_id
         WHERE ss.org_id = :org_id
         ORDER BY ss.control_id
-    """), {"org_id": "9de53b587b23450b87af"}).fetchall()
+    """), {"org_id": current_user["org_id"]}).fetchall()
 
     if not rows:
         raise HTTPException(
@@ -313,7 +358,7 @@ def export_latest(db: Session = Depends(get_db)):
             narrative=r[2] or "",
         )
         result.evidence_artifacts = r[3] if isinstance(r[3], list) else []
-        result.gaps = r[4] if isinstance(r[4], list) else []
+        result.gaps = []
         results.append(result)
 
     org_profile = DEMO_ORG_PROFILE
@@ -335,14 +380,14 @@ def export_latest(db: Session = Depends(get_db)):
 
 
 @router.get("/export-pdf")
-def export_pdf():
+def export_pdf(current_user: dict = Depends(get_current_user)):
     """Generate a fresh PDF from the current ssp_sections in the DB.
 
     Uses fpdf2 (pure Python) — no external dependencies like Word or LibreOffice.
     """
     from src.ssp.pdf_export import generate_ssp_pdf
 
-    org_id = "9de53b587b23450b87af"
+    org_id = current_user["org_id"]
     try:
         filepath = generate_ssp_pdf(org_id)
     except Exception as e:
@@ -358,7 +403,7 @@ def export_pdf():
 
 
 @router.get("/narrative/{control_id}")
-def get_narrative(control_id: str, db: Session = Depends(get_db)):
+def get_narrative(control_id: str, db: Session = Depends(get_db), current_user: dict = Depends(get_current_user)):
     """Get the SSP narrative for a single control."""
     from sqlalchemy import text as sa_text
 
@@ -366,7 +411,7 @@ def get_narrative(control_id: str, db: Session = Depends(get_db)):
         SELECT narrative, implementation_status
         FROM ssp_sections
         WHERE control_id = :cid AND org_id = :oid
-    """), {"cid": control_id, "oid": "9de53b587b23450b87af"}).fetchone()
+    """), {"cid": control_id, "oid": current_user["org_id"]}).fetchone()
 
     if not row:
         return {"control_id": control_id, "narrative": None, "implementation_status": None}

@@ -1,7 +1,7 @@
 import { Search, Download, Sparkles, Loader2, FileText } from 'lucide-react';
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useRef, useCallback } from 'react';
 import { useSearchParams } from 'react-router';
-import { getComplianceOverview, getGaps, getEvidenceByControl, getSSPNarrative, exportSSPAsPdf, generateFullSSP } from '../api/client';
+import { getComplianceOverview, getGaps, getEvidenceByControl, getSSPNarrative, exportSSPAsPdf, exportSSPAsDocx, generateFullSSP, getSSPJobStatus } from '../api/client';
 import { controlFamilies } from '../data/nist-controls';
 import { toast } from 'sonner';
 
@@ -26,7 +26,45 @@ export function SSP() {
   const [evidence, setEvidence] = useState<any[]>([]);
   const [evidenceLoading, setEvidenceLoading] = useState(false);
   const [exporting, setExporting] = useState(false);
+  const [exportingDocx, setExportingDocx] = useState(false);
   const [generating, setGenerating] = useState(false);
+  const [jobId, setJobId] = useState<string | null>(null);
+  const [jobProgress, setJobProgress] = useState('');
+  const [jobDone, setJobDone] = useState(0);
+  const [jobTotal, setJobTotal] = useState(0);
+  const pollRef = useRef<ReturnType<typeof setInterval> | null>(null);
+
+  const stopPolling = useCallback(() => {
+    if (pollRef.current) { clearInterval(pollRef.current); pollRef.current = null; }
+  }, []);
+
+  useEffect(() => () => stopPolling(), [stopPolling]);
+
+  const startPolling = useCallback((jid: string) => {
+    stopPolling();
+    pollRef.current = setInterval(async () => {
+      try {
+        const s = await getSSPJobStatus(jid);
+        setJobProgress(s.progress || '');
+        setJobDone(s.controls_done || 0);
+        setJobTotal(s.controls_total || 110);
+        if (s.status === 'completed') {
+          stopPolling();
+          setGenerating(false);
+          setJobId(null);
+          toast.success('SSP generation complete! Reloading...');
+          const [ov, gaps] = await Promise.all([getComplianceOverview(), getGaps()]);
+          setControls(ov.sprs?.details || []);
+          setGapDetails(gaps.gap_details || []);
+        } else if (s.status === 'failed') {
+          stopPolling();
+          setGenerating(false);
+          setJobId(null);
+          toast.error(`SSP generation failed: ${s.error || 'Unknown error'}`);
+        }
+      } catch {}
+    }, 5000);
+  }, [stopPolling]);
 
   useEffect(() => {
     async function load() {
@@ -60,10 +98,22 @@ export function SSP() {
     catch (e: any) { toast.error(e.message); } finally { setExporting(false); }
   };
 
+  const handleExportDocx = async () => {
+    setExportingDocx(true);
+    try { await exportSSPAsDocx(); toast.success('SSP exported as DOCX'); }
+    catch (e: any) { toast.error(e.message); } finally { setExportingDocx(false); }
+  };
+
   const handleGenerate = async () => {
     setGenerating(true);
-    try { const job = await generateFullSSP(); toast.success(`SSP generation started (job ${job.job_id})`); }
-    catch (e: any) { toast.error(e.message); } finally { setGenerating(false); }
+    try {
+      const job = await generateFullSSP();
+      setJobId(job.job_id);
+      setJobDone(0);
+      setJobTotal(job.controls_total || 110);
+      toast.success(`SSP generation started (job ${job.job_id})`);
+      startPolling(job.job_id);
+    } catch (e: any) { toast.error(e.message); setGenerating(false); }
   };
 
   const getControlsByFamily = (familyId: string) => controls.filter(c => (c.family || c.control_id.split('.')[0]) === familyId);
@@ -96,19 +146,34 @@ export function SSP() {
           <button onClick={handleExportPdf} disabled={exporting} className="w-full px-4 py-2.5 bg-blue-400/80 hover:bg-blue-400 disabled:opacity-50 rounded-lg text-sm font-medium text-white flex items-center justify-center gap-2 mb-2">
             {exporting ? <Loader2 className="w-4 h-4 animate-spin" /> : <Download className="w-4 h-4" />} Export PDF
           </button>
+          <button onClick={handleExportDocx} disabled={exportingDocx} className="w-full px-4 py-2.5 bg-zinc-800 hover:bg-zinc-700 border border-zinc-700 disabled:opacity-50 rounded-lg text-sm font-medium text-zinc-300 flex items-center justify-center gap-2 mb-2">
+            {exportingDocx ? <Loader2 className="w-4 h-4 animate-spin" /> : <Download className="w-4 h-4" />} Export DOCX
+          </button>
           <button
             onClick={handleGenerate}
             disabled={generating}
-            className="w-full rounded-lg px-4 py-2.5 text-sm font-medium text-white transition-all hover:scale-[1.01] active:scale-[0.99] flex items-center justify-center gap-2 border-0 disabled:opacity-50"
+            className="w-full rounded-xl px-4 py-2.5 text-sm font-medium transition-all hover:scale-[1.01] active:scale-[0.99] flex items-center justify-center gap-2 border disabled:opacity-50"
             style={{
-              background: 'linear-gradient(135deg, #3b82f6 0%, #8b5cf6 50%, #6366f1 100%)',
-              boxShadow: '0 2px 12px rgba(99,102,241,0.3), inset 0 1px 0 rgba(255,255,255,0.1)',
+              background: 'rgba(255,255,255,0.06)',
+              backdropFilter: 'blur(12px)',
+              WebkitBackdropFilter: 'blur(12px)',
+              borderColor: 'rgba(255,255,255,0.12)',
+              color: 'rgba(255,255,255,0.9)',
+              boxShadow: '0 1px 3px rgba(0,0,0,0.2), inset 0 1px 0 rgba(255,255,255,0.08)',
             }}
           >
-            {generating ? <Loader2 className="w-4 h-4 animate-spin" /> : <Sparkles className="w-4 h-4" />}
+            {generating ? <Loader2 className="w-4 h-4 animate-spin" /> : <Sparkles className="w-4 h-4 opacity-70" />}
             {generating ? 'Generating...' : 'AI Generate All'}
-            <span className="px-1.5 py-0.5 bg-white/15 rounded text-[9px] font-bold uppercase tracking-wider ml-1">AI</span>
+            <span className="px-1.5 py-0.5 bg-white/10 border border-white/10 rounded text-[9px] font-bold uppercase tracking-wider ml-1 opacity-70">AI</span>
           </button>
+          {generating && jobId && (
+            <div className="mt-3">
+              <div className="h-1.5 bg-zinc-800 rounded-full overflow-hidden">
+                <div className="h-full bg-blue-500 rounded-full transition-all" style={{ width: `${jobTotal > 0 ? (jobDone / jobTotal) * 100 : 0}%` }} />
+              </div>
+              <div className="text-xs text-zinc-500 mt-1">{jobProgress || `${jobDone}/${jobTotal}`}</div>
+            </div>
+          )}
         </div>
         <div className="h-px bg-zinc-800 mx-6 mb-4" />
         <div className="flex-1 overflow-y-auto px-6 pb-6">
