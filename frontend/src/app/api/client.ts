@@ -5,8 +5,19 @@
 
 const ORG_ID = '9de53b587b23450b87af';
 
+function getAuthHeaders(): Record<string, string> {
+  const token = localStorage.getItem('token');
+  return token ? { Authorization: `Bearer ${token}` } : {};
+}
+
 async function fetchJSON(url: string, options?: RequestInit) {
-  const res = await fetch(url, options);
+  const headers = { ...getAuthHeaders(), ...(options?.headers || {}) };
+  const res = await fetch(url, { ...options, headers });
+  if (res.status === 401) {
+    localStorage.removeItem('token');
+    window.location.href = '/';
+    throw new Error('Session expired');
+  }
   if (!res.ok) {
     const text = await res.text();
     let detail = text;
@@ -17,7 +28,12 @@ async function fetchJSON(url: string, options?: RequestInit) {
 }
 
 async function fetchBlob(url: string): Promise<Blob> {
-  const res = await fetch(url);
+  const res = await fetch(url, { headers: getAuthHeaders() });
+  if (res.status === 401) {
+    localStorage.removeItem('token');
+    window.location.href = '/';
+    throw new Error('Session expired');
+  }
   if (!res.ok) throw new Error(`Download failed: ${res.status}`);
   return res.blob();
 }
@@ -109,7 +125,7 @@ export async function uploadEvidence(file: File, metadata: Record<string, string
   formData.append('file', file);
   formData.append('org_id', ORG_ID);
   Object.entries(metadata).forEach(([k, v]) => { if (v) formData.append(k, v); });
-  const res = await fetch('/api/evidence/upload', { method: 'POST', body: formData });
+  const res = await fetch('/api/evidence/upload', { method: 'POST', body: formData, headers: getAuthHeaders() });
   if (!res.ok) { const t = await res.text(); throw new Error(t); }
   return res.json();
 }

@@ -1,11 +1,14 @@
 import { Outlet, Link, useLocation, useNavigate } from 'react-router';
 import { Home, FileText, Shield, AlertTriangle, FileCheck, Settings, ChevronRight } from 'lucide-react';
 import { useState, useEffect } from 'react';
+import { LogOut } from 'lucide-react';
 import { getComplianceOverview } from './api/client';
+import { useAuth } from './context/AuthContext';
 
 export function Root() {
   const location = useLocation();
   const navigate = useNavigate();
+  const { user, logout } = useAuth();
   const [sprsScore, setSprsScore] = useState<number | null>(null);
   const [sprsTotal, setSprsTotal] = useState(110);
   const [orgName, setOrgName] = useState('');
@@ -39,16 +42,21 @@ export function Root() {
             </div>
             <h1 className="text-lg font-semibold text-zinc-100 tracking-tight" style={{ fontFamily: 'Space Grotesk, sans-serif' }}>INTRANEST</h1>
           </div>
-          <button
-            onClick={() => navigate('/settings')}
-            className="flex items-center gap-2 px-3 py-1.5 rounded-lg hover:bg-zinc-800 transition-colors group cursor-pointer"
-          >
-            <div className="w-7 h-7 rounded-full bg-zinc-800 border border-zinc-700 flex items-center justify-center text-xs font-medium text-zinc-400 group-hover:border-zinc-600">
-              AD
-            </div>
-            <span className="text-sm text-zinc-500 group-hover:text-zinc-300 transition-colors">{orgName || 'Loading...'}</span>
-            <ChevronRight className="w-3.5 h-3.5 text-zinc-600 group-hover:text-zinc-400 transition-colors" />
-          </button>
+          <div className="flex items-center gap-3">
+            <button
+              onClick={() => navigate('/settings')}
+              className="flex items-center gap-2 px-3 py-1.5 rounded-lg hover:bg-zinc-800 transition-colors group cursor-pointer"
+            >
+              <div className="w-7 h-7 rounded-full bg-zinc-800 border border-zinc-700 flex items-center justify-center text-xs font-medium text-zinc-400 group-hover:border-zinc-600">
+                {(user?.full_name || user?.email || '?')[0].toUpperCase()}
+              </div>
+              <span className="text-sm text-zinc-500 group-hover:text-zinc-300 transition-colors">{user?.email || orgName || 'Loading...'}</span>
+              <ChevronRight className="w-3.5 h-3.5 text-zinc-600 group-hover:text-zinc-400 transition-colors" />
+            </button>
+            <button onClick={logout} className="p-1.5 rounded-lg hover:bg-zinc-800 transition-colors" title="Sign out">
+              <LogOut className="w-4 h-4 text-zinc-600 hover:text-zinc-400" />
+            </button>
+          </div>
         </header>
 
         <div className="flex">

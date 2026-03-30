@@ -37,6 +37,7 @@ def run_migrations():
     scripts = [
         "scripts/init_db.py",
         "scripts/add_frameworks_table.py",
+        "scripts/add_users_table.py",
         "scripts/init_questionnaire_db.py",
         "scripts/init_document_engine_db.py",
     ]
@@ -93,6 +94,36 @@ def create_default_org():
         conn.close()
 
 
+def create_admin_user():
+    """Create a default admin user if no users exist."""
+    import psycopg2
+    db_url = os.environ["DATABASE_URL"]
+    conn = psycopg2.connect(db_url)
+    cur = conn.cursor()
+    try:
+        cur.execute("SELECT COUNT(*) FROM users")
+        if cur.fetchone()[0] == 0:
+            print("Creating default admin user...")
+            from passlib.context import CryptContext
+            pwd = CryptContext(schemes=["bcrypt"], deprecated="auto")
+            hashed = pwd.hash(os.environ.get("ADMIN_PASSWORD", "admin123!"))
+            admin_email = os.environ.get("ADMIN_EMAIL", "admin@intranest.ai")
+            cur.execute(
+                "INSERT INTO users (id, email, org_id, full_name, hashed_password, is_admin) "
+                "VALUES ('USR-ADMIN000001', %s, '9de53b587b23450b87af', 'Admin', %s, true) "
+                "ON CONFLICT DO NOTHING",
+                (admin_email, hashed)
+            )
+            conn.commit()
+            print(f"  Admin user created: {admin_email}")
+        else:
+            print("Users already exist")
+    except Exception as e:
+        print(f"  Warning creating admin: {e}")
+    finally:
+        conn.close()
+
+
 def ensure_data_dirs():
     """Create data directories needed at runtime."""
     dirs = ["data/evidence", "data/exports"]
@@ -122,6 +153,7 @@ if __name__ == "__main__":
     run_migrations()
     load_nist_data()
     create_default_org()
+    create_admin_user()
     ensure_data_dirs()
 
     print("=== Startup complete ===")
