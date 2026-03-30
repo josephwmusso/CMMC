@@ -152,19 +152,17 @@ export function SSP() {
           <button
             onClick={handleGenerate}
             disabled={generating}
-            className="w-full rounded-xl px-4 py-2.5 text-sm font-medium transition-all hover:scale-[1.01] active:scale-[0.99] flex items-center justify-center gap-2 border disabled:opacity-50"
+            className="w-full rounded-xl px-4 py-2.5 text-sm font-medium transition-all hover:brightness-110 active:scale-[0.98] flex items-center justify-center gap-2 disabled:opacity-50"
             style={{
-              background: 'rgba(255,255,255,0.06)',
-              backdropFilter: 'blur(12px)',
-              WebkitBackdropFilter: 'blur(12px)',
-              borderColor: 'rgba(255,255,255,0.12)',
-              color: 'rgba(255,255,255,0.9)',
-              boxShadow: '0 1px 3px rgba(0,0,0,0.2), inset 0 1px 0 rgba(255,255,255,0.08)',
+              background: 'linear-gradient(135deg, rgba(255,255,255,0.13) 0%, rgba(255,255,255,0.07) 100%)',
+              border: '1px solid rgba(255,255,255,0.15)',
+              color: 'rgba(255,255,255,0.85)',
+              boxShadow: 'inset 0 1px 0 rgba(255,255,255,0.12), 0 1px 3px rgba(0,0,0,0.3)',
             }}
           >
-            {generating ? <Loader2 className="w-4 h-4 animate-spin" /> : <Sparkles className="w-4 h-4 opacity-70" />}
+            {generating ? <Loader2 className="w-4 h-4 animate-spin" /> : <Sparkles className="w-4 h-4 opacity-60" />}
             {generating ? 'Generating...' : 'AI Generate All'}
-            <span className="px-1.5 py-0.5 bg-white/10 border border-white/10 rounded text-[9px] font-bold uppercase tracking-wider ml-1 opacity-70">AI</span>
+            <span className="px-1.5 py-0.5 bg-white/8 border border-white/10 rounded text-[9px] font-bold uppercase tracking-wider ml-1 opacity-60">AI</span>
           </button>
           {generating && jobId && (
             <div className="mt-3">
