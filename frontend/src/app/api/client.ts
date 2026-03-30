@@ -38,6 +38,20 @@ async function fetchBlob(url: string): Promise<Blob> {
   return res.blob();
 }
 
+// ── OAuth ──
+export async function oauthLogin(token: string, provider: string) {
+  const res = await fetch('/api/auth/oauth', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ token, provider }),
+  });
+  if (!res.ok) {
+    const data = await res.json().catch(() => ({}));
+    throw new Error(data.detail || 'OAuth login failed');
+  }
+  return res.json();
+}
+
 function triggerDownload(blob: Blob, filename: string) {
   const url = window.URL.createObjectURL(blob);
   const a = document.createElement('a');

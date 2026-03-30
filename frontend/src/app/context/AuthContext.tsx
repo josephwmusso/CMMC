@@ -13,6 +13,7 @@ interface AuthContextType {
   token: string | null;
   loading: boolean;
   login: (email: string, password: string) => Promise<void>;
+  loginWithOAuth: (oauthToken: string, provider: string) => Promise<void>;
   logout: () => void;
 }
 
@@ -60,6 +61,24 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     setUser(data.user);
   };
 
+  const loginWithOAuth = async (oauthToken: string, provider: string) => {
+    const res = await fetch('/api/auth/oauth', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ token: oauthToken, provider }),
+    });
+
+    if (!res.ok) {
+      const data = await res.json().catch(() => ({}));
+      throw new Error(data.detail || 'OAuth login failed');
+    }
+
+    const data = await res.json();
+    localStorage.setItem('token', data.access_token);
+    setToken(data.access_token);
+    setUser(data.user);
+  };
+
   const logout = () => {
     localStorage.removeItem('token');
     setToken(null);
@@ -67,7 +86,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   };
 
   return (
-    <AuthContext.Provider value={{ user, token, loading, login, logout }}>
+    <AuthContext.Provider value={{ user, token, loading, login, loginWithOAuth, logout }}>
       {children}
     </AuthContext.Provider>
   );

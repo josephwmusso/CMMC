@@ -217,3 +217,77 @@ def login(form_data: OAuth2PasswordRequestForm = Depends(), db: Session = Depend
 def get_me(current_user: dict = Depends(get_current_user)):
     """Return the currently authenticated user."""
     return UserOut(**{k: current_user[k] for k in UserOut.model_fields})
+
+
+# ── OAuth ───────────────────────────────────────────────────────────────────
+
+GOOGLE_CLIENT_ID = os.getenv("GOOGLE_CLIENT_ID", "")
+GOOGLE_CLIENT_SECRET = os.getenv("GOOGLE_CLIENT_SECRET", "")
+DEFAULT_ORG_ID = "9de53b587b23450b87af"
+
+
+class OAuthTokenRequest(BaseModel):
+    token: str
+    provider: str  # "google", "microsoft", "apple"
+
+
+@router.post("/oauth", response_model=Token)
+def oauth_login(req: OAuthTokenRequest, db: Session = Depends(get_db)):
+    """Exchange an OAuth ID token for a JWT.
+
+    Frontend sends the ID token from Google/Microsoft/Apple sign-in.
+    Backend verifies it, creates user if needed, returns JWT.
+    """
+    import httpx
+    import uuid
+
+    if req.provider == "google":
+        # Verify Google ID token
+        resp = httpx.get(f"https://oauth2.googleapis.com/tokeninfo?id_token={req.token}")
+        if resp.status_code != 200:
+            raise HTTPException(401, "Invalid Google token")
+        info = resp.json()
+        if GOOGLE_CLIENT_ID and info.get("aud") != GOOGLE_CLIENT_ID:
+            raise HTTPException(401, "Token not issued for this app")
+        email = info.get("email", "")
+        full_name = info.get("name", email.split("@")[0])
+
+    elif req.provider == "microsoft":
+        # Verify Microsoft token via MS Graph /me
+        resp = httpx.get("https://graph.microsoft.com/v1.0/me",
+                         headers={"Authorization": f"Bearer {req.token}"})
+        if resp.status_code != 200:
+            raise HTTPException(401, "Invalid Microsoft token")
+        info = resp.json()
+        email = info.get("mail") or info.get("userPrincipalName", "")
+        full_name = info.get("displayName", email.split("@")[0])
+
+    else:
+        raise HTTPException(400, f"Unsupported OAuth provider: {req.provider}")
+
+    if not email:
+        raise HTTPException(400, "Could not retrieve email from OAuth provider")
+
+    # Find or create user
+    user = get_user_by_email(db, email)
+    if not user:
+        user_id = f"USR-{uuid.uuid4().hex[:12].upper()}"
+        # OAuth users get a random unusable password
+        dummy_pw = hash_password(uuid.uuid4().hex)
+        db.execute(text("""
+            INSERT INTO users (id, email, org_id, full_name, hashed_password, is_admin, created_at)
+            VALUES (:id, :email, :org_id, :full_name, :hashed_password, false, NOW())
+        """), {
+            "id": user_id, "email": email, "org_id": DEFAULT_ORG_ID,
+            "full_name": full_name, "hashed_password": dummy_pw,
+        })
+        db.commit()
+        user = {"id": user_id, "email": email, "org_id": DEFAULT_ORG_ID,
+                "full_name": full_name, "is_admin": False}
+
+    token = create_access_token({"sub": user["id"], "org_id": user["org_id"]})
+    return Token(
+        access_token=token, token_type="bearer",
+        user=UserOut(id=user["id"], email=user["email"], org_id=user["org_id"],
+                     full_name=user["full_name"], is_admin=user["is_admin"]),
+    )
