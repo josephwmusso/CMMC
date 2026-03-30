@@ -156,46 +156,67 @@ h1 + div[data-testid="stCaptionContainer"] p {
 
 /* ── Buttons ─────────────────────────────────────────────────────────────── */
 .stButton > button {
-    border-radius: 6px;
+    border-radius: 10px;
     font-weight: 500;
     font-size: 0.875rem;
-    transition: all 0.15s ease;
-    padding: 6px 18px;
+    transition: all 0.2s cubic-bezier(0.4, 0, 0.2, 1);
+    padding: 8px 22px;
+    border: none;
+    outline: none;
+    position: relative;
+    isolation: isolate;
+}
+.stButton {
+    background: transparent !important;
 }
 .stButton > button[kind="primary"] {
-    background: #2DD4BF;
+    background: linear-gradient(135deg, #2DD4BF 0%, #14B8A6 100%);
     color: #0D1117;
     border: none;
     font-weight: 600;
+    letter-spacing: 0.01em;
+    box-shadow: 0 2px 8px rgba(45,212,191,0.25), inset 0 1px 0 rgba(255,255,255,0.15);
 }
 .stButton > button[kind="primary"]:hover {
-    background: #5EEAD4;
-    box-shadow: 0 0 14px rgba(45,212,191,0.35);
+    background: linear-gradient(135deg, #5EEAD4 0%, #2DD4BF 100%);
+    box-shadow: 0 4px 20px rgba(45,212,191,0.4), inset 0 1px 0 rgba(255,255,255,0.2);
+    transform: translateY(-1px);
+}
+.stButton > button[kind="primary"]:active {
+    transform: translateY(0px);
+    box-shadow: 0 1px 4px rgba(45,212,191,0.3);
 }
 .stButton > button:not([kind="primary"]) {
     border: 1px solid #30363D;
     color: #CDD9E5;
-    background: transparent;
+    background: rgba(22,27,34,0.6);
+    backdrop-filter: blur(8px);
 }
 .stButton > button:not([kind="primary"]):hover {
     border-color: #2DD4BF;
     color: #2DD4BF;
-    background: rgba(45,212,191,0.06);
+    background: rgba(45,212,191,0.08);
+    box-shadow: 0 0 12px rgba(45,212,191,0.15);
 }
 
 /* ── Download buttons ────────────────────────────────────────────────────── */
+.stDownloadButton {
+    background: transparent !important;
+}
 .stDownloadButton > button {
-    border-radius: 6px;
+    border-radius: 10px;
     border: 1px solid #30363D;
     font-size: 0.875rem;
-    background: #161B22;
+    background: rgba(22,27,34,0.6);
     color: #CDD9E5;
-    transition: all 0.15s ease;
+    transition: all 0.2s cubic-bezier(0.4, 0, 0.2, 1);
+    backdrop-filter: blur(8px);
 }
 .stDownloadButton > button:hover {
     border-color: #2DD4BF;
     color: #2DD4BF;
-    background: rgba(45,212,191,0.06);
+    background: rgba(45,212,191,0.08);
+    box-shadow: 0 0 12px rgba(45,212,191,0.15);
 }
 
 /* ── DataFrames ──────────────────────────────────────────────────────────── */
