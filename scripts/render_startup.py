@@ -47,8 +47,9 @@ def create_all_tables():
     Order matters: parent tables before child tables (FK constraints).
     """
     import psycopg2
-    conn = psycopg2.connect(get_db_url())
-    conn.autocommit = True
+    db_url = get_db_url()
+    print(f"  Connecting to create tables: {db_url[:50]}...")
+    conn = psycopg2.connect(db_url)
     cur = conn.cursor()
 
     tables = [
@@ -299,8 +300,10 @@ def create_all_tables():
     for name, ddl in tables:
         try:
             cur.execute(ddl)
+            conn.commit()
             print(f"  {name:30s} [OK]")
         except Exception as e:
+            conn.rollback()
             print(f"  {name:30s} [ERROR] {e}")
             print(f"FATAL: Could not create table {name}")
             conn.close()
@@ -317,8 +320,9 @@ def create_all_tables():
     for idx in indexes:
         try:
             cur.execute(idx)
+            conn.commit()
         except Exception:
-            pass  # indexes are non-critical
+            conn.rollback()  # indexes are non-critical
 
     # VERIFY tables actually exist
     cur.execute("SELECT tablename FROM pg_tables WHERE schemaname = 'public' ORDER BY tablename")
