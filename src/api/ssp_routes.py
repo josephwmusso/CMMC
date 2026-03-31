@@ -23,10 +23,13 @@ from sqlalchemy.orm import Session
 
 from src.db.session import get_db
 from src.api.auth import get_current_user
-from src.agents.llm_client import get_llm
-from src.agents.ssp_generator_v2 import SSPGenerator
-from src.agents.ssp_prompts_v2 import DEMO_ORG_PROFILE
-from src.ssp.docx_export import export_ssp_to_docx
+from src.utils.service_check import is_qdrant_available
+
+# Lazy imports — SSPGenerator connects to Qdrant on init, which crashes on Render
+# from src.agents.llm_client import get_llm
+# from src.agents.ssp_generator_v2 import SSPGenerator
+# from src.agents.ssp_prompts_v2 import DEMO_ORG_PROFILE
+# from src.ssp.docx_export import export_ssp_to_docx
 
 logger = logging.getLogger(__name__)
 
@@ -104,9 +107,13 @@ class OrgProfileInput(BaseModel):
         """Convert to dict, filling in demo defaults for empty fields if use_demo_profile is True."""
         d = self.model_dump()
         if d.pop("use_demo_profile", False):
-            for key, demo_val in DEMO_ORG_PROFILE.items():
-                if not d.get(key):
-                    d[key] = demo_val
+            try:
+                from src.agents.ssp_prompts_v2 import DEMO_ORG_PROFILE
+                for key, demo_val in DEMO_ORG_PROFILE.items():
+                    if not d.get(key):
+                        d[key] = demo_val
+            except ImportError:
+                pass
         return d
 
 
@@ -152,6 +159,10 @@ class JobStatus(BaseModel):
 @router.post("/generate", response_model=ControlResult)
 def generate_single_control(req: SingleControlRequest, db: Session = Depends(get_db)):
     """Generate SSP narrative for a single NIST 800-171 control."""
+    if not is_qdrant_available():
+        raise HTTPException(503, "SSP generation requires Qdrant vector search, which is not available in this deployment.")
+    from src.agents.llm_client import get_llm
+    from src.agents.ssp_generator_v2 import SSPGenerator
     llm = get_llm()
     generator = SSPGenerator(llm=llm)
     org = req.org_profile.to_dict()
@@ -184,6 +195,8 @@ def _run_full_ssp(job_id: str, org_profile: dict, control_ids: Optional[list[str
     try:
         _set_job(job_id, status="running")
 
+        from src.agents.llm_client import get_llm
+        from src.agents.ssp_generator_v2 import SSPGenerator
         llm = get_llm()
         generator = SSPGenerator(llm=llm)
 
@@ -223,6 +236,8 @@ def generate_full_ssp(req: FullSSPRequest, background_tasks: BackgroundTasks):
 
     Returns a job_id — poll GET /api/ssp/status?job_id=... for progress.
     """
+    if not is_qdrant_available():
+        raise HTTPException(503, "SSP generation requires Qdrant vector search, which is not available in this deployment.")
     job_id = str(uuid.uuid4())[:8]
     org = req.org_profile.to_dict()
 
@@ -337,7 +352,7 @@ def export_latest(db: Session = Depends(get_db), current_user: dict = Depends(ge
 
     rows = db.execute(text("""
         SELECT ss.control_id, ss.implementation_status, ss.narrative,
-               ss.citations, c.title, c.family_abbrev
+               ss.evidence_refs, ss.gaps, c.title, c.family_abbrev
         FROM ssp_sections ss
         JOIN controls c ON c.id = ss.control_id
         WHERE ss.org_id = :org_id
@@ -358,15 +373,20 @@ def export_latest(db: Session = Depends(get_db), current_user: dict = Depends(ge
             narrative=r[2] or "",
         )
         result.evidence_artifacts = r[3] if isinstance(r[3], list) else []
-        result.gaps = []
+        result.gaps = r[4] if isinstance(r[4], list) else []
         results.append(result)
 
-    org_profile = DEMO_ORG_PROFILE
+    try:
+        from src.agents.ssp_prompts_v2 import DEMO_ORG_PROFILE
+        org_profile = DEMO_ORG_PROFILE
+    except ImportError:
+        org_profile = {"org_name": "Apex Defense Solutions"}
     timestamp = datetime.datetime.now().strftime("%Y%m%d_%H%M%S")
     filename = f"SSP_Apex_Defense_Solutions_{timestamp}.docx"
     filepath = os.path.join(EXPORT_DIR, filename)
 
     try:
+        from src.ssp.docx_export import export_ssp_to_docx
         export_ssp_to_docx(results, org_profile, filepath)
     except Exception as e:
         logger.error(f"DOCX export failed: {e}")

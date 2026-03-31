@@ -1,24 +1,20 @@
 """
 src/api/main.py
 FastAPI application entry point.
-Run with: uvicorn src.api.main:app --reload --port 8000
 """
 import logging
 import os
-from fastapi import FastAPI
+import traceback
+
+from fastapi import FastAPI, Request
 from fastapi.middleware.cors import CORSMiddleware
-from src.api.auth import router as auth_router
-from src.api.ssp_routes import router as ssp_router
-from src.api.evidence_routes import router as evidence_router
-from src.api.scoring_routes import router as scoring_router
-from src.api.intake_routes import router as intake_router
-from src.api.document_routes import router as document_router
-from src.api.contact_routes import router as contact_router
+from fastapi.responses import JSONResponse
 
 logging.basicConfig(
     level=logging.INFO,
     format="%(asctime)s [%(levelname)s] %(name)s: %(message)s",
 )
+logger = logging.getLogger(__name__)
 
 app = FastAPI(
     title="CMMC Compliance Platform API",
@@ -31,6 +27,7 @@ ALLOWED_ORIGINS = [
     "http://localhost:5173",
     "http://localhost:5174",
     "http://localhost:3000",
+    "http://localhost:8001",
     "https://intranest.ai",
     "https://www.intranest.ai",
 ]
@@ -42,29 +39,79 @@ app.add_middleware(
     allow_headers=["*"],
 )
 
+
+# ── Global exception handler — never return an unhandled 500 ──────────────────
+
+@app.exception_handler(Exception)
+async def global_exception_handler(request: Request, exc: Exception):
+    logger.error(f"Unhandled error on {request.url.path}: {traceback.format_exc()}")
+    return JSONResponse(
+        status_code=500,
+        content={
+            "error": "Internal server error",
+            "detail": str(exc),
+            "path": str(request.url.path),
+        },
+    )
+
+
+# ── Import routers with graceful fallback ─────────────────────────────────────
+
+from src.api.auth import router as auth_router
 app.include_router(auth_router)
-app.include_router(ssp_router)
-app.include_router(evidence_router)
+
+from src.api.scoring_routes import router as scoring_router
 app.include_router(scoring_router)
-app.include_router(intake_router)
-app.include_router(document_router)
+
+from src.api.contact_routes import router as contact_router
 app.include_router(contact_router)
 
+# These routers may fail to import if dependencies are missing on Render
+for router_import in [
+    ("src.api.ssp_routes", "ssp"),
+    ("src.api.evidence_routes", "evidence"),
+    ("src.api.intake_routes", "intake"),
+    ("src.api.document_routes", "documents"),
+]:
+    module_path, name = router_import
+    try:
+        import importlib
+        mod = importlib.import_module(module_path)
+        app.include_router(mod.router)
+        logger.info(f"Router loaded: {name}")
+    except Exception as e:
+        logger.warning(f"Router {name} failed to load: {e}")
+
+
+# ── Health check (no auth required) ──────────────────────────────────────────
 
 @app.get("/health")
 def health():
     return {"status": "ok", "version": "0.9.0"}
 
 
+@app.get("/api/health")
+def api_health():
+    return {
+        "status": "ok",
+        "version": "0.9.0",
+        "services": {
+            "postgres": True,
+            "qdrant": os.environ.get("QDRANT_AVAILABLE", "false") == "true",
+            "temporal": os.environ.get("TEMPORAL_AVAILABLE", "false") == "true",
+            "llm": bool(os.environ.get("ANTHROPIC_API_KEY", "").strip()),
+        },
+        "deployment": "render" if os.environ.get("RENDER") else "local",
+    }
+
+
 @app.get("/debug/tables")
 def debug_tables():
-    """Temporary: list all tables in the database."""
     from sqlalchemy import text
     from src.db.session import engine
     with engine.connect() as conn:
         rows = conn.execute(text("SELECT tablename FROM pg_tables WHERE schemaname = 'public' ORDER BY tablename")).fetchall()
         tables = [r[0] for r in rows]
-        # Also check if users table has any rows
         user_count = None
         try:
             user_count = conn.execute(text("SELECT COUNT(*) FROM users")).scalar()
@@ -74,7 +121,6 @@ def debug_tables():
 
 
 # ── Serve React frontend in production ────────────────────────────────────────
-# This must be AFTER all API routes so /api/* takes priority.
 from fastapi.staticfiles import StaticFiles
 from fastapi.responses import FileResponse
 

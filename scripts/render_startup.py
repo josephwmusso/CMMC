@@ -1,15 +1,31 @@
 """
-scripts/render_startup.py
-Render deployment startup — creates tables, seeds data, starts uvicorn.
-All table creation happens SYNCHRONOUSLY before the server starts.
+Render startup script — creates all tables matching the actual ORM and migration
+scripts exactly, seeds data, and starts uvicorn.
+
+Sources of truth for schema:
+  - src/db/models.py (core 9 tables)
+  - src/db/models_ssp.py (overrides ssp_sections with evidence_refs/gaps JSONB)
+  - scripts/init_questionnaire_db.py (intake tables)
+  - scripts/init_document_engine_db.py (document engine tables)
+  - src/api/auth.py (users table column names: hashed_password, full_name, is_admin)
 """
 import os
 import sys
+import hashlib
+import json
+import logging
 import time
-import subprocess
+from datetime import datetime, timezone
+
+logging.basicConfig(level=logging.INFO, format="%(asctime)s %(levelname)s %(message)s")
+logger = logging.getLogger(__name__)
 
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
+
+# ---------------------------------------------------------------------------
+# 1. DATABASE CONNECTION
+# ---------------------------------------------------------------------------
 
 def get_db_url():
     url = os.environ.get("DATABASE_URL", "")
@@ -18,493 +34,575 @@ def get_db_url():
     return url
 
 
-def wait_for_db(max_attempts=30):
-    """Wait for Postgres to accept connections."""
+def get_connection():
     import psycopg2
-    db_url = get_db_url()
-    print(f"DATABASE_URL set: {'yes' if db_url else 'NO'}")
-    if not db_url:
-        print("FATAL: DATABASE_URL not set")
+    url = get_db_url()
+    if not url:
+        logger.error("FATAL: DATABASE_URL not set")
         sys.exit(1)
+    return psycopg2.connect(url)
 
+
+def wait_for_db(max_attempts=30):
+    import psycopg2
+    url = get_db_url()
+    logger.info(f"DATABASE_URL set: {bool(url)}")
+    if not url:
+        logger.error("FATAL: DATABASE_URL not set")
+        sys.exit(1)
     for i in range(max_attempts):
         try:
-            conn = psycopg2.connect(db_url)
+            conn = psycopg2.connect(url)
             conn.close()
-            print("Database ready")
+            logger.info("Database ready")
             return
         except Exception as e:
-            print(f"  Attempt {i+1}/{max_attempts}: {e}")
+            logger.info(f"  Attempt {i+1}/{max_attempts}: {e}")
             time.sleep(2)
-
-    print("FATAL: Could not connect to database")
+    logger.error("FATAL: Could not connect to database")
     sys.exit(1)
 
 
-def create_all_tables():
-    """Create ALL tables directly with raw SQL. No subprocess, no ORM.
-    Uses CREATE TABLE IF NOT EXISTS so it's safe to run multiple times.
-    Order matters: parent tables before child tables (FK constraints).
-    """
-    import psycopg2
-    db_url = get_db_url()
-    print(f"  Connecting to create tables: {db_url[:50]}...")
-    conn = psycopg2.connect(db_url)
+# ---------------------------------------------------------------------------
+# 2. TABLE CREATION — matches actual ORM + migration scripts exactly
+# ---------------------------------------------------------------------------
+
+TABLES_DDL = [
+    # ── Core tables from models.py ──
+
+    ("frameworks", """
+        CREATE TABLE IF NOT EXISTS frameworks (
+            id            VARCHAR(20) PRIMARY KEY,
+            name          VARCHAR(255) NOT NULL,
+            version       VARCHAR(100) NOT NULL DEFAULT '',
+            control_count INTEGER NOT NULL DEFAULT 0,
+            description   TEXT,
+            created_at    TIMESTAMPTZ DEFAULT NOW()
+        )
+    """),
+
+    ("organizations", """
+        CREATE TABLE IF NOT EXISTS organizations (
+            id              VARCHAR(20) PRIMARY KEY,
+            name            VARCHAR(255) NOT NULL,
+            cage_code       VARCHAR(10),
+            duns_number     VARCHAR(13),
+            system_name     VARCHAR(255),
+            system_boundary TEXT,
+            employee_count  INTEGER,
+            created_at      TIMESTAMPTZ DEFAULT NOW(),
+            updated_at      TIMESTAMPTZ
+        )
+    """),
+
+    ("controls", """
+        CREATE TABLE IF NOT EXISTS controls (
+            id              VARCHAR(30) PRIMARY KEY,
+            framework_id    VARCHAR(20) REFERENCES frameworks(id) ON DELETE SET NULL,
+            family          VARCHAR(80) NOT NULL,
+            family_abbrev   VARCHAR(4) NOT NULL,
+            title           VARCHAR(500) NOT NULL,
+            description     TEXT NOT NULL DEFAULT '',
+            discussion      TEXT,
+            nist_section    VARCHAR(20),
+            points          INTEGER DEFAULT 1,
+            poam_eligible   BOOLEAN DEFAULT TRUE,
+            status          VARCHAR(20) DEFAULT 'not_assessed'
+        )
+    """),
+
+    ("assessment_objectives", """
+        CREATE TABLE IF NOT EXISTS assessment_objectives (
+            id          VARCHAR(30) PRIMARY KEY,
+            control_id  VARCHAR(30) NOT NULL REFERENCES controls(id) ON DELETE CASCADE,
+            description TEXT NOT NULL DEFAULT '',
+            examine     TEXT,
+            interview   TEXT,
+            test        TEXT,
+            status      VARCHAR(20) DEFAULT 'not_assessed'
+        )
+    """),
+
+    ("evidence_artifacts", """
+        CREATE TABLE IF NOT EXISTS evidence_artifacts (
+            id              VARCHAR(20) PRIMARY KEY,
+            org_id          VARCHAR(20) NOT NULL REFERENCES organizations(id) ON DELETE CASCADE,
+            filename        VARCHAR(500) NOT NULL,
+            file_path       VARCHAR(1000) NOT NULL DEFAULT '',
+            file_size_bytes INTEGER,
+            mime_type       VARCHAR(100),
+            sha256_hash     VARCHAR(64),
+            hash_algorithm  VARCHAR(20) DEFAULT 'sha256',
+            state           VARCHAR(20) NOT NULL DEFAULT 'draft',
+            evidence_type   VARCHAR(50),
+            source_system   VARCHAR(100),
+            description     TEXT,
+            owner           VARCHAR(255),
+            created_at      TIMESTAMPTZ DEFAULT NOW(),
+            updated_at      TIMESTAMPTZ,
+            reviewed_at     TIMESTAMPTZ,
+            reviewed_by     VARCHAR(255),
+            approved_at     TIMESTAMPTZ,
+            approved_by     VARCHAR(255),
+            published_at    TIMESTAMPTZ,
+            metadata_json   JSON DEFAULT '{}'
+        )
+    """),
+
+    # NO created_at column — matches models.py EvidenceControlMap
+    ("evidence_control_map", """
+        CREATE TABLE IF NOT EXISTS evidence_control_map (
+            id              VARCHAR(20) PRIMARY KEY,
+            evidence_id     VARCHAR(20) NOT NULL REFERENCES evidence_artifacts(id) ON DELETE CASCADE,
+            control_id      VARCHAR(30) NOT NULL REFERENCES controls(id) ON DELETE CASCADE,
+            objective_id    VARCHAR(30) REFERENCES assessment_objectives(id) ON DELETE SET NULL,
+            relevance_score FLOAT,
+            mapped_by       VARCHAR(50),
+            UNIQUE(evidence_id, control_id, objective_id)
+        )
+    """),
+
+    # models_ssp.py OVERRIDES models.py — uses evidence_refs (JSONB) and gaps (JSONB)
+    ("ssp_sections", """
+        CREATE TABLE IF NOT EXISTS ssp_sections (
+            id                    VARCHAR(20) PRIMARY KEY,
+            control_id            VARCHAR(30) NOT NULL REFERENCES controls(id),
+            org_id                VARCHAR(100) NOT NULL DEFAULT 'default-org',
+            narrative             TEXT NOT NULL DEFAULT '',
+            implementation_status VARCHAR(30) NOT NULL DEFAULT 'Not Implemented',
+            evidence_refs         JSONB DEFAULT '[]',
+            gaps                  JSONB DEFAULT '[]',
+            generated_by          VARCHAR(50) DEFAULT 'ssp_agent',
+            version               INTEGER DEFAULT 1,
+            created_at            TIMESTAMPTZ DEFAULT NOW(),
+            updated_at            TIMESTAMPTZ DEFAULT NOW()
+        )
+    """),
+
+    ("poam_items", """
+        CREATE TABLE IF NOT EXISTS poam_items (
+            id                      VARCHAR(20) PRIMARY KEY,
+            org_id                  VARCHAR(20) NOT NULL REFERENCES organizations(id) ON DELETE CASCADE,
+            control_id              VARCHAR(30) NOT NULL REFERENCES controls(id) ON DELETE CASCADE,
+            weakness_description    TEXT NOT NULL DEFAULT '',
+            remediation_plan        TEXT,
+            milestone_changes       JSON DEFAULT '[]',
+            resources_required      TEXT,
+            scheduled_completion    TIMESTAMPTZ,
+            actual_completion       TIMESTAMPTZ,
+            status                  VARCHAR(20) DEFAULT 'OPEN',
+            risk_level              VARCHAR(20),
+            points                  INTEGER DEFAULT 1,
+            created_at              TIMESTAMPTZ DEFAULT NOW(),
+            updated_at              TIMESTAMPTZ
+        )
+    """),
+
+    # audit_log: id is SERIAL INTEGER, NO org_id column, actor_type NOT NULL
+    ("audit_log", """
+        CREATE TABLE IF NOT EXISTS audit_log (
+            id          SERIAL PRIMARY KEY,
+            timestamp   TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+            actor       VARCHAR(255) NOT NULL,
+            actor_type  VARCHAR(50) NOT NULL,
+            action      VARCHAR(100) NOT NULL,
+            target_type VARCHAR(50),
+            target_id   VARCHAR(30),
+            details     JSON,
+            prev_hash   VARCHAR(64),
+            entry_hash  VARCHAR(64)
+        )
+    """),
+
+    # ── Auth table — matches src/api/auth.py queries exactly ──
+    # Column names: hashed_password (not password), full_name (not name), is_admin (not role)
+    ("users", """
+        CREATE TABLE IF NOT EXISTS users (
+            id              VARCHAR PRIMARY KEY,
+            email           VARCHAR UNIQUE NOT NULL,
+            org_id          VARCHAR NOT NULL REFERENCES organizations(id),
+            full_name       VARCHAR NOT NULL DEFAULT '',
+            hashed_password VARCHAR NOT NULL,
+            is_admin        BOOLEAN NOT NULL DEFAULT FALSE,
+            created_at      TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+            last_login_at   TIMESTAMPTZ
+        )
+    """),
+
+    # ── Intake tables from init_questionnaire_db.py ──
+
+    ("intake_sessions", """
+        CREATE TABLE IF NOT EXISTS intake_sessions (
+            id                  VARCHAR(30) PRIMARY KEY,
+            org_id              VARCHAR(30) NOT NULL REFERENCES organizations(id),
+            started_at          TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+            updated_at          TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+            completed_at        TIMESTAMPTZ,
+            current_module      INTEGER NOT NULL DEFAULT 0,
+            status              VARCHAR(20) NOT NULL DEFAULT 'in_progress',
+            modules_completed   INTEGER NOT NULL DEFAULT 0,
+            total_questions     INTEGER NOT NULL DEFAULT 0,
+            answered_questions  INTEGER NOT NULL DEFAULT 0,
+            gap_count           INTEGER NOT NULL DEFAULT 0,
+            estimated_sprs      INTEGER NOT NULL DEFAULT 0
+        )
+    """),
+
+    ("intake_responses", """
+        CREATE TABLE IF NOT EXISTS intake_responses (
+            id              VARCHAR(30) PRIMARY KEY,
+            session_id      VARCHAR(30) NOT NULL REFERENCES intake_sessions(id) ON DELETE CASCADE,
+            org_id          VARCHAR(30) NOT NULL,
+            module_id       INTEGER NOT NULL,
+            question_id     VARCHAR(50) NOT NULL,
+            control_ids     JSON NOT NULL DEFAULT '[]',
+            answer_type     VARCHAR(20) NOT NULL DEFAULT 'text',
+            answer_value    TEXT,
+            answer_details  JSON,
+            creates_gap     BOOLEAN NOT NULL DEFAULT FALSE,
+            gap_severity    VARCHAR(20),
+            evidence_action VARCHAR(30),
+            answered_at     TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+            UNIQUE(session_id, question_id)
+        )
+    """),
+
+    ("intake_documents", """
+        CREATE TABLE IF NOT EXISTS intake_documents (
+            id              VARCHAR(30) PRIMARY KEY,
+            session_id      VARCHAR(30) NOT NULL REFERENCES intake_sessions(id) ON DELETE CASCADE,
+            org_id          VARCHAR(30) NOT NULL,
+            doc_type        VARCHAR(50) NOT NULL DEFAULT '',
+            title           VARCHAR(200) NOT NULL DEFAULT '',
+            file_path       VARCHAR(500),
+            generated_at    TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+            status          VARCHAR(20) NOT NULL DEFAULT 'draft',
+            control_ids     JSON NOT NULL DEFAULT '[]',
+            word_count      INTEGER,
+            sha256_hash     VARCHAR(64)
+        )
+    """),
+
+    ("company_profiles", """
+        CREATE TABLE IF NOT EXISTS company_profiles (
+            id                  VARCHAR(30) PRIMARY KEY,
+            org_id              VARCHAR(30) NOT NULL UNIQUE REFERENCES organizations(id),
+            session_id          VARCHAR(30) REFERENCES intake_sessions(id),
+            company_name        VARCHAR(200),
+            cage_code           VARCHAR(10),
+            duns_number         VARCHAR(15),
+            employee_count      INTEGER,
+            facility_count      INTEGER,
+            primary_location    VARCHAR(200),
+            cui_types           JSON DEFAULT '[]',
+            cui_flow            VARCHAR(50),
+            has_remote_workers  BOOLEAN DEFAULT FALSE,
+            has_wireless        BOOLEAN DEFAULT FALSE,
+            identity_provider   VARCHAR(100),
+            email_platform      VARCHAR(100),
+            email_tier          VARCHAR(50),
+            edr_product         VARCHAR(100),
+            firewall_product    VARCHAR(100),
+            siem_product        VARCHAR(100),
+            backup_solution     VARCHAR(100),
+            existing_ssp        BOOLEAN DEFAULT FALSE,
+            existing_poam       BOOLEAN DEFAULT FALSE,
+            prior_assessment    BOOLEAN DEFAULT FALSE,
+            dfars_7012_clause   BOOLEAN DEFAULT FALSE,
+            created_at          TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+            updated_at          TIMESTAMPTZ NOT NULL DEFAULT NOW()
+        )
+    """),
+
+    # ── Document engine tables from init_document_engine_db.py ──
+
+    ("document_templates", """
+        CREATE TABLE IF NOT EXISTS document_templates (
+            id                  VARCHAR(30) PRIMARY KEY,
+            doc_type            VARCHAR(50) NOT NULL UNIQUE,
+            title               VARCHAR(200) NOT NULL,
+            description         TEXT,
+            sections            JSON NOT NULL,
+            control_ids         JSON NOT NULL DEFAULT '[]',
+            generation_rules    JSON NOT NULL DEFAULT '{}',
+            conditional_on      VARCHAR(100),
+            conditional_values  JSON DEFAULT '[]',
+            min_modules_required JSON DEFAULT '[]',
+            estimated_pages     INTEGER,
+            created_at          TIMESTAMPTZ DEFAULT NOW()
+        )
+    """),
+
+    ("generated_documents", """
+        CREATE TABLE IF NOT EXISTS generated_documents (
+            id                   VARCHAR(30) PRIMARY KEY,
+            org_id               VARCHAR(30) NOT NULL REFERENCES organizations(id),
+            template_id          VARCHAR(30) NOT NULL REFERENCES document_templates(id),
+            doc_type             VARCHAR(50) NOT NULL,
+            title                VARCHAR(200) NOT NULL,
+            version              INTEGER NOT NULL DEFAULT 1,
+            status               VARCHAR(20) NOT NULL DEFAULT 'draft',
+            sections_data        JSON NOT NULL DEFAULT '[]',
+            file_path            VARCHAR(500),
+            word_count           INTEGER,
+            generated_by         VARCHAR(50) DEFAULT 'document_engine',
+            evidence_artifact_id VARCHAR(30),
+            created_at           TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+            updated_at           TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+            UNIQUE(org_id, doc_type, version)
+        )
+    """),
+
+    # ── Other tables ──
+
+    ("contact_requests", """
+        CREATE TABLE IF NOT EXISTS contact_requests (
+            id              VARCHAR PRIMARY KEY,
+            name            VARCHAR NOT NULL,
+            email           VARCHAR NOT NULL,
+            company         VARCHAR,
+            employee_count  VARCHAR,
+            message         TEXT,
+            created_at      TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+            status          VARCHAR NOT NULL DEFAULT 'new'
+        )
+    """),
+
+    ("ssp_jobs", """
+        CREATE TABLE IF NOT EXISTS ssp_jobs (
+            job_id          VARCHAR(20) PRIMARY KEY,
+            status          VARCHAR(20) NOT NULL DEFAULT 'pending',
+            progress        TEXT NOT NULL DEFAULT 'Starting...',
+            controls_done   INTEGER NOT NULL DEFAULT 0,
+            controls_total  INTEGER NOT NULL DEFAULT 0,
+            docx_path       TEXT,
+            started_at      TIMESTAMPTZ,
+            completed_at    TIMESTAMPTZ,
+            error           TEXT
+        )
+    """),
+]
+
+
+# ---------------------------------------------------------------------------
+# 3. SEED DATA
+# ---------------------------------------------------------------------------
+
+DEMO_ORG_ID = "9de53b587b23450b87af"
+
+
+def seed_framework(cur):
+    cur.execute("""
+        INSERT INTO frameworks (id, name, version, control_count, description)
+        VALUES ('nist80171r2_fw000001', 'CMMC Level 2', 'NIST 800-171 Rev 2', 110,
+                'Cybersecurity Maturity Model Certification Level 2')
+        ON CONFLICT (id) DO NOTHING
+    """)
+    logger.info("Framework seeded")
+
+
+def seed_organization(cur):
+    cur.execute("SELECT id FROM organizations WHERE id = %s", (DEMO_ORG_ID,))
+    if not cur.fetchone():
+        cur.execute(
+            "INSERT INTO organizations (id, name, system_name, employee_count) "
+            "VALUES (%s, 'Apex Defense Solutions', 'Apex Secure Enclave', 45)",
+            (DEMO_ORG_ID,),
+        )
+        logger.info("Created org: Apex Defense Solutions")
+    else:
+        logger.info("Org exists")
+
+
+def seed_admin_user(cur):
+    import bcrypt
+    email = os.environ.get("ADMIN_EMAIL", "admin@intranest.ai")
+    password = os.environ.get("ADMIN_PASSWORD", "Intranest2026!")
+    hashed = bcrypt.hashpw(password.encode("utf-8"), bcrypt.gensalt()).decode("utf-8")
+
+    cur.execute("""
+        INSERT INTO users (id, email, org_id, full_name, hashed_password, is_admin)
+        VALUES ('USR-ADMIN000001', %s, %s, 'Admin', %s, TRUE)
+        ON CONFLICT (id) DO UPDATE SET
+            email = EXCLUDED.email,
+            hashed_password = EXCLUDED.hashed_password,
+            is_admin = TRUE
+    """, (email, DEMO_ORG_ID, hashed))
+    logger.info(f"Admin user ready: {email}")
+
+
+def seed_controls(cur):
+    cur.execute("SELECT COUNT(*) FROM controls")
+    count = cur.fetchone()[0]
+    if count >= 110:
+        logger.info(f"Controls already loaded: {count}")
+        return
+
+    logger.info(f"Controls: {count}/110 — loading full NIST dataset...")
+    from data.nist.controls_full import NIST_800_171_CONTROLS
+    for c in NIST_800_171_CONTROLS:
+        cur.execute("""
+            INSERT INTO controls (id, family, family_abbrev, title, description, discussion, nist_section, points, poam_eligible)
+            VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s)
+            ON CONFLICT (id) DO NOTHING
+        """, (c["id"], c["family"], c["family_id"], c["title"], c["description"],
+              c.get("discussion", ""), c.get("nist_section", ""), c["points"], c["poam_eligible"]))
+    logger.info(f"Loaded {len(NIST_800_171_CONTROLS)} controls")
+
+
+def seed_objectives(cur):
+    cur.execute("SELECT COUNT(*) FROM assessment_objectives")
+    count = cur.fetchone()[0]
+    if count >= 200:
+        logger.info(f"Objectives already loaded: {count}")
+        return
+
+    logger.info(f"Objectives: {count} — loading...")
+    from data.nist.objectives_full import ASSESSMENT_OBJECTIVES
+    for o in ASSESSMENT_OBJECTIVES:
+        cur.execute("""
+            INSERT INTO assessment_objectives (id, control_id, description, examine, interview, test)
+            VALUES (%s, %s, %s, %s, %s, %s)
+            ON CONFLICT (id) DO NOTHING
+        """, (o["id"], o["control_id"], o["description"], o.get("examine", ""),
+              o.get("interview", ""), o.get("test", "")))
+    logger.info(f"Loaded {len(ASSESSMENT_OBJECTIVES)} objectives")
+
+
+def seed_audit_genesis(cur):
+    cur.execute("SELECT COUNT(*) FROM audit_log")
+    if cur.fetchone()[0] == 0:
+        entry_hash = hashlib.sha256("GENESIS".encode()).hexdigest()
+        cur.execute("""
+            INSERT INTO audit_log (timestamp, actor, actor_type, action, target_type, target_id, details, prev_hash, entry_hash)
+            VALUES (NOW(), 'SYSTEM', 'system', 'GENESIS', 'system', 'system', '{"message":"Audit chain genesis"}', 'GENESIS', %s)
+        """, (entry_hash,))
+        logger.info("Created genesis audit log entry")
+
+
+def seed_document_templates(cur):
+    """Delegate to the existing init_document_engine_db.py seeder."""
+    cur.execute("SELECT COUNT(*) FROM document_templates")
+    if cur.fetchone()[0] >= 7:
+        logger.info("Document templates already seeded")
+        return
+    logger.info("Seeding document templates via init_document_engine_db.py...")
+
+
+# ---------------------------------------------------------------------------
+# 4. MAIN
+# ---------------------------------------------------------------------------
+
+def main():
+    logger.info("=" * 60)
+    logger.info("INTRANEST PLATFORM — RENDER STARTUP")
+    logger.info(f"DATABASE_URL present: {bool(os.environ.get('DATABASE_URL'))}")
+    logger.info("=" * 60)
+
+    wait_for_db()
+
+    # Drop and recreate if RESET_SCHEMA is set (one-time fix for schema mismatches)
+    if os.environ.get("RESET_SCHEMA", "false").lower() == "true":
+        logger.info("RESET_SCHEMA=true — dropping all tables for clean recreation...")
+        conn = get_connection()
+        cur = conn.cursor()
+        cur.execute("""
+            DROP TABLE IF EXISTS
+                ssp_jobs, contact_requests, generated_documents, document_templates,
+                intake_documents, intake_responses, company_profiles, intake_sessions,
+                evidence_control_map, ssp_sections, poam_items, audit_log,
+                evidence_artifacts, assessment_objectives, controls, users,
+                frameworks, organizations
+            CASCADE
+        """)
+        conn.commit()
+        conn.close()
+        logger.info("All tables dropped")
+
+    # Create all tables
+    logger.info("Creating database tables...")
+    conn = get_connection()
     cur = conn.cursor()
-
-    tables = [
-        ("frameworks", """
-            CREATE TABLE IF NOT EXISTS frameworks (
-                id            VARCHAR(20) PRIMARY KEY,
-                name          VARCHAR(255) NOT NULL,
-                version       VARCHAR(100) NOT NULL DEFAULT '',
-                control_count INTEGER NOT NULL DEFAULT 0,
-                description   TEXT,
-                created_at    TIMESTAMPTZ NOT NULL DEFAULT NOW()
-            )
-        """),
-        ("organizations", """
-            CREATE TABLE IF NOT EXISTS organizations (
-                id            VARCHAR(20) PRIMARY KEY,
-                name          VARCHAR(255) NOT NULL,
-                cage_code     VARCHAR(10),
-                duns_number   VARCHAR(13),
-                system_name   VARCHAR(255),
-                system_boundary TEXT,
-                employee_count INTEGER,
-                created_at    TIMESTAMPTZ DEFAULT NOW(),
-                updated_at    TIMESTAMPTZ
-            )
-        """),
-        ("controls", """
-            CREATE TABLE IF NOT EXISTS controls (
-                id            VARCHAR(30) PRIMARY KEY,
-                framework_id  VARCHAR(20) REFERENCES frameworks(id) ON DELETE SET NULL,
-                family        VARCHAR(80) NOT NULL,
-                family_abbrev VARCHAR(4) NOT NULL,
-                title         VARCHAR(500) NOT NULL,
-                description   TEXT NOT NULL,
-                discussion    TEXT,
-                nist_section  VARCHAR(20),
-                points        INTEGER DEFAULT 1,
-                poam_eligible BOOLEAN DEFAULT true,
-                status        VARCHAR(20) DEFAULT 'not_assessed'
-            )
-        """),
-        ("assessment_objectives", """
-            CREATE TABLE IF NOT EXISTS assessment_objectives (
-                id          VARCHAR(30) PRIMARY KEY,
-                control_id  VARCHAR(30) NOT NULL REFERENCES controls(id) ON DELETE CASCADE,
-                description TEXT NOT NULL,
-                examine     TEXT,
-                interview   TEXT,
-                test        TEXT,
-                status      VARCHAR(20) DEFAULT 'not_assessed'
-            )
-        """),
-        ("evidence_artifacts", """
-            CREATE TABLE IF NOT EXISTS evidence_artifacts (
-                id              VARCHAR(30) PRIMARY KEY,
-                org_id          VARCHAR(20) NOT NULL REFERENCES organizations(id),
-                filename        VARCHAR(500) NOT NULL,
-                original_name   VARCHAR(500),
-                file_path       TEXT,
-                file_size_bytes BIGINT,
-                mime_type       VARCHAR(100),
-                sha256_hash     VARCHAR(64),
-                evidence_type   VARCHAR(50) DEFAULT 'other',
-                source_system   VARCHAR(100) DEFAULT 'manual',
-                description     TEXT,
-                owner           VARCHAR(255),
-                state           VARCHAR(20) NOT NULL DEFAULT 'DRAFT',
-                uploaded_at     TIMESTAMPTZ DEFAULT NOW(),
-                reviewed_at     TIMESTAMPTZ,
-                approved_at     TIMESTAMPTZ,
-                published_at    TIMESTAMPTZ
-            )
-        """),
-        ("evidence_control_map", """
-            CREATE TABLE IF NOT EXISTS evidence_control_map (
-                id            VARCHAR(30) PRIMARY KEY,
-                evidence_id   VARCHAR(30) NOT NULL REFERENCES evidence_artifacts(id) ON DELETE CASCADE,
-                control_id    VARCHAR(30) REFERENCES controls(id) ON DELETE CASCADE,
-                objective_id  VARCHAR(30) REFERENCES assessment_objectives(id) ON DELETE CASCADE,
-                created_at    TIMESTAMPTZ DEFAULT NOW()
-            )
-        """),
-        ("ssp_sections", """
-            CREATE TABLE IF NOT EXISTS ssp_sections (
-                id                    VARCHAR(30) PRIMARY KEY,
-                org_id                VARCHAR(20) NOT NULL REFERENCES organizations(id),
-                control_id            VARCHAR(30) NOT NULL REFERENCES controls(id),
-                implementation_status VARCHAR(30),
-                narrative             TEXT,
-                citations             JSONB,
-                state                 VARCHAR(20) DEFAULT 'draft',
-                version               INTEGER DEFAULT 1,
-                generated_by          VARCHAR(100),
-                created_at            TIMESTAMPTZ DEFAULT NOW(),
-                updated_at            TIMESTAMPTZ
-            )
-        """),
-        ("poam_items", """
-            CREATE TABLE IF NOT EXISTS poam_items (
-                id                   VARCHAR(30) PRIMARY KEY,
-                org_id               VARCHAR(20) NOT NULL REFERENCES organizations(id),
-                control_id           VARCHAR(30) NOT NULL REFERENCES controls(id),
-                weakness_description TEXT,
-                remediation_plan     TEXT,
-                risk_level           VARCHAR(20),
-                points               INTEGER DEFAULT 1,
-                status               VARCHAR(20) DEFAULT 'OPEN',
-                milestone_changes    TEXT,
-                scheduled_completion TIMESTAMPTZ,
-                created_at           TIMESTAMPTZ DEFAULT NOW(),
-                updated_at           TIMESTAMPTZ
-            )
-        """),
-        ("audit_log", """
-            CREATE TABLE IF NOT EXISTS audit_log (
-                id          SERIAL PRIMARY KEY,
-                timestamp   TIMESTAMPTZ NOT NULL DEFAULT NOW(),
-                actor       VARCHAR(255) NOT NULL DEFAULT 'system',
-                action      VARCHAR(100) NOT NULL,
-                target_type VARCHAR(50),
-                target_id   VARCHAR(100),
-                details     JSONB,
-                entry_hash  VARCHAR(64),
-                prev_hash   VARCHAR(64)
-            )
-        """),
-        ("users", """
-            CREATE TABLE IF NOT EXISTS users (
-                id              VARCHAR PRIMARY KEY,
-                email           VARCHAR UNIQUE NOT NULL,
-                org_id          VARCHAR NOT NULL REFERENCES organizations(id),
-                full_name       VARCHAR NOT NULL DEFAULT '',
-                hashed_password VARCHAR NOT NULL,
-                is_admin        BOOLEAN NOT NULL DEFAULT false,
-                created_at      TIMESTAMPTZ NOT NULL DEFAULT NOW(),
-                last_login_at   TIMESTAMPTZ
-            )
-        """),
-        ("intake_sessions", """
-            CREATE TABLE IF NOT EXISTS intake_sessions (
-                id          VARCHAR PRIMARY KEY,
-                org_id      VARCHAR NOT NULL,
-                status      VARCHAR DEFAULT 'in_progress',
-                current_module INTEGER DEFAULT 0,
-                started_at  TIMESTAMPTZ DEFAULT NOW(),
-                updated_at  TIMESTAMPTZ
-            )
-        """),
-        ("intake_responses", """
-            CREATE TABLE IF NOT EXISTS intake_responses (
-                id           VARCHAR PRIMARY KEY,
-                session_id   VARCHAR NOT NULL,
-                question_id  VARCHAR NOT NULL,
-                module_id    INTEGER,
-                control_ids  JSONB,
-                answer_type  VARCHAR,
-                answer_value TEXT,
-                created_at   TIMESTAMPTZ DEFAULT NOW(),
-                UNIQUE(session_id, question_id)
-            )
-        """),
-        ("company_profiles", """
-            CREATE TABLE IF NOT EXISTS company_profiles (
-                id               VARCHAR PRIMARY KEY,
-                org_id           VARCHAR NOT NULL,
-                company_name     VARCHAR,
-                cage_code        VARCHAR,
-                duns_number      VARCHAR,
-                employee_count   INTEGER,
-                facility_count   INTEGER,
-                primary_location VARCHAR,
-                cui_types        JSONB,
-                cui_flow         TEXT,
-                has_remote_workers BOOLEAN,
-                has_wireless     BOOLEAN,
-                identity_provider VARCHAR,
-                email_platform   VARCHAR,
-                email_tier       VARCHAR,
-                edr_product      VARCHAR,
-                firewall_product VARCHAR,
-                siem_product     VARCHAR,
-                backup_solution  VARCHAR,
-                existing_ssp     BOOLEAN,
-                existing_poam    BOOLEAN,
-                prior_assessment VARCHAR,
-                dfars_7012_clause BOOLEAN,
-                created_at       TIMESTAMPTZ DEFAULT NOW(),
-                updated_at       TIMESTAMPTZ
-            )
-        """),
-        ("document_templates", """
-            CREATE TABLE IF NOT EXISTS document_templates (
-                id              VARCHAR PRIMARY KEY,
-                doc_type        VARCHAR NOT NULL UNIQUE,
-                title           VARCHAR NOT NULL,
-                description     TEXT,
-                sections        JSONB,
-                control_ids     JSONB,
-                conditional_on  VARCHAR,
-                estimated_pages INTEGER DEFAULT 0,
-                created_at      TIMESTAMPTZ DEFAULT NOW()
-            )
-        """),
-        ("generated_documents", """
-            CREATE TABLE IF NOT EXISTS generated_documents (
-                id                  VARCHAR PRIMARY KEY,
-                org_id              VARCHAR NOT NULL,
-                doc_type            VARCHAR NOT NULL,
-                title               VARCHAR NOT NULL,
-                version             INTEGER DEFAULT 1,
-                status              VARCHAR DEFAULT 'draft',
-                sections            JSONB,
-                word_count          INTEGER DEFAULT 0,
-                file_path           TEXT,
-                evidence_artifact_id VARCHAR,
-                created_at          TIMESTAMPTZ DEFAULT NOW(),
-                updated_at          TIMESTAMPTZ
-            )
-        """),
-        ("contact_requests", """
-            CREATE TABLE IF NOT EXISTS contact_requests (
-                id              VARCHAR PRIMARY KEY,
-                name            VARCHAR NOT NULL,
-                email           VARCHAR NOT NULL,
-                company         VARCHAR,
-                employee_count  VARCHAR,
-                message         TEXT,
-                created_at      TIMESTAMPTZ NOT NULL DEFAULT NOW(),
-                status          VARCHAR NOT NULL DEFAULT 'new'
-            )
-        """),
-        ("ssp_jobs", """
-            CREATE TABLE IF NOT EXISTS ssp_jobs (
-                job_id          VARCHAR(20) PRIMARY KEY,
-                status          VARCHAR(20) NOT NULL DEFAULT 'pending',
-                progress        TEXT NOT NULL DEFAULT 'Starting...',
-                controls_done   INTEGER NOT NULL DEFAULT 0,
-                controls_total  INTEGER NOT NULL DEFAULT 0,
-                docx_path       TEXT,
-                started_at      TIMESTAMPTZ,
-                completed_at    TIMESTAMPTZ,
-                error           TEXT
-            )
-        """),
-    ]
-
-    print("\n--- Creating tables ---")
-    for name, ddl in tables:
+    for name, ddl in TABLES_DDL:
         try:
             cur.execute(ddl)
             conn.commit()
-            print(f"  {name:30s} [OK]")
+            logger.info(f"  {name}: OK")
         except Exception as e:
             conn.rollback()
-            print(f"  {name:30s} [ERROR] {e}")
-            print(f"FATAL: Could not create table {name}")
+            logger.error(f"  {name}: FAILED — {e}")
+            logger.error(f"FATAL: Could not create table {name}")
             conn.close()
             sys.exit(1)
 
-    # Create indexes
-    indexes = [
-        "CREATE INDEX IF NOT EXISTS idx_controls_family ON controls(family_abbrev)",
-        "CREATE INDEX IF NOT EXISTS idx_controls_framework ON controls(framework_id)",
-        "CREATE INDEX IF NOT EXISTS idx_users_email ON users(email)",
-        "CREATE INDEX IF NOT EXISTS idx_users_org_id ON users(org_id)",
-        "CREATE INDEX IF NOT EXISTS idx_audit_log_id ON audit_log(id DESC)",
-    ]
-    for idx in indexes:
-        try:
-            cur.execute(idx)
-            conn.commit()
-        except Exception:
-            conn.rollback()  # indexes are non-critical
-
-    # VERIFY tables actually exist
+    # Verify tables exist
     cur.execute("SELECT tablename FROM pg_tables WHERE schemaname = 'public' ORDER BY tablename")
     existing = [row[0] for row in cur.fetchall()]
-    print(f"\n  Tables in database after creation: {existing}")
-
+    logger.info(f"Tables in database: {existing}")
     required = ["organizations", "controls", "users", "ssp_sections", "evidence_artifacts",
                  "poam_items", "audit_log", "frameworks", "ssp_jobs"]
     missing = [t for t in required if t not in existing]
     if missing:
-        print(f"FATAL: Required tables MISSING after creation: {missing}")
+        logger.error(f"FATAL: Required tables MISSING: {missing}")
         conn.close()
         sys.exit(1)
-
     conn.close()
-    print(f"  All {len(tables)} tables verified successfully\n")
+    logger.info("All tables verified")
 
-
-def seed_framework():
-    """Seed the NIST 800-171 framework row."""
-    import psycopg2
-    conn = psycopg2.connect(get_db_url())
+    # Seed data
+    logger.info("Seeding data...")
+    conn = get_connection()
     cur = conn.cursor()
     try:
-        cur.execute("""
-            INSERT INTO frameworks (id, name, version, control_count, description)
-            VALUES ('nist80171r2_fw000001', 'CMMC Level 2', 'NIST 800-171 Rev 2', 110,
-                    'Cybersecurity Maturity Model Certification Level 2')
-            ON CONFLICT (id) DO NOTHING
-        """)
+        seed_framework(cur)
+        seed_organization(cur)
+        seed_admin_user(cur)
+        seed_controls(cur)
+        seed_objectives(cur)
+        seed_audit_genesis(cur)
+        seed_document_templates(cur)
         conn.commit()
-        print("Framework seeded: CMMC Level 2")
+        logger.info("All seed data committed")
     except Exception as e:
-        print(f"  Warning seeding framework: {e}")
-    finally:
-        conn.close()
-
-
-def create_default_org():
-    """Create the default Apex Defense Solutions org if missing."""
-    import psycopg2
-    conn = psycopg2.connect(get_db_url())
-    cur = conn.cursor()
-    try:
-        cur.execute("SELECT COUNT(*) FROM organizations WHERE id = '9de53b587b23450b87af'")
-        if cur.fetchone()[0] == 0:
-            print("Creating default organization...")
-            cur.execute(
-                "INSERT INTO organizations (id, name, system_name, employee_count) "
-                "VALUES ('9de53b587b23450b87af', 'Apex Defense Solutions', 'Apex Secure Enclave', 45) "
-                "ON CONFLICT DO NOTHING"
-            )
-            conn.commit()
-            print("  Org created: Apex Defense Solutions")
-        else:
-            print("Default org exists")
-    except Exception as e:
-        print(f"  Warning creating org: {e}")
-    finally:
-        conn.close()
-
-
-def load_nist_data():
-    """Load ALL 110 NIST controls + objectives."""
-    import psycopg2
-    conn = psycopg2.connect(get_db_url())
-    cur = conn.cursor()
-    try:
-        cur.execute("SELECT COUNT(*) FROM controls")
-        count = cur.fetchone()[0]
-        conn.close()
-
-        if count < 110:
-            print(f"Controls: {count}/110 — loading full NIST dataset...")
-            subprocess.run([sys.executable, "scripts/load_nist_to_postgres.py"], check=True)
-        else:
-            print(f"Controls already loaded ({count} records)")
-    except Exception as e:
-        print(f"  Warning loading NIST data: {e}")
-        try:
-            conn.close()
-        except Exception:
-            pass
-
-
-def create_admin_user():
-    """Create admin user. Always ensures it exists with correct password."""
-    import psycopg2
-    conn = psycopg2.connect(get_db_url())
-    cur = conn.cursor()
-    try:
-        admin_email = os.environ.get("ADMIN_EMAIL", "admin@intranest.ai")
-        admin_password = os.environ.get("ADMIN_PASSWORD", "Intranest2026!")
-
-        import bcrypt
-        hashed = bcrypt.hashpw(admin_password.encode("utf-8"), bcrypt.gensalt()).decode("utf-8")
-
-        # Upsert: create or update
-        cur.execute("""
-            INSERT INTO users (id, email, org_id, full_name, hashed_password, is_admin)
-            VALUES ('USR-ADMIN000001', %s, '9de53b587b23450b87af', 'Admin', %s, true)
-            ON CONFLICT (id) DO UPDATE SET
-                email = EXCLUDED.email,
-                hashed_password = EXCLUDED.hashed_password,
-                is_admin = true
-        """, (admin_email, hashed))
-        conn.commit()
-        print(f"Admin user ready: {admin_email}")
-    except Exception as e:
-        print(f"FATAL: Could not create admin user: {e}")
+        conn.rollback()
+        logger.error(f"FATAL: Seeding failed — {e}")
         conn.close()
         sys.exit(1)
-    finally:
-        conn.close()
+    conn.close()
 
+    # Run document template seeder (uses SQLAlchemy session)
+    try:
+        import subprocess
+        subprocess.run([sys.executable, "scripts/init_document_engine_db.py"], check=False)
+    except Exception:
+        logger.warning("Document template seeding skipped")
 
-def ensure_data_dirs():
-    """Create data directories needed at runtime."""
-    dirs = ["data/evidence", "data/exports"]
-    for d in dirs:
-        os.makedirs(d, exist_ok=True)
-
-
-def verify_data():
-    """Verify all critical data exists."""
-    import psycopg2
-    conn = psycopg2.connect(get_db_url())
+    # Verify row counts
+    logger.info("--- Data verification ---")
+    conn = get_connection()
     cur = conn.cursor()
-    print("\n--- Data Verification ---")
     for table in ["organizations", "controls", "assessment_objectives", "users",
-                   "frameworks", "ssp_jobs", "contact_requests"]:
+                   "audit_log", "document_templates", "ssp_jobs"]:
         try:
             cur.execute(f"SELECT COUNT(*) FROM {table}")
-            count = cur.fetchone()[0]
-            print(f"  {table:30s} {count:>5} rows")
+            logger.info(f"  {table}: {cur.fetchone()[0]} rows")
         except Exception as e:
-            print(f"  {table:30s} ERROR: {e}")
+            logger.warning(f"  {table}: ERROR — {e}")
     conn.close()
 
+    # Ensure runtime directories
+    for d in ["data/evidence", "data/exports"]:
+        os.makedirs(d, exist_ok=True)
 
-def start_server():
-    """Start uvicorn. This replaces the current process."""
+    # Start uvicorn
     port = os.environ.get("PORT", "8001")
-    print(f"\nStarting uvicorn on port {port}...")
+    logger.info(f"Starting uvicorn on port {port}...")
     os.execvp(
         sys.executable,
         [sys.executable, "-m", "uvicorn", "src.api.main:app",
-         "--host", "0.0.0.0", "--port", port]
+         "--host", "0.0.0.0", "--port", port],
     )
 
 
 if __name__ == "__main__":
-    print("=" * 60)
-    print("INTRANEST RENDER STARTUP SCRIPT RUNNING")
-    print(f"Python: {sys.executable}")
-    print(f"CWD: {os.getcwd()}")
-    print(f"DATABASE_URL present: {bool(os.environ.get('DATABASE_URL'))}")
-    db_url_raw = os.environ.get('DATABASE_URL', '')
-    print(f"DATABASE_URL starts with: {db_url_raw[:40]}...")
-    print("=" * 60)
-
-    # 1. Wait for database
-    wait_for_db()
-
-    # 2. Create ALL tables (raw SQL, no ORM, no subprocess)
-    create_all_tables()
-
-    # 3. Seed reference data
-    seed_framework()
-    create_default_org()
-    load_nist_data()
-
-    # 4. Create admin user (AFTER tables + org exist)
-    create_admin_user()
-
-    # 5. Ensure runtime dirs
-    ensure_data_dirs()
-
-    # 6. Verify
-    verify_data()
-
-    print("\n=== Startup complete — all tables and data verified ===")
-
-    # 7. Start server (replaces this process)
-    start_server()
+    main()

@@ -40,13 +40,15 @@ if DATABASE_URL.startswith("postgres://"):
 # ---------------------------------------------------------------------------
 QDRANT_HOST = os.getenv("QDRANT_HOST", "localhost")
 QDRANT_PORT = int(os.getenv("QDRANT_PORT", "6333"))
-QDRANT_URL = os.getenv("QDRANT_URL", f"http://{QDRANT_HOST}:{QDRANT_PORT}")
+QDRANT_URL = os.getenv("QDRANT_URL", "").strip() or None
+if QDRANT_URL is None and QDRANT_HOST != "localhost":
+    QDRANT_URL = f"http://{QDRANT_HOST}:{QDRANT_PORT}"
 QDRANT_COLLECTION = os.getenv("QDRANT_COLLECTION", "nist_compliance")
 
 # ---------------------------------------------------------------------------
 # Temporal
 # ---------------------------------------------------------------------------
-TEMPORAL_HOST = os.getenv("TEMPORAL_HOST", "localhost:7233")
+TEMPORAL_HOST = os.getenv("TEMPORAL_HOST", "").strip() or None
 
 # ---------------------------------------------------------------------------
 # Evidence
