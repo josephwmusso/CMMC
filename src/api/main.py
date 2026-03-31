@@ -22,18 +22,9 @@ app = FastAPI(
     version="0.9.0",
 )
 
-ALLOWED_ORIGINS = [
-    os.getenv("FRONTEND_URL", "http://localhost:8501"),
-    "http://localhost:5173",
-    "http://localhost:5174",
-    "http://localhost:3000",
-    "http://localhost:8001",
-    "https://intranest.ai",
-    "https://www.intranest.ai",
-]
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=ALLOWED_ORIGINS,
+    allow_origins=["*"],
     allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],
