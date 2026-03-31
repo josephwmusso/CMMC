@@ -159,7 +159,7 @@ export function Overview() {
             </button>
 
             {gapDetails.length > 0 && (
-              <button onClick={() => navigate('/ssp')} className="w-full bg-zinc-900/50 border border-zinc-800 hover:border-zinc-700/50 rounded-lg p-4 text-left transition-all group">
+              <button onClick={() => navigate('/app/ssp')} className="w-full bg-zinc-900/50 border border-zinc-800 hover:border-zinc-700/50 rounded-lg p-4 text-left transition-all group">
                 <div className="flex items-center gap-3">
                   <div className="w-8 h-8 rounded-lg bg-red-500/10 border border-red-500/20 flex items-center justify-center flex-shrink-0">
                     <AlertTriangle className="w-4 h-4 text-red-400/80" />
@@ -179,7 +179,7 @@ export function Overview() {
               </button>
             )}
 
-            <button onClick={() => navigate('/evidence')} className="w-full bg-zinc-900/50 border border-zinc-800 hover:border-zinc-700/50 rounded-lg p-4 text-left transition-all group">
+            <button onClick={() => navigate('/app/evidence')} className="w-full bg-zinc-900/50 border border-zinc-800 hover:border-zinc-700/50 rounded-lg p-4 text-left transition-all group">
               <div className="flex items-center gap-3">
                 <div className="w-8 h-8 rounded-lg bg-orange-500/10 border border-orange-500/20 flex items-center justify-center flex-shrink-0">
                   <Upload className="w-4 h-4 text-orange-400/80" />
@@ -192,7 +192,7 @@ export function Overview() {
               </div>
             </button>
 
-            <button onClick={() => navigate('/intake')} className="w-full bg-zinc-900/50 border border-zinc-800 hover:border-zinc-700/50 rounded-lg p-4 text-left transition-all group">
+            <button onClick={() => navigate('/app/intake')} className="w-full bg-zinc-900/50 border border-zinc-800 hover:border-zinc-700/50 rounded-lg p-4 text-left transition-all group">
               <div className="flex items-center gap-3">
                 <div className="w-8 h-8 rounded-lg bg-blue-500/10 border border-blue-500/20 flex items-center justify-center flex-shrink-0">
                   <FileCheck className="w-4 h-4 text-blue-400/80" />
@@ -206,7 +206,7 @@ export function Overview() {
             </button>
 
             {poamTotal > 0 && (
-              <button onClick={() => navigate('/poam')} className="w-full bg-zinc-900/50 border border-zinc-800 hover:border-zinc-700/50 rounded-lg p-4 text-left transition-all group">
+              <button onClick={() => navigate('/app/poam')} className="w-full bg-zinc-900/50 border border-zinc-800 hover:border-zinc-700/50 rounded-lg p-4 text-left transition-all group">
                 <div className="flex items-center gap-3">
                   <div className="w-8 h-8 rounded-lg bg-violet-500/10 border border-violet-500/20 flex items-center justify-center flex-shrink-0">
                     <FileCheck className="w-4 h-4 text-violet-400/80" />

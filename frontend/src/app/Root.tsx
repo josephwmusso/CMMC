@@ -1,14 +1,17 @@
-import { Outlet, Link, useLocation, useNavigate } from 'react-router';
-import { Home, FileText, Shield, AlertTriangle, FileCheck, Settings, ChevronRight } from 'lucide-react';
+import { Outlet, Link, useLocation, useNavigate, Navigate } from 'react-router';
+import { Home, FileText, Shield, AlertTriangle, FileCheck, Settings, ChevronRight, LogOut, Loader2 } from 'lucide-react';
 import { useState, useEffect } from 'react';
-import { LogOut } from 'lucide-react';
 import { getComplianceOverview } from './api/client';
 import { useAuth } from './context/AuthContext';
 
 export function Root() {
   const location = useLocation();
   const navigate = useNavigate();
-  const { user, logout } = useAuth();
+  const { user, loading, logout } = useAuth();
+
+  // Protect /app/* routes
+  if (loading) return <div className="min-h-screen bg-black flex items-center justify-center"><Loader2 className="w-6 h-6 text-zinc-500 animate-spin" /></div>;
+  if (!user) return <Navigate to="/login" replace />;
   const [sprsScore, setSprsScore] = useState<number | null>(null);
   const [sprsTotal, setSprsTotal] = useState(110);
   const [orgName, setOrgName] = useState('');
@@ -24,12 +27,12 @@ export function Root() {
   }, [location.pathname]);
 
   const menuItems = [
-    { icon: Home, label: 'Overview', path: '/' },
-    { icon: FileText, label: 'SSP', path: '/ssp' },
-    { icon: Shield, label: 'Evidence', path: '/evidence' },
-    { icon: AlertTriangle, label: 'POA&M', path: '/poam' },
-    { icon: FileCheck, label: 'Setup Wizard', path: '/intake' },
-    { icon: Settings, label: 'Settings', path: '/settings' },
+    { icon: Home, label: 'Overview', path: '/app' },
+    { icon: FileText, label: 'SSP', path: '/app/ssp' },
+    { icon: Shield, label: 'Evidence', path: '/app/evidence' },
+    { icon: AlertTriangle, label: 'POA&M', path: '/app/poam' },
+    { icon: FileCheck, label: 'Setup Wizard', path: '/app/intake' },
+    { icon: Settings, label: 'Settings', path: '/app/settings' },
   ];
 
   return (

@@ -13,6 +13,7 @@ from src.api.evidence_routes import router as evidence_router
 from src.api.scoring_routes import router as scoring_router
 from src.api.intake_routes import router as intake_router
 from src.api.document_routes import router as document_router
+from src.api.contact_routes import router as contact_router
 
 logging.basicConfig(
     level=logging.INFO,
@@ -47,6 +48,7 @@ app.include_router(evidence_router)
 app.include_router(scoring_router)
 app.include_router(intake_router)
 app.include_router(document_router)
+app.include_router(contact_router)
 
 
 @app.get("/health")

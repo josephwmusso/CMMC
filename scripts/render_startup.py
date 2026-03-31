@@ -40,6 +40,7 @@ def run_migrations():
         "scripts/add_users_table.py",
         "scripts/init_questionnaire_db.py",
         "scripts/init_document_engine_db.py",
+        "scripts/init_contact_db.py",
     ]
     for script in scripts:
         print(f"Running {script}...")

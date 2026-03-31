@@ -338,7 +338,7 @@ export function POAM() {
 
                     {/* Action */}
                     <div className="mt-5 pt-5 border-t border-zinc-800 flex justify-end">
-                      <button onClick={() => navigate(`/ssp?control=${item.control_id}`)}
+                      <button onClick={() => navigate(`/app/ssp?control=${item.control_id}`)}
                         className="px-4 py-2 bg-zinc-800 hover:bg-zinc-700 rounded-lg text-sm text-zinc-300 transition-colors flex items-center gap-2">
                         View in SSP <ArrowRight className="w-4 h-4" />
                       </button>

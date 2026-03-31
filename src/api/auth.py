@@ -223,6 +223,10 @@ def get_me(current_user: dict = Depends(get_current_user)):
 
 GOOGLE_CLIENT_ID = os.getenv("GOOGLE_CLIENT_ID", "")
 GOOGLE_CLIENT_SECRET = os.getenv("GOOGLE_CLIENT_SECRET", "")
+MICROSOFT_CLIENT_ID = os.getenv("MICROSOFT_CLIENT_ID", "")
+MICROSOFT_CLIENT_SECRET = os.getenv("MICROSOFT_CLIENT_SECRET", "")
+MICROSOFT_TENANT_ID = os.getenv("MICROSOFT_TENANT_ID", "common")
+BASE_URL = os.getenv("BASE_URL", "http://localhost:5173")
 DEFAULT_ORG_ID = "9de53b587b23450b87af"
 
 
@@ -291,3 +295,116 @@ def oauth_login(req: OAuthTokenRequest, db: Session = Depends(get_db)):
         user=UserOut(id=user["id"], email=user["email"], org_id=user["org_id"],
                      full_name=user["full_name"], is_admin=user["is_admin"]),
     )
+
+
+# ── Server-side OAuth Redirects ─────────────────────────────────────────────
+from fastapi.responses import RedirectResponse
+from urllib.parse import urlencode
+
+
+def _find_or_create_oauth_user(db: Session, email: str, full_name: str) -> dict:
+    """Find existing user by email or create a new OAuth user."""
+    import uuid as _uuid
+    user = get_user_by_email(db, email)
+    if not user:
+        user_id = f"USR-{_uuid.uuid4().hex[:12].upper()}"
+        dummy_pw = hash_password(_uuid.uuid4().hex)
+        db.execute(text("""
+            INSERT INTO users (id, email, org_id, full_name, hashed_password, is_admin, created_at)
+            VALUES (:id, :email, :org_id, :full_name, :hashed_password, false, NOW())
+        """), {"id": user_id, "email": email, "org_id": DEFAULT_ORG_ID,
+               "full_name": full_name, "hashed_password": dummy_pw})
+        db.commit()
+        user = {"id": user_id, "email": email, "org_id": DEFAULT_ORG_ID,
+                "full_name": full_name, "is_admin": False}
+    return user
+
+
+@router.get("/google")
+def google_redirect():
+    """Redirect to Google OAuth consent screen."""
+    if not GOOGLE_CLIENT_ID:
+        raise HTTPException(501, "Google OAuth not configured")
+    params = urlencode({
+        "client_id": GOOGLE_CLIENT_ID,
+        "redirect_uri": f"{BASE_URL}/api/auth/google/callback",
+        "response_type": "code",
+        "scope": "openid email profile",
+        "access_type": "offline",
+        "prompt": "select_account",
+    })
+    return RedirectResponse(f"https://accounts.google.com/o/oauth2/v2/auth?{params}")
+
+
+@router.get("/google/callback")
+def google_callback(code: str, db: Session = Depends(get_db)):
+    """Handle Google OAuth callback, create/find user, redirect with JWT."""
+    import httpx
+    token_resp = httpx.post("https://oauth2.googleapis.com/token", data={
+        "code": code,
+        "client_id": GOOGLE_CLIENT_ID,
+        "client_secret": GOOGLE_CLIENT_SECRET,
+        "redirect_uri": f"{BASE_URL}/api/auth/google/callback",
+        "grant_type": "authorization_code",
+    })
+    if token_resp.status_code != 200:
+        raise HTTPException(401, "Google token exchange failed")
+    tokens = token_resp.json()
+
+    info_resp = httpx.get("https://oauth2.googleapis.com/tokeninfo",
+                          params={"id_token": tokens["id_token"]})
+    if info_resp.status_code != 200:
+        raise HTTPException(401, "Could not verify Google token")
+    info = info_resp.json()
+
+    user = _find_or_create_oauth_user(db, info["email"], info.get("name", info["email"].split("@")[0]))
+    jwt_token = create_access_token({"sub": user["id"], "org_id": user["org_id"]})
+    return RedirectResponse(f"{BASE_URL}/login?token={jwt_token}")
+
+
+@router.get("/microsoft")
+def microsoft_redirect():
+    """Redirect to Microsoft OAuth consent screen."""
+    if not MICROSOFT_CLIENT_ID:
+        raise HTTPException(501, "Microsoft OAuth not configured")
+    params = urlencode({
+        "client_id": MICROSOFT_CLIENT_ID,
+        "redirect_uri": f"{BASE_URL}/api/auth/microsoft/callback",
+        "response_type": "code",
+        "scope": "openid email profile User.Read",
+        "response_mode": "query",
+        "prompt": "select_account",
+    })
+    return RedirectResponse(f"https://login.microsoftonline.com/{MICROSOFT_TENANT_ID}/oauth2/v2.0/authorize?{params}")
+
+
+@router.get("/microsoft/callback")
+def microsoft_callback(code: str, db: Session = Depends(get_db)):
+    """Handle Microsoft OAuth callback, create/find user, redirect with JWT."""
+    import httpx
+    token_resp = httpx.post(
+        f"https://login.microsoftonline.com/{MICROSOFT_TENANT_ID}/oauth2/v2.0/token",
+        data={
+            "code": code,
+            "client_id": MICROSOFT_CLIENT_ID,
+            "client_secret": MICROSOFT_CLIENT_SECRET,
+            "redirect_uri": f"{BASE_URL}/api/auth/microsoft/callback",
+            "grant_type": "authorization_code",
+            "scope": "openid email profile User.Read",
+        },
+    )
+    if token_resp.status_code != 200:
+        raise HTTPException(401, "Microsoft token exchange failed")
+    tokens = token_resp.json()
+
+    me_resp = httpx.get("https://graph.microsoft.com/v1.0/me",
+                        headers={"Authorization": f"Bearer {tokens['access_token']}"})
+    if me_resp.status_code != 200:
+        raise HTTPException(401, "Could not retrieve Microsoft user info")
+    info = me_resp.json()
+    email = info.get("mail") or info.get("userPrincipalName", "")
+    full_name = info.get("displayName", email.split("@")[0])
+
+    user = _find_or_create_oauth_user(db, email, full_name)
+    jwt_token = create_access_token({"sub": user["id"], "org_id": user["org_id"]})
+    return RedirectResponse(f"{BASE_URL}/login?token={jwt_token}")
