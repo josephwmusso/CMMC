@@ -417,9 +417,8 @@ def create_admin_user():
         admin_email = os.environ.get("ADMIN_EMAIL", "admin@intranest.ai")
         admin_password = os.environ.get("ADMIN_PASSWORD", "Intranest2026!")
 
-        from passlib.context import CryptContext
-        pwd = CryptContext(schemes=["bcrypt"], deprecated="auto")
-        hashed = pwd.hash(admin_password)
+        import bcrypt
+        hashed = bcrypt.hashpw(admin_password.encode("utf-8"), bcrypt.gensalt()).decode("utf-8")
 
         # Upsert: create or update
         cur.execute("""
