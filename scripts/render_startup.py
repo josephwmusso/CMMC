@@ -1,7 +1,6 @@
 """
 scripts/render_startup.py
-Render deployment startup — runs migrations then starts uvicorn.
-Python script avoids bash CRLF issues on Windows→Linux deploys.
+Render deployment startup — runs migrations, seeds data, starts uvicorn.
 """
 import os
 import sys
@@ -50,77 +49,118 @@ def run_migrations():
             print(f"  Warning: {script} exited with code {e.returncode} (may be OK)")
 
 
-def load_nist_data():
-    """Load NIST controls if table is empty."""
+def _get_conn():
     import psycopg2
-    db_url = os.environ["DATABASE_URL"]
-    conn = psycopg2.connect(db_url)
-    cur = conn.cursor()
-
-    try:
-        cur.execute("SELECT COUNT(*) FROM controls")
-        count = cur.fetchone()[0]
-        if count == 0:
-            print("Controls table empty — loading NIST data...")
-            conn.close()
-            subprocess.run([sys.executable, "scripts/load_nist_to_postgres.py"], check=True)
-        else:
-            print(f"Controls already loaded ({count} records)")
-            conn.close()
-    except Exception as e:
-        print(f"  Warning: {e}")
-        conn.close()
+    return psycopg2.connect(os.environ["DATABASE_URL"])
 
 
 def create_default_org():
-    """Create the default Apex Defense org if missing."""
-    import psycopg2
-    db_url = os.environ["DATABASE_URL"]
-    conn = psycopg2.connect(db_url)
+    """Create the default Apex Defense Solutions org if missing."""
+    conn = _get_conn()
     cur = conn.cursor()
     try:
         cur.execute("SELECT COUNT(*) FROM organizations WHERE id = '9de53b587b23450b87af'")
         if cur.fetchone()[0] == 0:
             print("Creating default organization...")
             cur.execute(
-                "INSERT INTO organizations (id, name) VALUES ('9de53b587b23450b87af', 'Apex Defense Solutions') "
+                "INSERT INTO organizations (id, name, system_name, employee_count) "
+                "VALUES ('9de53b587b23450b87af', 'Apex Defense Solutions', 'Apex Secure Enclave', 45) "
                 "ON CONFLICT DO NOTHING"
             )
             conn.commit()
+            print("  Org created: Apex Defense Solutions")
         else:
             print("Default org exists")
     except Exception as e:
-        print(f"  Warning: {e}")
+        print(f"  Warning creating org: {e}")
     finally:
         conn.close()
 
 
-def create_admin_user():
-    """Create a default admin user if no users exist."""
-    import psycopg2
-    db_url = os.environ["DATABASE_URL"]
-    conn = psycopg2.connect(db_url)
+def load_nist_data():
+    """Load ALL 110 NIST controls + objectives. Always ensures full set."""
+    conn = _get_conn()
     cur = conn.cursor()
     try:
-        cur.execute("SELECT COUNT(*) FROM users")
-        if cur.fetchone()[0] == 0:
-            print("Creating default admin user...")
-            from passlib.context import CryptContext
-            pwd = CryptContext(schemes=["bcrypt"], deprecated="auto")
-            hashed = pwd.hash(os.environ.get("ADMIN_PASSWORD", "admin123!"))
-            admin_email = os.environ.get("ADMIN_EMAIL", "admin@intranest.ai")
+        cur.execute("SELECT COUNT(*) FROM controls")
+        count = cur.fetchone()[0]
+        conn.close()
+
+        if count < 110:
+            print(f"Controls: {count}/110 — loading full NIST dataset...")
+            # Force reload by running the load script
+            subprocess.run([sys.executable, "scripts/load_nist_to_postgres.py"], check=True)
+        else:
+            print(f"Controls already loaded ({count} records)")
+    except Exception as e:
+        print(f"  Warning loading NIST data: {e}")
+        try:
+            conn.close()
+        except Exception:
+            pass
+
+
+def create_admin_user():
+    """Create admin user. Always ensures it exists with correct password."""
+    conn = _get_conn()
+    cur = conn.cursor()
+    try:
+        admin_email = os.environ.get("ADMIN_EMAIL", "admin@intranest.ai")
+        admin_password = os.environ.get("ADMIN_PASSWORD", "Intranest2026!")
+
+        # Check if admin exists
+        cur.execute("SELECT id FROM users WHERE email = %s", (admin_email,))
+        existing = cur.fetchone()
+
+        from passlib.context import CryptContext
+        pwd = CryptContext(schemes=["bcrypt"], deprecated="auto")
+        hashed = pwd.hash(admin_password)
+
+        if existing:
+            # Update password to match env var (in case it changed)
+            cur.execute(
+                "UPDATE users SET hashed_password = %s, is_admin = true WHERE email = %s",
+                (hashed, admin_email)
+            )
+            conn.commit()
+            print(f"Admin user updated: {admin_email}")
+        else:
             cur.execute(
                 "INSERT INTO users (id, email, org_id, full_name, hashed_password, is_admin) "
                 "VALUES ('USR-ADMIN000001', %s, '9de53b587b23450b87af', 'Admin', %s, true) "
-                "ON CONFLICT DO NOTHING",
+                "ON CONFLICT (id) DO UPDATE SET hashed_password = EXCLUDED.hashed_password, is_admin = true",
                 (admin_email, hashed)
             )
             conn.commit()
-            print(f"  Admin user created: {admin_email}")
-        else:
-            print("Users already exist")
+            print(f"Admin user created: {admin_email}")
     except Exception as e:
         print(f"  Warning creating admin: {e}")
+    finally:
+        conn.close()
+
+
+def create_ssp_jobs_table():
+    """Ensure ssp_jobs table exists (used by SSP generation tracking)."""
+    conn = _get_conn()
+    cur = conn.cursor()
+    try:
+        cur.execute("""
+            CREATE TABLE IF NOT EXISTS ssp_jobs (
+                job_id VARCHAR(20) PRIMARY KEY,
+                status VARCHAR(20) NOT NULL DEFAULT 'pending',
+                progress TEXT NOT NULL DEFAULT 'Starting...',
+                controls_done INTEGER NOT NULL DEFAULT 0,
+                controls_total INTEGER NOT NULL DEFAULT 0,
+                docx_path TEXT,
+                started_at TIMESTAMPTZ,
+                completed_at TIMESTAMPTZ,
+                error TEXT
+            )
+        """)
+        conn.commit()
+        print("ssp_jobs table ready")
+    except Exception as e:
+        print(f"  Warning creating ssp_jobs: {e}")
     finally:
         conn.close()
 
@@ -133,10 +173,34 @@ def ensure_data_dirs():
         print(f"  Data dir ready: {d}")
 
 
+def verify_data():
+    """Quick verification of critical data."""
+    conn = _get_conn()
+    cur = conn.cursor()
+    try:
+        checks = [
+            ("organizations", "SELECT COUNT(*) FROM organizations"),
+            ("controls", "SELECT COUNT(*) FROM controls"),
+            ("assessment_objectives", "SELECT COUNT(*) FROM assessment_objectives"),
+            ("users", "SELECT COUNT(*) FROM users"),
+        ]
+        print("\n--- Data Verification ---")
+        for name, sql in checks:
+            try:
+                cur.execute(sql)
+                count = cur.fetchone()[0]
+                status = "OK" if count > 0 else "EMPTY"
+                print(f"  {name:30s} {count:>5} [{status}]")
+            except Exception as e:
+                print(f"  {name:30s} ERROR: {e}")
+    finally:
+        conn.close()
+
+
 def start_server():
     """Start uvicorn."""
     port = os.environ.get("PORT", "8001")
-    print(f"Starting server on port {port}...")
+    print(f"\nStarting server on port {port}...")
     os.execvp(
         sys.executable,
         [sys.executable, "-m", "uvicorn", "src.api.main:app",
@@ -145,17 +209,21 @@ def start_server():
 
 
 if __name__ == "__main__":
-    print("=== CMMC Platform Startup ===")
+    print("=" * 60)
+    print("INTRANEST Platform Startup")
+    print("=" * 60)
 
     if not wait_for_db():
         print("FATAL: Could not connect to database")
         sys.exit(1)
 
     run_migrations()
-    load_nist_data()
     create_default_org()
+    load_nist_data()
     create_admin_user()
+    create_ssp_jobs_table()
     ensure_data_dirs()
+    verify_data()
 
-    print("=== Startup complete ===")
+    print("\n=== Startup complete ===")
     start_server()
