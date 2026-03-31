@@ -8,15 +8,12 @@ export function Root() {
   const location = useLocation();
   const navigate = useNavigate();
   const { user, loading, logout } = useAuth();
-
-  // Protect /app/* routes
-  if (loading) return <div className="min-h-screen bg-black flex items-center justify-center"><Loader2 className="w-6 h-6 text-zinc-500 animate-spin" /></div>;
-  if (!user) return <Navigate to="/login" replace />;
   const [sprsScore, setSprsScore] = useState<number | null>(null);
   const [sprsTotal, setSprsTotal] = useState(110);
   const [orgName, setOrgName] = useState('');
 
   useEffect(() => {
+    if (!user) return;
     getComplianceOverview()
       .then(d => {
         setSprsScore(d.sprs?.score ?? null);
@@ -24,7 +21,7 @@ export function Root() {
         setOrgName(d.sprs?.org_name || 'Apex Defense Solutions');
       })
       .catch(() => {});
-  }, [location.pathname]);
+  }, [user, location.pathname]);
 
   const menuItems = [
     { icon: Home, label: 'Overview', path: '/app' },
@@ -34,6 +31,10 @@ export function Root() {
     { icon: FileCheck, label: 'Setup Wizard', path: '/app/intake' },
     { icon: Settings, label: 'Settings', path: '/app/settings' },
   ];
+
+  // Protect /app/* routes — after all hooks
+  if (loading) return <div className="min-h-screen bg-black flex items-center justify-center"><Loader2 className="w-6 h-6 text-zinc-500 animate-spin" /></div>;
+  if (!user) return <Navigate to="/login" replace />;
 
   return (
     <div className="min-h-screen bg-black">
@@ -47,7 +48,7 @@ export function Root() {
           </div>
           <div className="flex items-center gap-3">
             <button
-              onClick={() => navigate('/settings')}
+              onClick={() => navigate('/app/settings')}
               className="flex items-center gap-2 px-3 py-1.5 rounded-lg hover:bg-zinc-800 transition-colors group cursor-pointer"
             >
               <div className="w-7 h-7 rounded-full bg-zinc-800 border border-zinc-700 flex items-center justify-center text-xs font-medium text-zinc-400 group-hover:border-zinc-600">
@@ -104,7 +105,7 @@ export function Root() {
             {/* Footer */}
             <div className="mt-auto pt-6 border-t border-zinc-800">
               <div className="text-xs text-zinc-600">
-                <button onClick={() => navigate('/settings')} className="font-medium text-zinc-500 hover:text-zinc-300 transition-colors mb-1 cursor-pointer">
+                <button onClick={() => navigate('/app/settings')} className="font-medium text-zinc-500 hover:text-zinc-300 transition-colors mb-1 cursor-pointer">
                   {orgName || 'Organization'}
                 </button>
                 <div>CMMC Level 2</div>

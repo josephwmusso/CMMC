@@ -15,7 +15,7 @@ async function fetchJSON(url: string, options?: RequestInit) {
   const res = await fetch(url, { ...options, headers });
   if (res.status === 401) {
     localStorage.removeItem('token');
-    window.location.href = '/';
+    window.location.href = '/login';
     throw new Error('Session expired');
   }
   if (!res.ok) {
@@ -31,7 +31,7 @@ async function fetchBlob(url: string): Promise<Blob> {
   const res = await fetch(url, { headers: getAuthHeaders() });
   if (res.status === 401) {
     localStorage.removeItem('token');
-    window.location.href = '/';
+    window.location.href = '/login';
     throw new Error('Session expired');
   }
   if (!res.ok) throw new Error(`Download failed: ${res.status}`);
