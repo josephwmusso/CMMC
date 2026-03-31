@@ -1,30 +1,14 @@
 import { Link } from 'react-router';
 import { useEffect } from 'react';
 
-function ShieldIcon({ className = '' }: { className?: string }) {
-  return <svg className={className} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round"><path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z"/></svg>;
-}
-function LockIcon({ className = '' }: { className?: string }) {
-  return <svg className={className} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round"><rect x="3" y="11" width="18" height="11" rx="2"/><path d="M7 11V7a5 5 0 0 1 10 0v4"/></svg>;
-}
-function ChartIcon({ className = '' }: { className?: string }) {
-  return <svg className={className} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round"><line x1="18" y1="20" x2="18" y2="10"/><line x1="12" y1="20" x2="12" y2="4"/><line x1="6" y1="20" x2="6" y2="14"/></svg>;
-}
-function ServerIcon({ className = '' }: { className?: string }) {
-  return <svg className={className} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round"><rect x="2" y="2" width="20" height="8" rx="2"/><rect x="2" y="14" width="20" height="8" rx="2"/><line x1="6" y1="6" x2="6.01" y2="6"/><line x1="6" y1="18" x2="6.01" y2="18"/></svg>;
-}
-function DocIcon({ className = '' }: { className?: string }) {
-  return <svg className={className} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><polyline points="14 2 14 8 20 8"/><line x1="16" y1="13" x2="8" y2="13"/><line x1="16" y1="17" x2="8" y2="17"/></svg>;
-}
-
 export function Home() {
   useEffect(() => { document.title = 'Intranest — Sovereign CMMC Compliance Platform'; }, []);
 
   const valueProps = [
-    { icon: <DocIcon className="w-6 h-6 text-blue-400" />, title: 'AI-Powered SSP Generation', desc: 'Generate all 110 NIST 800-171 implementation narratives with evidence traceability using sovereign AI inference.' },
-    { icon: <LockIcon className="w-6 h-6 text-blue-400" />, title: 'Evidence Hashing & Audit Trails', desc: 'SHA-256 cryptographic hashing with tamper-evident audit chains and CMMC-format hash manifests.' },
-    { icon: <ChartIcon className="w-6 h-6 text-blue-400" />, title: 'SPRS Scoring & Gap Assessment', desc: 'Real-time SPRS score calculation with 1/3/5 point weights, gap severity tiers, and remediation plans.' },
-    { icon: <ServerIcon className="w-6 h-6 text-blue-400" />, title: 'Sovereign Deployment', desc: 'Fully on-premises. No CUI leaves your network. Production inference runs on your hardware.' },
+    { icon: 'M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8zM14 2v6h6M16 13H8M16 17H8', title: 'AI-Powered SSP Generation', desc: 'Generate all 110 NIST 800-171 implementation narratives with evidence traceability using sovereign AI inference.' },
+    { icon: 'M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z', title: 'Evidence Hashing & Audit Trails', desc: 'SHA-256 cryptographic hashing with tamper-evident audit chains and CMMC-format hash manifests.' },
+    { icon: 'M18 20V10M12 20V4M6 20v-6', title: 'SPRS Scoring & Gap Assessment', desc: 'Real-time SPRS score calculation with 1/3/5 point weights, gap severity tiers, and remediation plans.' },
+    { icon: 'M2 2h20v8H2zM2 14h20v8H2zM6 6h.01M6 18h.01', title: 'Sovereign Deployment', desc: 'Fully on-premises. No CUI leaves your network. Production inference runs on your hardware.' },
   ];
 
   const steps = [
@@ -37,24 +21,24 @@ export function Home() {
   return (
     <>
       {/* Hero */}
-      <section className="relative overflow-hidden">
-        <div className="absolute inset-0 bg-gradient-to-b from-blue-500/5 via-transparent to-transparent" />
-        <div className="max-w-6xl mx-auto px-6 pt-24 pb-20 md:pt-32 md:pb-28 relative">
+      <section className="py-24 md:py-32">
+        <div className="max-w-5xl mx-auto px-6">
           <div className="max-w-3xl">
-            <div className="inline-flex items-center gap-2 px-3 py-1.5 bg-blue-500/10 border border-blue-500/20 rounded-full text-xs font-medium text-blue-400 mb-6">
-              <ShieldIcon className="w-3.5 h-3.5" /> CMMC Level 2 &middot; NIST 800-171 Rev 2
+            <div className="inline-flex items-center gap-2 px-2.5 py-1 bg-zinc-900/50 border border-zinc-800 rounded-full text-xs text-zinc-500 mb-6">
+              <svg className="w-3.5 h-3.5 text-zinc-600" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z"/></svg>
+              CMMC Level 2 &middot; NIST 800-171 Rev 2
             </div>
-            <h1 className="text-4xl md:text-5xl lg:text-6xl font-bold text-white leading-tight tracking-tight mb-6">
-              CMMC Level 2 compliance<br className="hidden md:block" /> in weeks, not months
+            <h1 className="text-4xl md:text-5xl font-bold text-zinc-100 leading-tight tracking-tight mb-5" style={{ fontFamily: 'Space Grotesk, sans-serif' }}>
+              CMMC Level 2 compliance in weeks, not months
             </h1>
-            <p className="text-lg md:text-xl text-slate-400 mb-8 max-w-2xl leading-relaxed">
+            <p className="text-lg text-zinc-500 mb-8 max-w-2xl leading-relaxed">
               AI-generated System Security Plans with evidence traceability. The only compliance platform with tamper-evident evidence hashing and sovereign on-premises deployment.
             </p>
             <div className="flex flex-col sm:flex-row gap-3">
-              <Link to="/contact" className="inline-flex items-center justify-center px-6 py-3 bg-blue-600 hover:bg-blue-500 rounded-lg text-sm font-medium transition-colors">
+              <Link to="/contact" className="inline-flex items-center justify-center px-5 py-2.5 bg-blue-500/80 hover:bg-blue-500 rounded-lg text-sm font-medium text-white transition-colors">
                 Request a Demo
               </Link>
-              <Link to="/features" className="inline-flex items-center justify-center px-6 py-3 bg-white/5 hover:bg-white/10 border border-white/10 rounded-lg text-sm font-medium text-slate-300 transition-colors">
+              <Link to="/features" className="inline-flex items-center justify-center px-5 py-2.5 bg-zinc-800 hover:bg-zinc-700 border border-zinc-700 rounded-lg text-sm font-medium text-zinc-300 transition-colors">
                 View Features
               </Link>
             </div>
@@ -62,19 +46,23 @@ export function Home() {
         </div>
       </section>
 
-      {/* Value Props */}
-      <section className="py-20 bg-[#0B1120]">
-        <div className="max-w-6xl mx-auto px-6">
-          <div className="text-center mb-14">
-            <h2 className="text-3xl font-bold text-white mb-3">Built for the Defense Industrial Base</h2>
-            <p className="text-slate-400 max-w-xl mx-auto">Everything small defense contractors need to achieve and maintain CMMC Level 2 certification.</p>
+      {/* Value Props — platform card style */}
+      <section className="py-16 border-t border-zinc-800/50">
+        <div className="max-w-5xl mx-auto px-6">
+          <div className="mb-10">
+            <h2 className="text-2xl font-bold text-zinc-100 mb-2" style={{ fontFamily: 'Space Grotesk, sans-serif' }}>Built for the Defense Industrial Base</h2>
+            <p className="text-sm text-zinc-500">Everything small defense contractors need to achieve and maintain CMMC Level 2 certification.</p>
           </div>
-          <div className="grid md:grid-cols-2 gap-6">
+          <div className="grid md:grid-cols-2 gap-4">
             {valueProps.map((v, i) => (
-              <div key={i} className="p-6 bg-[#1E293B]/50 border border-white/5 rounded-xl hover:border-blue-500/20 transition-colors">
-                <div className="w-10 h-10 rounded-lg bg-blue-500/10 flex items-center justify-center mb-4">{v.icon}</div>
-                <h3 className="text-lg font-semibold text-white mb-2">{v.title}</h3>
-                <p className="text-sm text-slate-400 leading-relaxed">{v.desc}</p>
+              <div key={i} className="bg-zinc-900/50 border border-zinc-800 rounded-xl p-5 hover:border-zinc-700 transition-colors">
+                <div className="w-9 h-9 rounded-lg bg-zinc-800 flex items-center justify-center mb-3">
+                  <svg className="w-4.5 h-4.5 text-zinc-500" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                    <path d={v.icon} />
+                  </svg>
+                </div>
+                <h3 className="text-sm font-medium text-zinc-200 mb-1.5">{v.title}</h3>
+                <p className="text-sm text-zinc-500 leading-relaxed">{v.desc}</p>
               </div>
             ))}
           </div>
@@ -82,19 +70,18 @@ export function Home() {
       </section>
 
       {/* How It Works */}
-      <section className="py-20">
-        <div className="max-w-6xl mx-auto px-6">
-          <div className="text-center mb-14">
-            <h2 className="text-3xl font-bold text-white mb-3">How It Works</h2>
-            <p className="text-slate-400">From initial assessment to C3PAO certification in four steps.</p>
+      <section className="py-16 border-t border-zinc-800/50">
+        <div className="max-w-5xl mx-auto px-6">
+          <div className="mb-10">
+            <h2 className="text-2xl font-bold text-zinc-100 mb-2" style={{ fontFamily: 'Space Grotesk, sans-serif' }}>How It Works</h2>
+            <p className="text-sm text-zinc-500">From initial assessment to C3PAO certification in four steps.</p>
           </div>
-          <div className="grid md:grid-cols-4 gap-6">
+          <div className="grid md:grid-cols-4 gap-4">
             {steps.map((s, i) => (
-              <div key={i} className="relative">
-                <div className="text-5xl font-bold text-white/5 mb-3">{s.num}</div>
-                <h3 className="text-base font-semibold text-white mb-2">{s.title}</h3>
-                <p className="text-sm text-slate-500 leading-relaxed">{s.desc}</p>
-                {i < 3 && <div className="hidden md:block absolute top-8 -right-3 w-6 text-slate-700">&rarr;</div>}
+              <div key={i} className="bg-zinc-900/50 border border-zinc-800 rounded-xl p-5">
+                <div className="text-xs font-medium text-zinc-600 uppercase tracking-wider mb-3">{s.num}</div>
+                <h3 className="text-sm font-medium text-zinc-200 mb-1.5">{s.title}</h3>
+                <p className="text-xs text-zinc-500 leading-relaxed">{s.desc}</p>
               </div>
             ))}
           </div>
@@ -102,23 +89,23 @@ export function Home() {
       </section>
 
       {/* Social Proof */}
-      <section className="py-16 bg-[#0B1120]">
-        <div className="max-w-6xl mx-auto px-6 text-center">
-          <p className="text-sm text-slate-500 uppercase tracking-wider font-medium mb-8">Trusted by defense contractors across the Defense Industrial Base</p>
-          <div className="flex flex-wrap justify-center gap-x-12 gap-y-6 opacity-30">
+      <section className="py-12 border-t border-zinc-800/50">
+        <div className="max-w-5xl mx-auto px-6 text-center">
+          <p className="text-xs text-zinc-600 uppercase tracking-wider mb-6">Trusted by defense contractors across the Defense Industrial Base</p>
+          <div className="flex flex-wrap justify-center gap-x-10 gap-y-4">
             {['APEX DEFENSE', 'SHIELD SYSTEMS', 'VECTOR OPS', 'TRIDENT TECH', 'IRONCLAD SEC'].map(n => (
-              <div key={n} className="text-sm font-semibold text-slate-400 tracking-widest">{n}</div>
+              <div key={n} className="text-xs font-medium text-zinc-700 tracking-widest">{n}</div>
             ))}
           </div>
         </div>
       </section>
 
       {/* Final CTA */}
-      <section className="py-20">
-        <div className="max-w-3xl mx-auto px-6 text-center">
-          <h2 className="text-3xl font-bold text-white mb-4">Ready to simplify CMMC compliance?</h2>
-          <p className="text-slate-400 mb-8">Join defense contractors who are achieving CMMC Level 2 certification with Intranest.</p>
-          <Link to="/contact" className="inline-flex items-center justify-center px-8 py-3.5 bg-blue-600 hover:bg-blue-500 rounded-lg text-sm font-medium transition-colors">
+      <section className="py-16 border-t border-zinc-800/50">
+        <div className="max-w-2xl mx-auto px-6 text-center">
+          <h2 className="text-2xl font-bold text-zinc-100 mb-3" style={{ fontFamily: 'Space Grotesk, sans-serif' }}>Ready to simplify CMMC compliance?</h2>
+          <p className="text-sm text-zinc-500 mb-6">Join defense contractors who are achieving CMMC Level 2 certification with Intranest.</p>
+          <Link to="/contact" className="inline-flex items-center justify-center px-6 py-2.5 bg-blue-500/80 hover:bg-blue-500 rounded-lg text-sm font-medium text-white transition-colors">
             Request a Demo
           </Link>
         </div>
