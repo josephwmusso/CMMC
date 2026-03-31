@@ -23,7 +23,7 @@ from sqlalchemy.orm import Session
 
 from src.db.session import get_db
 from src.api.auth import get_current_user
-from src.utils.service_check import is_qdrant_available
+from src.utils.service_check import is_qdrant_available, is_llm_available
 
 # Lazy imports — SSPGenerator connects to Qdrant on init, which crashes on Render
 # from src.agents.llm_client import get_llm
@@ -159,28 +159,26 @@ class JobStatus(BaseModel):
 @router.post("/generate", response_model=ControlResult)
 def generate_single_control(req: SingleControlRequest, db: Session = Depends(get_db)):
     """Generate SSP narrative for a single NIST 800-171 control."""
-    if not is_qdrant_available():
-        raise HTTPException(503, "SSP generation requires Qdrant vector search, which is not available in this deployment.")
-    from src.agents.llm_client import get_llm
+    if not is_llm_available():
+        raise HTTPException(503, "SSP generation requires an LLM API key, which is not configured.")
     from src.agents.ssp_generator_v2 import SSPGenerator
-    llm = get_llm()
-    generator = SSPGenerator(llm=llm)
     org = req.org_profile.to_dict()
+    generator = SSPGenerator(org_profile=org)
 
-    result = generator.generate_single_control(
-        control_id=req.control_id,
-        org_profile=org,
-        db=db,
-    )
+    result_data = generator.generate_section(req.control_id)
+    parsed = result_data["parsed"]
+
+    # Persist to DB
+    generator.persist_section(parsed)
 
     return ControlResult(
-        control_id=result.control_id,
-        status=result.status,
-        narrative=result.narrative,
-        evidence_artifacts=result.evidence_artifacts,
-        gaps=result.gaps,
-        generation_time_sec=round(result.generation_time_sec, 2),
-        error=result.error,
+        control_id=parsed.get("control_id", req.control_id),
+        status=parsed.get("implementation_status", "Not Assessed"),
+        narrative=parsed.get("narrative", ""),
+        evidence_artifacts=parsed.get("evidence_references", []),
+        gaps=[g.get("description", "") for g in parsed.get("gaps", [])],
+        generation_time_sec=0.0,
+        error=None,
     )
 
 
@@ -195,29 +193,48 @@ def _run_full_ssp(job_id: str, org_profile: dict, control_ids: Optional[list[str
     try:
         _set_job(job_id, status="running")
 
-        from src.agents.llm_client import get_llm
-        from src.agents.ssp_generator_v2 import SSPGenerator
-        llm = get_llm()
-        generator = SSPGenerator(llm=llm)
+        from src.agents.ssp_generator_v2 import SSPGenerator, SSPControlResult
+        from sqlalchemy import text
+        generator = SSPGenerator(org_profile=org_profile)
 
-        def progress_cb(current, total, control_id):
-            _set_job(job_id, controls_done=current, controls_total=total, progress=f"{current}/{total} — {control_id}")
+        # Get all control IDs to generate
+        all_control_ids = control_ids
+        if not all_control_ids:
+            rows = db.execute(text("SELECT id FROM controls ORDER BY id")).fetchall()
+            all_control_ids = [r[0] for r in rows]
 
-        results = generator.generate_full_ssp(
-            org_profile=org_profile,
-            db=db,
-            control_ids=control_ids,
-            progress_callback=progress_cb,
-        )
+        total = len(all_control_ids)
+        _set_job(job_id, controls_total=total)
+
+        results = []
+        for i, cid in enumerate(all_control_ids):
+            try:
+                result_data = generator.generate_section(cid)
+                parsed = result_data["parsed"]
+                generator.persist_section(parsed)
+                results.append(SSPControlResult(
+                    control_id=cid,
+                    status=parsed.get("implementation_status", "Not Assessed"),
+                    narrative=parsed.get("narrative", ""),
+                ))
+            except Exception as e:
+                logger.error(f"Failed to generate {cid}: {e}")
+                results.append(SSPControlResult(control_id=cid, error=str(e)))
+
+            _set_job(job_id, controls_done=i+1, progress=f"{i+1}/{total} — {cid}")
 
         # Export to Word
         docx_path = None
         if export_docx:
-            timestamp = datetime.datetime.now().strftime("%Y%m%d_%H%M%S")
-            filename = f"SSP_{org_profile.get('org_name', 'org').replace(' ', '_')}_{timestamp}.docx"
-            docx_path = os.path.join(EXPORT_DIR, filename)
-            export_ssp_to_docx(results, org_profile, docx_path)
-            _set_job(job_id, docx_path=filename)
+            try:
+                from src.ssp.docx_export import export_ssp_to_docx
+                timestamp = datetime.datetime.now().strftime("%Y%m%d_%H%M%S")
+                filename = f"SSP_{org_profile.get('org_name', 'org').replace(' ', '_')}_{timestamp}.docx"
+                docx_path = os.path.join(EXPORT_DIR, filename)
+                export_ssp_to_docx(results, org_profile, docx_path)
+                _set_job(job_id, docx_path=filename)
+            except Exception as e:
+                logger.error(f"DOCX export failed: {e}")
 
         _set_job(job_id, status="completed", completed_at=datetime.datetime.utcnow().isoformat())
 
@@ -236,8 +253,8 @@ def generate_full_ssp(req: FullSSPRequest, background_tasks: BackgroundTasks):
 
     Returns a job_id — poll GET /api/ssp/status?job_id=... for progress.
     """
-    if not is_qdrant_available():
-        raise HTTPException(503, "SSP generation requires Qdrant vector search, which is not available in this deployment.")
+    if not is_llm_available():
+        raise HTTPException(503, "SSP generation requires an LLM API key, which is not configured.")
     job_id = str(uuid.uuid4())[:8]
     org = req.org_profile.to_dict()
 

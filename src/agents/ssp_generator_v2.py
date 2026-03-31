@@ -8,8 +8,6 @@ import re
 import hashlib
 from datetime import datetime, timezone
 
-from qdrant_client import QdrantClient
-from qdrant_client.models import Filter, FieldCondition, MatchValue
 from sqlalchemy import text
 
 from src.agents.llm_client import get_llm
@@ -21,6 +19,7 @@ from src.agents.ssp_prompts_v2 import (
 from src.agents.ssp_schemas import SSPSectionOutput, ImplementationStatus
 from src.agents.hallucination_detector import run_verification
 from src.db.session import get_session
+from src.utils.service_check import is_qdrant_available
 import configs.settings as settings
 
 
@@ -50,47 +49,55 @@ class SSPGeneratorV2:
         self.org_profile = org_profile or DEMO_ORG_PROFILE
         self.org_id = self.org_profile["org_id"]
         self.llm = get_llm()
-        self.qdrant = QdrantClient(
-            host=settings.QDRANT_HOST,
-            port=settings.QDRANT_PORT,
-        )
+        self._qdrant = None
         self.collection = settings.QDRANT_COLLECTION
+
+    @property
+    def qdrant(self):
+        """Lazy Qdrant client — only connects when actually used."""
+        if self._qdrant is None:
+            from qdrant_client import QdrantClient
+            self._qdrant = QdrantClient(host=settings.QDRANT_HOST, port=settings.QDRANT_PORT)
+        return self._qdrant
 
     def get_control_context(self, control_id: str) -> tuple[str, str, str, int, bool]:
         """
-        Retrieve control description and objectives from Qdrant.
+        Retrieve control description and objectives.
+        Uses Qdrant when available, falls back to Postgres.
         Returns (control_title, control_description, objectives_text, sprs_points, poam_eligible).
         """
-        # Get control chunk
+        if is_qdrant_available():
+            return self._get_context_from_qdrant(control_id)
+        return self._get_context_from_postgres(control_id)
+
+    def _get_context_from_qdrant(self, control_id: str) -> tuple[str, str, str, int, bool]:
+        """Qdrant path — original implementation."""
+        from qdrant_client.models import Filter, FieldCondition, MatchValue
+
         control_results = self.qdrant.scroll(
             collection_name=self.collection,
-            scroll_filter=Filter(
-                must=[
-                    FieldCondition(key="control_id", match=MatchValue(value=control_id)),
-                    FieldCondition(key="type", match=MatchValue(value="control")),
-                ]
-            ),
+            scroll_filter=Filter(must=[
+                FieldCondition(key="control_id", match=MatchValue(value=control_id)),
+                FieldCondition(key="type", match=MatchValue(value="control")),
+            ]),
             limit=1,
         )[0]
 
         if not control_results:
             raise ValueError(f"Control {control_id} not found in Qdrant")
 
-        control_payload = control_results[0].payload
-        control_title = control_payload.get("title", control_id)
-        control_description = control_payload.get("text", "")
-        sprs_points = control_payload.get("points", 1)
-        poam_eligible = control_payload.get("poam_eligible", True)
+        payload = control_results[0].payload
+        control_title = payload.get("title", control_id)
+        control_description = payload.get("text", "")
+        sprs_points = payload.get("points", 1)
+        poam_eligible = payload.get("poam_eligible", True)
 
-        # Get objective chunks
         objective_results = self.qdrant.scroll(
             collection_name=self.collection,
-            scroll_filter=Filter(
-                must=[
-                    FieldCondition(key="control_id", match=MatchValue(value=control_id)),
-                    FieldCondition(key="type", match=MatchValue(value="objective")),
-                ]
-            ),
+            scroll_filter=Filter(must=[
+                FieldCondition(key="control_id", match=MatchValue(value=control_id)),
+                FieldCondition(key="type", match=MatchValue(value="objective")),
+            ]),
             limit=20,
         )[0]
 
@@ -101,8 +108,46 @@ class SSPGeneratorV2:
             objectives_lines.append(f"[{obj_id}] {obj_text}")
 
         objectives_text = "\n\n".join(objectives_lines) if objectives_lines else "No objectives found."
-
         return control_title, control_description, objectives_text, sprs_points, poam_eligible
+
+    def _get_context_from_postgres(self, control_id: str) -> tuple[str, str, str, int, bool]:
+        """Postgres fallback — same data, SQL instead of vector scroll."""
+        with get_session() as session:
+            row = session.execute(text(
+                "SELECT title, description, discussion, points, poam_eligible "
+                "FROM controls WHERE id = :cid"
+            ), {"cid": control_id}).fetchone()
+
+            if not row:
+                raise ValueError(f"Control {control_id} not found in database")
+
+            control_title = row[0]
+            # Combine description + discussion for full context (matches what Qdrant stores as "text")
+            control_description = row[1] or ""
+            if row[2]:
+                control_description += f"\n\nDiscussion: {row[2]}"
+            sprs_points = row[3] or 1
+            poam_eligible = row[4] if row[4] is not None else True
+
+            # Get assessment objectives
+            obj_rows = session.execute(text(
+                "SELECT id, description, examine, interview, test "
+                "FROM assessment_objectives WHERE control_id = :cid ORDER BY id"
+            ), {"cid": control_id}).fetchall()
+
+            objectives_lines = []
+            for obj in obj_rows:
+                obj_text = obj[1] or ""
+                if obj[2]:
+                    obj_text += f" Examine: {obj[2]}"
+                if obj[3]:
+                    obj_text += f" Interview: {obj[3]}"
+                if obj[4]:
+                    obj_text += f" Test: {obj[4]}"
+                objectives_lines.append(f"[{obj[0]}] {obj_text}")
+
+            objectives_text = "\n\n".join(objectives_lines) if objectives_lines else "No objectives found."
+            return control_title, control_description, objectives_text, sprs_points, poam_eligible
 
     def get_linked_evidence(self, control_id: str) -> list[dict]:
         """

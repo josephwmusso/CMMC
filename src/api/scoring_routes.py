@@ -289,6 +289,9 @@ def get_compliance_overview(current_user: dict = Depends(get_current_user), db: 
     poam = _safe_poam(org_id)
 
     if sprs is not None and gaps is not None and poam is not None:
+        # Frontend computes totalControls = met + partial + not_met
+        # SPRS calculator reports not_assessed separately — merge into not_met for frontend
+        sprs["not_met"] = sprs.get("not_met", 0) + sprs.get("not_assessed", 0)
         return {"sprs": sprs, "gaps": gaps, "poam": poam}
 
     # Fallback to raw SQL
