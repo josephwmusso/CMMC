@@ -320,8 +320,21 @@ def create_all_tables():
         except Exception:
             pass  # indexes are non-critical
 
+    # VERIFY tables actually exist
+    cur.execute("SELECT tablename FROM pg_tables WHERE schemaname = 'public' ORDER BY tablename")
+    existing = [row[0] for row in cur.fetchall()]
+    print(f"\n  Tables in database after creation: {existing}")
+
+    required = ["organizations", "controls", "users", "ssp_sections", "evidence_artifacts",
+                 "poam_items", "audit_log", "frameworks", "ssp_jobs"]
+    missing = [t for t in required if t not in existing]
+    if missing:
+        print(f"FATAL: Required tables MISSING after creation: {missing}")
+        conn.close()
+        sys.exit(1)
+
     conn.close()
-    print(f"  All {len(tables)} tables created successfully\n")
+    print(f"  All {len(tables)} tables verified successfully\n")
 
 
 def seed_framework():
@@ -460,7 +473,12 @@ def start_server():
 
 if __name__ == "__main__":
     print("=" * 60)
-    print("INTRANEST Platform Startup")
+    print("INTRANEST RENDER STARTUP SCRIPT RUNNING")
+    print(f"Python: {sys.executable}")
+    print(f"CWD: {os.getcwd()}")
+    print(f"DATABASE_URL present: {bool(os.environ.get('DATABASE_URL'))}")
+    db_url_raw = os.environ.get('DATABASE_URL', '')
+    print(f"DATABASE_URL starts with: {db_url_raw[:40]}...")
     print("=" * 60)
 
     # 1. Wait for database

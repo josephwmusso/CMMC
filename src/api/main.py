@@ -56,6 +56,23 @@ def health():
     return {"status": "ok", "version": "0.9.0"}
 
 
+@app.get("/debug/tables")
+def debug_tables():
+    """Temporary: list all tables in the database."""
+    from sqlalchemy import text
+    from src.db.session import engine
+    with engine.connect() as conn:
+        rows = conn.execute(text("SELECT tablename FROM pg_tables WHERE schemaname = 'public' ORDER BY tablename")).fetchall()
+        tables = [r[0] for r in rows]
+        # Also check if users table has any rows
+        user_count = None
+        try:
+            user_count = conn.execute(text("SELECT COUNT(*) FROM users")).scalar()
+        except Exception as e:
+            user_count = f"ERROR: {e}"
+        return {"tables": tables, "table_count": len(tables), "user_count": user_count}
+
+
 # ── Serve React frontend in production ────────────────────────────────────────
 # This must be AFTER all API routes so /api/* takes priority.
 from fastapi.staticfiles import StaticFiles
