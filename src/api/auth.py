@@ -33,7 +33,11 @@ JWT_EXPIRE_MINUTES = int(os.getenv("JWT_EXPIRE_MINUTES", "480"))
 # Direct bcrypt usage (passlib incompatible with bcrypt>=4.1)
 oauth2_scheme = OAuth2PasswordBearer(tokenUrl="/api/auth/login", auto_error=False)
 
-DEV_MODE = JWT_SECRET_KEY == "dev-secret-change-in-production"
+# DEV_MODE: dev secret OR explicit ALLOW_ANONYMOUS=true (for demos)
+DEV_MODE = (
+    JWT_SECRET_KEY == "dev-secret-change-in-production"
+    or os.getenv("ALLOW_ANONYMOUS", "").lower() == "true"
+)
 DEV_USER = {
     "id": "dev-user",
     "email": "david.kim@apex-defense.us",
