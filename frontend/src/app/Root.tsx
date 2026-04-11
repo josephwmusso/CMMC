@@ -1,7 +1,7 @@
 import { Outlet, Link, useLocation, useNavigate, Navigate } from 'react-router';
 import { Home, FileText, Shield, AlertTriangle, FileCheck, Settings, ChevronRight, LogOut, Loader2 } from 'lucide-react';
 import { useState, useEffect } from 'react';
-import { getComplianceOverview } from './api/client';
+import { getComplianceOverview, listArtifacts, getPoamSummary } from './api/client';
 import { useAuth } from './context/AuthContext';
 
 export function Root() {
@@ -12,24 +12,79 @@ export function Root() {
   const [sprsTotal, setSprsTotal] = useState(110);
   const [orgName, setOrgName] = useState('');
 
+  // Workflow status — drives the sidebar status dots
+  const [hasSsp, setHasSsp] = useState(false);
+  const [hasEvidence, setHasEvidence] = useState(false);
+  const [hasPoam, setHasPoam] = useState(false);
+  const [evidenceCount, setEvidenceCount] = useState(0);
+  const [sspMet, setSspMet] = useState(0);
+  const [poamCount, setPoamCount] = useState(0);
+  const [statusLoaded, setStatusLoaded] = useState(false);
+
   useEffect(() => {
     if (!user) return;
-    getComplianceOverview()
-      .then(d => {
-        setSprsScore(d.sprs?.score ?? null);
-        setSprsTotal(d.sprs?.total ?? 110);
-        setOrgName(d.sprs?.org_name || 'Apex Defense Solutions');
-      })
-      .catch(() => {});
+    let cancelled = false;
+    Promise.all([
+      getComplianceOverview().catch(() => null),
+      listArtifacts(null, 1).catch(() => null),
+      getPoamSummary().catch(() => null),
+    ]).then(([overview, artifacts, poam]) => {
+      if (cancelled) return;
+      // Overview / SPRS
+      if (overview) {
+        setSprsScore(overview.sprs?.score ?? null);
+        setSprsTotal(overview.sprs?.total ?? 110);
+        setOrgName(overview.sprs?.org_name || 'Apex Defense Solutions');
+        const met = overview.sprs?.met ?? 0;
+        const partial = overview.sprs?.partial ?? 0;
+        setHasSsp((met + partial) > 0);
+        setSspMet(met + partial);
+      }
+      // Evidence
+      if (artifacts) {
+        const count = (artifacts.artifacts?.length ?? artifacts.count ?? 0);
+        setHasEvidence(count > 0);
+        setEvidenceCount(count);
+      }
+      // POA&M
+      if (poam) {
+        const items = poam.items || [];
+        setHasPoam(items.length > 0);
+        setPoamCount(items.length);
+      }
+      setStatusLoaded(true);
+    });
+    return () => { cancelled = true; };
   }, [user, location.pathname]);
 
-  const menuItems = [
-    { icon: Home, label: 'Overview', path: '/app' },
-    { icon: FileText, label: 'SSP', path: '/app/ssp' },
-    { icon: Shield, label: 'Evidence', path: '/app/evidence' },
-    { icon: AlertTriangle, label: 'POA&M', path: '/app/poam' },
-    { icon: FileCheck, label: 'Setup Wizard', path: '/app/intake' },
-    { icon: Settings, label: 'Settings', path: '/app/settings' },
+  // Intake is "done" if evidence has been generated/uploaded OR SSP sections exist
+  // (both are downstream effects of completing intake)
+  const hasIntake = hasEvidence || hasSsp;
+
+  // Workflow next-step: which page should the user visit next?
+  const nextStep: string = !hasIntake ? 'intake'
+    : !hasEvidence ? 'evidence'
+    : !hasSsp ? 'ssp'
+    : !hasPoam ? 'poam'
+    : 'overview';
+
+  type MenuItem = {
+    icon: typeof Home;
+    label: string;
+    path: string;
+    key: string;
+    hasData: boolean;
+    count: number;
+    skipDot?: boolean;
+  };
+
+  const menuItems: MenuItem[] = [
+    { icon: Home, label: 'Overview', path: '/app', key: 'overview', hasData: hasSsp, count: sspMet },
+    { icon: FileText, label: 'SSP', path: '/app/ssp', key: 'ssp', hasData: hasSsp, count: sspMet },
+    { icon: Shield, label: 'Evidence', path: '/app/evidence', key: 'evidence', hasData: hasEvidence, count: evidenceCount },
+    { icon: AlertTriangle, label: 'POA&M', path: '/app/poam', key: 'poam', hasData: hasPoam, count: poamCount },
+    { icon: FileCheck, label: 'Setup Wizard', path: '/app/intake', key: 'intake', hasData: hasIntake, count: 0 },
+    { icon: Settings, label: 'Settings', path: '/app/settings', key: 'settings', hasData: false, count: 0, skipDot: true },
   ];
 
   // Protect /app/* routes — after all hooks
@@ -85,10 +140,24 @@ export function Root() {
             <nav className="space-y-1">
               {menuItems.map((item) => {
                 const isActive = location.pathname === item.path;
+                // Status dot logic:
+                //   - skipDot: never show (Settings)
+                //   - !statusLoaded: hide until data arrives (no flash of wrong state)
+                //   - nextStep match: pulsing teal "go here next" indicator
+                //   - hasData: solid emerald "complete/has data" dot
+                //   - else: no dot
+                const isNext = statusLoaded && !item.skipDot && item.key === nextStep && !item.hasData;
+                const showGreen = statusLoaded && !item.skipDot && item.hasData;
+                const tooltip = isNext
+                  ? 'Recommended next step'
+                  : showGreen && item.count > 0
+                    ? `${item.count} ${item.key === 'evidence' ? 'artifacts' : item.key === 'poam' ? 'items' : item.key === 'ssp' || item.key === 'overview' ? 'sections generated' : 'complete'}`
+                    : showGreen ? 'Complete' : undefined;
                 return (
                   <Link
                     key={item.path}
                     to={item.path}
+                    title={tooltip}
                     className={`w-full flex items-center gap-3 px-3 py-2.5 rounded-lg transition-colors text-sm ${
                       isActive
                         ? 'bg-zinc-800 text-zinc-200'
@@ -96,7 +165,16 @@ export function Root() {
                     }`}
                   >
                     <item.icon className="w-4 h-4" />
-                    <span>{item.label}</span>
+                    <span className="flex-1">{item.label}</span>
+                    {isNext && (
+                      <span className="relative flex w-2 h-2" aria-label="Recommended next step">
+                        <span className="absolute inline-flex h-full w-full rounded-full bg-blue-400 opacity-60 animate-ping" />
+                        <span className="relative inline-flex w-2 h-2 rounded-full bg-blue-400" />
+                      </span>
+                    )}
+                    {showGreen && (
+                      <span className="w-1.5 h-1.5 rounded-full bg-emerald-400/80" aria-label="Has data" />
+                    )}
                   </Link>
                 );
               })}
