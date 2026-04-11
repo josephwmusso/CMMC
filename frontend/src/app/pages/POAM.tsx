@@ -114,6 +114,10 @@ export function POAM() {
 
   if (loading) return <div className="flex items-center justify-center h-[60vh]"><Loader2 className="w-6 h-6 text-zinc-500 animate-spin" /></div>;
 
+  // Empty state when no POA&M items have been generated yet.
+  // Header (Generate POA&M button) and overdue alert banner stay visible.
+  const hasItems = items && items.length > 0;
+
   return (
     <div className="p-6 w-full">
 
@@ -156,6 +160,7 @@ export function POAM() {
       </div>
 
       {/* KPI Strip */}
+      {hasItems && (
       <div className="mb-6 grid grid-cols-5 gap-4">
         <div className="bg-zinc-900/50 border border-zinc-800 rounded-xl p-4">
           <div className="flex items-center gap-2 mb-2">
@@ -198,8 +203,10 @@ export function POAM() {
           <div className="text-xs text-zinc-600 mt-1">remediated</div>
         </div>
       </div>
+      )}
 
       {/* Filters + Sort */}
+      {hasItems && (
       <div className="mb-5 flex items-center justify-between">
         <div className="flex items-center gap-2">
           <span className="text-xs text-zinc-600 mr-1">Risk:</span>
@@ -224,19 +231,11 @@ export function POAM() {
           ))}
         </div>
       </div>
+      )}
 
       {/* Card List */}
-      {items.length === 0 ? (
-        <div className="text-center py-16">
-          <Shield className="w-12 h-12 text-zinc-700 mx-auto mb-4" />
-          <div className="text-zinc-400 mb-2">No POA&M items yet</div>
-          <div className="text-sm text-zinc-600 mb-6">Generate POA&M items from your SSP gap assessment data</div>
-          <button onClick={handleGeneratePoam} disabled={generatingPoam}
-            className="px-5 py-2.5 bg-blue-500/80 hover:bg-blue-500 disabled:opacity-50 rounded-lg text-sm font-medium text-white transition-colors inline-flex items-center gap-2">
-            {generatingPoam ? <Loader2 className="w-4 h-4 animate-spin" /> : <Shield className="w-4 h-4" />}
-            {generatingPoam ? 'Generating...' : 'Generate POA&M Items'}
-          </button>
-        </div>
+      {!hasItems ? (
+        <POAMEmptyState generating={generatingPoam} navigate={navigate} />
       ) : sorted.length === 0 ? (
         <div className="text-center py-16">
           <CheckCircle2 className="w-12 h-12 text-emerald-400/30 mx-auto mb-4" />
@@ -351,7 +350,114 @@ export function POAM() {
         </div>
       )}
 
-      <div className="mt-4 text-xs text-zinc-600">Showing {sorted.length} of {items.length} items</div>
+      {hasItems && (
+        <div className="mt-4 text-xs text-zinc-600">Showing {sorted.length} of {items.length} items</div>
+      )}
+    </div>
+  );
+}
+
+// ── Empty state ────────────────────────────────────────────────────────────
+// Replaces the table area when no POA&M items exist. Header (Generate POA&M
+// button) and overdue alert banner stay visible above this component.
+
+const POAM_LIFECYCLE = [
+  {
+    label: 'Intake & SSP',
+    desc: 'Complete the intake questionnaire and generate your System Security Plan',
+  },
+  {
+    label: 'Gap Assessment',
+    desc: 'The platform identifies controls that are NOT MET or PARTIALLY IMPLEMENTED based on evidence',
+  },
+  {
+    label: 'POA&M Generation',
+    desc: 'Each gap becomes a tracked remediation item with owner, milestones, and a 180-day deadline',
+  },
+];
+
+function POAMEmptyState({
+  generating,
+  navigate,
+}: {
+  generating: boolean;
+  navigate: (path: string) => void;
+}) {
+  return (
+    <div className="bg-zinc-900/50 border border-zinc-800 rounded-xl p-8 md:p-10">
+      {/* What POA&M is */}
+      <div className="max-w-3xl mb-10">
+        <h2 className="text-xl font-medium text-zinc-100 mb-3">No Plans of Action & Milestones</h2>
+        <p className="text-sm text-zinc-400 leading-relaxed mb-2">
+          A POA&M tracks security controls that aren't fully implemented yet. Each item identifies
+          the weakness, assigns an owner, sets a remediation plan with milestones, and enforces a
+          180-day deadline for resolution.
+        </p>
+        <p className="text-sm text-zinc-500 leading-relaxed">
+          Having zero POA&M items means either your assessment hasn't run yet, or all controls are
+          fully implemented.
+        </p>
+      </div>
+
+      {/* How items get created */}
+      <div className="mb-10">
+        <div className="text-xs text-zinc-500 uppercase tracking-wider mb-4">How POA&amp;M Items Are Created</div>
+        <div className="grid grid-cols-1 md:grid-cols-3 gap-3 md:gap-2 items-stretch">
+          {POAM_LIFECYCLE.map((stage, i) => (
+            <div key={stage.label} className="relative flex">
+              <div className="flex-1 bg-zinc-900/60 border border-zinc-800 rounded-lg p-4">
+                <div className="flex items-center gap-2 mb-2">
+                  <div className="w-6 h-6 rounded-full bg-zinc-800 border border-zinc-700 flex items-center justify-center text-xs text-zinc-400 font-medium flex-shrink-0">
+                    {i + 1}
+                  </div>
+                  <div className="text-sm font-medium text-zinc-200">{stage.label}</div>
+                </div>
+                <div className="text-xs text-zinc-500 leading-relaxed pl-8">{stage.desc}</div>
+              </div>
+              {i < POAM_LIFECYCLE.length - 1 && (
+                <div className="hidden md:flex items-center justify-center w-2 flex-shrink-0">
+                  <div className="text-zinc-700 text-xs">→</div>
+                </div>
+              )}
+            </div>
+          ))}
+        </div>
+      </div>
+
+      {/* CMMC rules callout */}
+      <div className="mb-8 bg-zinc-900/40 border border-zinc-800 rounded-lg p-5">
+        <div className="text-xs text-zinc-500 uppercase tracking-wider mb-3">Key CMMC Rules</div>
+        <ul className="space-y-2">
+          <li className="text-sm text-zinc-400 flex items-start gap-3">
+            <span className="text-zinc-600 mt-0.5">·</span>
+            <span>POA&amp;M items carry 180-day remediation deadlines</span>
+          </li>
+          <li className="text-sm text-zinc-400 flex items-start gap-3">
+            <span className="text-zinc-600 mt-0.5">·</span>
+            <span>Conditional CMMC Level 2 requires a minimum SPRS score of 80% (88/110)</span>
+          </li>
+          <li className="text-sm text-zinc-400 flex items-start gap-3">
+            <span className="text-zinc-600 mt-0.5">·</span>
+            <span>CA.L2-3.12.4 (System Security Plan) cannot be placed on a POA&amp;M</span>
+          </li>
+          <li className="text-sm text-zinc-400 flex items-start gap-3">
+            <span className="text-zinc-600 mt-0.5">·</span>
+            <span>Only 1-point controls are eligible for POA&amp;M conditional status</span>
+          </li>
+        </ul>
+      </div>
+
+      {/* Navigation hint */}
+      <div className="text-sm text-zinc-500">
+        Start by completing your{' '}
+        <button
+          onClick={() => navigate('/app/intake')}
+          className="text-blue-400 hover:text-blue-300 underline underline-offset-2 transition-colors"
+        >
+          intake questionnaire
+        </button>
+        {generating && <span className="ml-2 inline-flex items-center gap-1 text-zinc-600"><Loader2 className="w-3 h-3 animate-spin" /> Generating items...</span>}
+      </div>
     </div>
   );
 }
