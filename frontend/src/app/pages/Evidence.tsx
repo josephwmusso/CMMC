@@ -95,6 +95,10 @@ export function Evidence() {
 
   if (loading) return <div className="flex items-center justify-center h-[60vh]"><Loader2 className="w-6 h-6 text-zinc-500 animate-spin" /></div>;
 
+  // Empty state when no evidence has been collected yet.
+  // Upload zone and toolbar stay visible — only the table area changes.
+  const hasEvidence = artifacts && artifacts.length > 0;
+
   return (
     <div className="p-6">
       <div className="mb-6 flex items-center justify-between">
@@ -137,21 +141,23 @@ export function Evidence() {
         </div>
       )}
 
-      <div className="mb-6 flex items-center justify-between">
-        <div className="flex items-center gap-6">
-          <div className="text-sm text-zinc-500"><span className="text-zinc-300 font-medium">{artifacts.length}</span> total artifacts</div>
-          <div className="flex items-center gap-2">
-            {stateCounts.map(item => (
-              <button key={item.state} onClick={() => setStateFilter(item.state)}
-                className={`px-3 py-1.5 rounded-lg text-xs font-medium transition-colors ${stateFilter === item.state ? 'bg-zinc-800 text-zinc-300' : 'bg-zinc-900 text-zinc-500 hover:text-zinc-400'}`}>
-                {item.state} <span className="ml-1.5 opacity-70">{item.count}</span>
-              </button>
-            ))}
+      {hasEvidence && (
+        <div className="mb-6 flex items-center justify-between">
+          <div className="flex items-center gap-6">
+            <div className="text-sm text-zinc-500"><span className="text-zinc-300 font-medium">{artifacts.length}</span> total artifacts</div>
+            <div className="flex items-center gap-2">
+              {stateCounts.map(item => (
+                <button key={item.state} onClick={() => setStateFilter(item.state)}
+                  className={`px-3 py-1.5 rounded-lg text-xs font-medium transition-colors ${stateFilter === item.state ? 'bg-zinc-800 text-zinc-300' : 'bg-zinc-900 text-zinc-500 hover:text-zinc-400'}`}>
+                  {item.state} <span className="ml-1.5 opacity-70">{item.count}</span>
+                </button>
+              ))}
+            </div>
           </div>
+          <input type="text" placeholder="Search artifacts..." value={search} onChange={e => setSearch(e.target.value)}
+            className="px-4 py-2 bg-zinc-900 border border-zinc-800 rounded-lg text-sm text-zinc-300 placeholder:text-zinc-600 focus:outline-none focus:border-zinc-700 w-64" />
         </div>
-        <input type="text" placeholder="Search artifacts..." value={search} onChange={e => setSearch(e.target.value)}
-          className="px-4 py-2 bg-zinc-900 border border-zinc-800 rounded-lg text-sm text-zinc-300 placeholder:text-zinc-600 focus:outline-none focus:border-zinc-700 w-64" />
-      </div>
+      )}
 
       <div onDragOver={e => { e.preventDefault(); setDragActive(true); }} onDragLeave={() => setDragActive(false)}
         onDrop={e => { e.preventDefault(); setDragActive(false); if (e.dataTransfer.files?.length) handleUpload(e.dataTransfer.files); }}
@@ -163,6 +169,10 @@ export function Evidence() {
         <div className="text-xs text-zinc-700 mt-2">PDF, DOCX, CSV, PNG, JPG, TXT, MD, JSON</div>
       </div>
 
+      {!hasEvidence ? (
+        <EvidenceEmptyState />
+      ) : (
+      <>
       <div className="bg-zinc-900/50 border border-zinc-800 rounded-xl overflow-hidden">
         <table className="w-full">
           <thead className="bg-black border-b border-zinc-800">
@@ -222,6 +232,8 @@ export function Evidence() {
         </table>
       </div>
       <div className="mt-4 text-xs text-zinc-600">Showing {filtered.length} of {artifacts.length} artifacts</div>
+      </>
+      )}
 
       {/* Preview Modal */}
       {(previewData || previewLoading) && (
@@ -248,6 +260,118 @@ export function Evidence() {
           </div>
         </div>
       )}
+    </div>
+  );
+}
+
+// ── Empty state ────────────────────────────────────────────────────────────
+// Lifecycle stages match STATE_COLORS used in the populated table:
+// DRAFT (zinc) → REVIEWED (amber) → APPROVED (blue) → PUBLISHED (emerald)
+
+const LIFECYCLE_STAGES = [
+  {
+    state: 'DRAFT',
+    label: 'Draft',
+    color: 'text-zinc-400',
+    border: 'border-zinc-700',
+    bg: 'bg-zinc-800/40',
+    desc: 'New artifacts enter as drafts. Uploaded files and AI-generated documents start here.',
+  },
+  {
+    state: 'REVIEWED',
+    label: 'Reviewed',
+    color: 'text-amber-400/90',
+    border: 'border-amber-500/30',
+    bg: 'bg-amber-500/5',
+    desc: 'A reviewer confirms the artifact is relevant and accurate.',
+  },
+  {
+    state: 'APPROVED',
+    label: 'Approved',
+    color: 'text-blue-400/90',
+    border: 'border-blue-500/30',
+    bg: 'bg-blue-500/5',
+    desc: 'An approver signs off. The artifact is ready for publication.',
+  },
+  {
+    state: 'PUBLISHED',
+    label: 'Published',
+    color: 'text-emerald-400/90',
+    border: 'border-emerald-500/30',
+    bg: 'bg-emerald-500/5',
+    desc: 'Immutable. SHA-256 hashed. Final-form evidence for your assessment.',
+  },
+];
+
+function EvidenceEmptyState() {
+  return (
+    <div className="bg-zinc-900/50 border border-zinc-800 rounded-xl p-8 md:p-10">
+      {/* Welcome explanation */}
+      <div className="max-w-3xl mb-10">
+        <h2 className="text-xl font-medium text-zinc-100 mb-3">No Evidence Collected Yet</h2>
+        <p className="text-sm text-zinc-400 leading-relaxed mb-2">
+          Evidence artifacts are the foundation of your CMMC assessment. Each artifact proves
+          that a security control is implemented — policies, configuration exports, scan
+          reports, training records, and more.
+        </p>
+        <p className="text-sm text-zinc-500 leading-relaxed">
+          Artifacts are created automatically when you complete the intake questionnaire and
+          generate compliance documents. You can also upload evidence directly using the area
+          above.
+        </p>
+      </div>
+
+      {/* Lifecycle visual */}
+      <div className="mb-10">
+        <div className="text-xs text-zinc-500 uppercase tracking-wider mb-4">Evidence Lifecycle</div>
+        <div className="grid grid-cols-1 md:grid-cols-4 gap-3 md:gap-2 items-stretch">
+          {LIFECYCLE_STAGES.map((stage, i) => (
+            <div key={stage.state} className="relative flex">
+              <div className={`flex-1 ${stage.bg} border ${stage.border} rounded-lg p-4`}>
+                <div className={`text-xs font-mono font-medium ${stage.color} uppercase tracking-wider mb-2`}>
+                  {stage.state}
+                </div>
+                <div className="text-xs text-zinc-500 leading-relaxed">{stage.desc}</div>
+              </div>
+              {i < LIFECYCLE_STAGES.length - 1 && (
+                <div className="hidden md:flex items-center justify-center w-2 flex-shrink-0">
+                  <div className="text-zinc-700 text-xs">→</div>
+                </div>
+              )}
+            </div>
+          ))}
+        </div>
+      </div>
+
+      {/* How evidence gets created */}
+      <div>
+        <div className="text-xs text-zinc-500 uppercase tracking-wider mb-4">How Evidence Gets Created</div>
+        <div className="grid grid-cols-1 md:grid-cols-3 gap-3">
+          <div className="bg-zinc-900/50 border border-zinc-800 rounded-lg p-4">
+            <h4 className="text-sm font-medium text-zinc-200 mb-1.5">From Intake</h4>
+            <p className="text-xs text-zinc-500 leading-relaxed">
+              Completing the questionnaire and generating documents automatically creates draft
+              artifacts linked to relevant controls.
+            </p>
+          </div>
+          <div className="bg-zinc-900/50 border border-zinc-800 rounded-lg p-4">
+            <h4 className="text-sm font-medium text-zinc-200 mb-1.5">Upload Directly</h4>
+            <p className="text-xs text-zinc-500 leading-relaxed">
+              Upload policy documents, configuration exports, scan reports, training records,
+              or any supporting artifact.
+            </p>
+          </div>
+          <div className="bg-zinc-900/30 border border-zinc-800/60 rounded-lg p-4 opacity-60">
+            <div className="flex items-center gap-2 mb-1.5">
+              <h4 className="text-sm font-medium text-zinc-300">From Connectors</h4>
+              <span className="text-[10px] font-medium text-zinc-500 uppercase tracking-wider px-1.5 py-0.5 bg-zinc-800 border border-zinc-700 rounded">Soon</span>
+            </div>
+            <p className="text-xs text-zinc-500 leading-relaxed">
+              Automated evidence collection from Entra ID, M365, CrowdStrike, and more.
+            </p>
+          </div>
+        </div>
+      </div>
     </div>
   );
 }
