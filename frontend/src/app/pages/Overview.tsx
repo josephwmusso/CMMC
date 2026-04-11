@@ -217,8 +217,17 @@ export function Overview() {
               <AlertCircle className="w-3.5 h-3.5 text-zinc-600" />
               <div className="text-xs text-zinc-600">POA&M</div>
             </div>
-            <div className="text-2xl font-medium text-zinc-100">{poamTotal}</div>
-            <div className="text-xs text-zinc-600 mt-0.5">{overduePoam > 0 ? <span className="text-red-400/90">{overduePoam} overdue</span> : 'items'}</div>
+            {poamTotal === 0 ? (
+              <>
+                <div className="text-sm font-medium text-zinc-300">No items yet</div>
+                <div className="text-xs text-zinc-600 mt-0.5">Will auto-generate from gaps</div>
+              </>
+            ) : (
+              <>
+                <div className="text-2xl font-medium text-zinc-100">{poamTotal}</div>
+                <div className="text-xs text-zinc-600 mt-0.5">{overduePoam > 0 ? <span className="text-red-400/90">{overduePoam} overdue</span> : 'items'}</div>
+              </>
+            )}
           </div>
 
           <div className="bg-zinc-900/50 border border-zinc-800 rounded-xl p-4">
@@ -310,7 +319,7 @@ export function Overview() {
               </div>
             </button>
 
-            {poamTotal > 0 && (
+            {poamTotal > 0 ? (
               <button onClick={() => navigate('/app/poam')} className="w-full bg-zinc-900/50 border border-zinc-800 hover:border-zinc-700/50 rounded-lg p-4 text-left transition-all group">
                 <div className="flex items-center gap-3">
                   <div className="w-8 h-8 rounded-lg bg-violet-500/10 border border-violet-500/20 flex items-center justify-center flex-shrink-0">
@@ -323,6 +332,23 @@ export function Overview() {
                   <ArrowRight className="w-4 h-4 text-zinc-600 group-hover:text-zinc-400 transition-colors" />
                 </div>
               </button>
+            ) : (
+              <div className="w-full bg-zinc-900/30 border border-zinc-800/60 rounded-lg p-4">
+                <div className="flex items-start gap-3">
+                  <div className="w-8 h-8 rounded-lg bg-zinc-800/60 border border-zinc-800 flex items-center justify-center flex-shrink-0">
+                    <FileCheck className="w-4 h-4 text-zinc-600" />
+                  </div>
+                  <div className="flex-1 min-w-0">
+                    <h3 className="text-sm font-medium text-zinc-300">No Plans of Action & Milestones yet</h3>
+                    <div className="text-xs text-zinc-600 mt-1 leading-relaxed">
+                      POA&M items auto-generate when gap assessment identifies controls that are partially implemented or not met. Complete your intake and generate your SSP to identify gaps.
+                    </div>
+                    <div className="text-xs text-zinc-600 mt-2 leading-relaxed">
+                      Controls scored as NOT MET or PARTIALLY IMPLEMENTED will appear here with 180-day remediation deadlines.
+                    </div>
+                  </div>
+                </div>
+              </div>
             )}
           </div>
         </div>
