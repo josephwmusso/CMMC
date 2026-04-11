@@ -191,14 +191,26 @@ export function Overview() {
             <div className="text-xs text-zinc-600 mt-0.5">of {totalControls} ({partial} partial)</div>
           </div>
 
-          <div className="bg-zinc-900/50 border border-zinc-800 rounded-xl p-4">
+          <button
+            onClick={() => navigate('/app/evidence')}
+            className="bg-zinc-900/50 border border-zinc-800 hover:border-zinc-700 rounded-xl p-4 text-left transition-colors group"
+          >
             <div className="flex items-center gap-2 mb-2">
               <FileText className="w-3.5 h-3.5 text-zinc-600" />
               <div className="text-xs text-zinc-600">Evidence</div>
             </div>
-            <div className="text-2xl font-medium text-zinc-100">{evidenceCount}</div>
-            <div className="text-xs text-zinc-600 mt-0.5">artifacts</div>
-          </div>
+            {evidenceCount === 0 ? (
+              <>
+                <div className="text-sm font-medium text-zinc-300 group-hover:text-zinc-200">No evidence yet</div>
+                <div className="text-xs text-zinc-600 mt-0.5">Upload or generate from intake</div>
+              </>
+            ) : (
+              <>
+                <div className="text-2xl font-medium text-zinc-100">{evidenceCount}</div>
+                <div className="text-xs text-zinc-600 mt-0.5">artifacts</div>
+              </>
+            )}
+          </button>
 
           <div className="bg-zinc-900/50 border border-zinc-800 rounded-xl p-4">
             <div className="flex items-center gap-2 mb-2">
@@ -272,8 +284,14 @@ export function Overview() {
                   <Upload className="w-4 h-4 text-orange-400/80" />
                 </div>
                 <div className="flex-1 min-w-0">
-                  <h3 className="text-sm font-medium text-zinc-200">Upload evidence artifacts</h3>
-                  <div className="text-xs text-zinc-600">{evidenceCount} artifacts on file</div>
+                  <h3 className="text-sm font-medium text-zinc-200">
+                    {evidenceCount === 0 ? 'Collect evidence artifacts' : 'Upload evidence artifacts'}
+                  </h3>
+                  <div className="text-xs text-zinc-600">
+                    {evidenceCount === 0
+                      ? 'Upload artifacts directly or generate them from intake'
+                      : `${evidenceCount} artifacts on file`}
+                  </div>
                 </div>
                 <ArrowRight className="w-4 h-4 text-zinc-600 group-hover:text-zinc-400 transition-colors" />
               </div>
