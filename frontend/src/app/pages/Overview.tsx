@@ -76,6 +76,93 @@ export function Overview() {
   const gapDetails = gaps.gap_details || [];
   const overduePoam = (poam.items || []).filter((i: any) => i.status === 'OVERDUE').length;
 
+  // First-run detection: no SSP sections generated, no evidence, no POA&M.
+  // Shows a welcome empty state instead of a misleading -88 score.
+  const isFirstRun = met === 0 && partial === 0 && evidenceCount === 0 && poamTotal === 0;
+
+  if (isFirstRun) {
+    return (
+      <div className="p-6 w-full">
+        <div className="max-w-4xl mx-auto">
+          {/* Welcome card */}
+          <div className="bg-zinc-900/50 border border-zinc-800 rounded-xl p-10 mb-6">
+            <h1 className="text-3xl font-medium text-zinc-100 mb-3">Welcome to Intranest</h1>
+            <p className="text-zinc-400 text-base leading-relaxed mb-8 max-w-2xl">
+              Your CMMC Level 2 assessment hasn't started yet. Complete the guided intake to
+              assess your 110 security controls, generate compliance documents, and calculate
+              your SPRS score.
+            </p>
+            <button
+              onClick={() => navigate('/app/intake')}
+              className="inline-flex items-center gap-2 px-6 py-3 bg-blue-500 hover:bg-blue-400 rounded-lg text-white font-medium transition-colors"
+            >
+              <Sparkles className="w-4 h-4" />
+              Start Your Assessment
+              <ArrowRight className="w-4 h-4" />
+            </button>
+          </div>
+
+          {/* Three-step overview */}
+          <div className="grid grid-cols-3 gap-4 mb-6">
+            <div className="bg-zinc-900/50 border border-zinc-800 rounded-xl p-5">
+              <div className="flex items-center gap-3 mb-2">
+                <div className="w-7 h-7 rounded-full bg-zinc-800 border border-zinc-700 flex items-center justify-center text-xs text-zinc-400 font-medium">1</div>
+                <h3 className="text-sm font-medium text-zinc-200">Complete Intake</h3>
+              </div>
+              <p className="text-xs text-zinc-500 leading-relaxed">
+                Answer plain-language questions about your security posture
+              </p>
+            </div>
+
+            <div className="bg-zinc-900/50 border border-zinc-800 rounded-xl p-5">
+              <div className="flex items-center gap-3 mb-2">
+                <div className="w-7 h-7 rounded-full bg-zinc-800 border border-zinc-700 flex items-center justify-center text-xs text-zinc-400 font-medium">2</div>
+                <h3 className="text-sm font-medium text-zinc-200">Generate Documents</h3>
+              </div>
+              <p className="text-xs text-zinc-500 leading-relaxed">
+                AI creates your SSP, policies, and compliance artifacts
+              </p>
+            </div>
+
+            <div className="bg-zinc-900/50 border border-zinc-800 rounded-xl p-5">
+              <div className="flex items-center gap-3 mb-2">
+                <div className="w-7 h-7 rounded-full bg-zinc-800 border border-zinc-700 flex items-center justify-center text-xs text-zinc-400 font-medium">3</div>
+                <h3 className="text-sm font-medium text-zinc-200">Review & Score</h3>
+              </div>
+              <p className="text-xs text-zinc-500 leading-relaxed">
+                Get your SPRS score, gap report, and POA&M
+              </p>
+            </div>
+          </div>
+
+          {/* Framework info */}
+          <div className="bg-zinc-900/30 border border-zinc-800/60 rounded-xl p-5 text-center">
+            <div className="text-xs text-zinc-600 uppercase tracking-wider mb-2">Framework</div>
+            <div className="text-sm text-zinc-300 mb-1">
+              CMMC Level 2 · NIST SP 800-171 Rev 2
+            </div>
+            <div className="text-xs text-zinc-500">
+              14 Control Families · 110 Controls · 246 Assessment Objectives
+            </div>
+            <div className="text-xs text-zinc-600 mt-3">
+              All controls pending assessment
+            </div>
+          </div>
+
+          {/* Subtle footer link to settings for health check */}
+          <div className="mt-6 text-center">
+            <button
+              onClick={() => navigate('/app/settings')}
+              className="text-xs text-zinc-600 hover:text-zinc-400 transition-colors"
+            >
+              System health
+            </button>
+          </div>
+        </div>
+      </div>
+    );
+  }
+
   return (
     <div className="p-6 w-full">
       {/* Top Row: Score + Quick Stats */}
