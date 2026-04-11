@@ -1,6 +1,6 @@
 import { Search, Download, Sparkles, Loader2, FileText } from 'lucide-react';
 import { useState, useEffect, useRef, useCallback } from 'react';
-import { useSearchParams } from 'react-router';
+import { useSearchParams, useNavigate } from 'react-router';
 import { getComplianceOverview, getGaps, getEvidenceByControl, getSSPNarrative, exportSSPAsPdf, exportSSPAsDocx, generateFullSSP, getSSPJobStatus } from '../api/client';
 import { controlFamilies } from '../data/nist-controls';
 import { toast } from 'sonner';
@@ -15,6 +15,7 @@ type ControlData = {
 
 export function SSP() {
   const [searchParams] = useSearchParams();
+  const navigate = useNavigate();
   const [loading, setLoading] = useState(true);
   const [controls, setControls] = useState<ControlData[]>([]);
   const [gapDetails, setGapDetails] = useState<any[]>([]);
@@ -129,6 +130,10 @@ export function SSP() {
   if (loading) return <div className="flex items-center justify-center h-[60vh]"><Loader2 className="w-6 h-6 text-zinc-500 animate-spin" /></div>;
 
   const implemented = controls.filter(c => c.implementation_status === 'Implemented').length;
+  const partial = controls.filter(c => c.implementation_status === 'Partially Implemented').length;
+  // No SSP sections exist yet if every control is "Not Implemented" or unset.
+  // Controls table always has 110 rows; sections only exist after Generate SSP runs.
+  const hasSections = (implemented + partial) > 0;
   const selectedFamilyData = controlFamilies.find(f => f.id === selectedFamily);
 
   return (
@@ -215,17 +220,122 @@ export function SSP() {
               <div className="text-xs font-mono text-zinc-600 mb-1">{control.control_id}</div>
               <div className="text-sm">{control.title}</div>
               <span className={`text-xs px-1.5 py-0.5 rounded mt-1 inline-block ${
+                !hasSections ? 'bg-zinc-800 text-zinc-500 border border-zinc-700/50' :
                 control.implementation_status === 'Implemented' ? 'bg-emerald-500/10 text-emerald-400/80' :
                 control.implementation_status === 'Partially Implemented' ? 'bg-blue-500/10 text-blue-400/80' :
                 'bg-red-500/10 text-red-400/80'
-              }`}>{control.implementation_status}</span>
+              }`}>{!hasSections ? 'Pending' : control.implementation_status}</span>
             </button>
           ))}
         </div>
       </div>
 
       <div className="flex-1 overflow-y-auto">
-        {selectedControl ? (
+        {!hasSections ? (
+          selectedControl ? (
+            // Per-control empty state — sidebar control selected, no narrative yet
+            <div className="w-full p-8">
+              <div className="mb-8">
+                <div className="text-xs font-mono text-zinc-600 mb-2">{selectedControl.control_id}</div>
+                <h1 className="text-2xl font-medium text-zinc-100 mb-2">{selectedControl.title}</h1>
+                <div className="flex items-center gap-4 text-sm text-zinc-500">
+                  <span>{selectedControl.family || selectedControl.control_id.split('.')[0]}</span>
+                  <span>-</span>
+                  <span>{selectedControl.points ?? '?'} points</span>
+                </div>
+              </div>
+
+              <div className="bg-zinc-900/50 border border-zinc-800 rounded-xl p-8 max-w-2xl">
+                <div className="flex items-start gap-4 mb-4">
+                  <div className="w-10 h-10 rounded-lg bg-zinc-800 border border-zinc-700 flex items-center justify-center flex-shrink-0">
+                    <FileText className="w-5 h-5 text-zinc-500" />
+                  </div>
+                  <div className="flex-1">
+                    <h2 className="text-base font-medium text-zinc-200 mb-2">No implementation narrative generated yet</h2>
+                    <p className="text-sm text-zinc-500 leading-relaxed">
+                      This control is worth {selectedControl.points ?? '?'} points toward your SPRS score. Complete your intake and generate the SSP to create the implementation narrative for this control.
+                    </p>
+                  </div>
+                </div>
+                <div className="flex items-center gap-3 pt-4 border-t border-zinc-800">
+                  <button
+                    onClick={() => navigate('/app/intake')}
+                    className="px-4 py-2 bg-zinc-800 hover:bg-zinc-700 border border-zinc-700 rounded-lg text-sm font-medium text-zinc-300 transition-colors"
+                  >
+                    Go to Intake
+                  </button>
+                  <button
+                    onClick={handleGenerate}
+                    disabled={generating}
+                    className="px-4 py-2 bg-blue-500 hover:bg-blue-400 disabled:opacity-50 rounded-lg text-sm font-medium text-white flex items-center gap-2 transition-colors"
+                  >
+                    {generating ? <Loader2 className="w-4 h-4 animate-spin" /> : <Sparkles className="w-4 h-4" />}
+                    {generating ? 'Generating...' : 'Generate SSP'}
+                  </button>
+                </div>
+              </div>
+            </div>
+          ) : (
+            // General empty state — no SSP at all
+            <div className="w-full p-8">
+              <div className="max-w-3xl mx-auto">
+                <div className="bg-zinc-900/50 border border-zinc-800 rounded-xl p-10 mb-6">
+                  <h1 className="text-2xl font-medium text-zinc-100 mb-3">System Security Plan Not Yet Generated</h1>
+                  <p className="text-zinc-400 text-base leading-relaxed mb-6 max-w-2xl">
+                    Your SSP will contain implementation narratives for all 110 NIST 800-171 controls, organized across 14 families. Each narrative describes how your organization meets the requirement, cites supporting evidence, and identifies gaps.
+                  </p>
+                  <div className="flex items-center gap-3">
+                    <button
+                      onClick={() => navigate('/app/intake')}
+                      className="px-4 py-2 bg-zinc-800 hover:bg-zinc-700 border border-zinc-700 rounded-lg text-sm font-medium text-zinc-300 transition-colors"
+                    >
+                      Go to Intake
+                    </button>
+                    <button
+                      onClick={handleGenerate}
+                      disabled={generating}
+                      className="px-4 py-2 bg-blue-500 hover:bg-blue-400 disabled:opacity-50 rounded-lg text-sm font-medium text-white flex items-center gap-2 transition-colors"
+                    >
+                      {generating ? <Loader2 className="w-4 h-4 animate-spin" /> : <Sparkles className="w-4 h-4" />}
+                      {generating ? 'Generating...' : 'Generate SSP'}
+                    </button>
+                  </div>
+                </div>
+
+                <div className="space-y-3">
+                  <h3 className="text-xs text-zinc-500 uppercase tracking-wider mb-3">Next Steps</h3>
+                  <div className="bg-zinc-900/50 border border-zinc-800 rounded-lg p-4">
+                    <div className="flex items-start gap-3">
+                      <div className="w-7 h-7 rounded-full bg-zinc-800 border border-zinc-700 flex items-center justify-center text-xs text-zinc-400 font-medium flex-shrink-0">1</div>
+                      <div className="flex-1">
+                        <h4 className="text-sm font-medium text-zinc-200 mb-1">Complete your intake questionnaire</h4>
+                        <p className="text-xs text-zinc-500 leading-relaxed">Answer plain-language questions about your security posture, technology stack, and compliance environment.</p>
+                      </div>
+                    </div>
+                  </div>
+                  <div className="bg-zinc-900/50 border border-zinc-800 rounded-lg p-4">
+                    <div className="flex items-start gap-3">
+                      <div className="w-7 h-7 rounded-full bg-zinc-800 border border-zinc-700 flex items-center justify-center text-xs text-zinc-400 font-medium flex-shrink-0">2</div>
+                      <div className="flex-1">
+                        <h4 className="text-sm font-medium text-zinc-200 mb-1">Generate compliance documents</h4>
+                        <p className="text-xs text-zinc-500 leading-relaxed">The platform creates policy documents, IR plans, and other artifacts from your intake answers.</p>
+                      </div>
+                    </div>
+                  </div>
+                  <div className="bg-zinc-900/50 border border-zinc-800 rounded-lg p-4">
+                    <div className="flex items-start gap-3">
+                      <div className="w-7 h-7 rounded-full bg-zinc-800 border border-zinc-700 flex items-center justify-center text-xs text-zinc-400 font-medium flex-shrink-0">3</div>
+                      <div className="flex-1">
+                        <h4 className="text-sm font-medium text-zinc-200 mb-1">Generate SSP</h4>
+                        <p className="text-xs text-zinc-500 leading-relaxed">AI generates evidence-grounded narratives for each control, organized by family.</p>
+                      </div>
+                    </div>
+                  </div>
+                </div>
+              </div>
+            </div>
+          )
+        ) : selectedControl ? (
           <div className="w-full p-8">
             <div className="mb-8">
               <div className="text-xs font-mono text-zinc-600 mb-2">{selectedControl.control_id}</div>
