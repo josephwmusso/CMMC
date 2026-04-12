@@ -143,7 +143,7 @@ class ControlResult(BaseModel):
 
 class JobStatus(BaseModel):
     job_id: str
-    status: str  # pending | running | completed | failed
+    status: str  # pending | running | completed | failed | cancelled
     progress: str
     controls_done: int
     controls_total: int
@@ -218,7 +218,15 @@ def _run_full_ssp(job_id: str, org_profile: dict, control_ids: Optional[list[str
         _set_job(job_id, controls_total=total)
 
         results = []
+        cancelled = False
         for i, cid in enumerate(all_control_ids):
+            # Cooperative cancellation — caller can POST /api/ssp/cancel?job_id=...
+            current = _get_job(job_id)
+            if current and current.get("status") == "cancelled":
+                logger.info(f"Job {job_id} cancelled at {i}/{total}")
+                cancelled = True
+                break
+
             try:
                 result_data = generator.generate_section(cid)
                 parsed = result_data["parsed"]
@@ -233,6 +241,10 @@ def _run_full_ssp(job_id: str, org_profile: dict, control_ids: Optional[list[str
                 results.append(SSPControlResult(control_id=cid, error=str(e)))
 
             _set_job(job_id, controls_done=i+1, progress=f"{i+1}/{total} — {cid}")
+
+        if cancelled:
+            _set_job(job_id, completed_at=datetime.datetime.utcnow().isoformat())
+            return
 
         # Export to Word
         docx_path = None
@@ -346,6 +358,46 @@ def get_job_status(job_id: str):
     if not job:
         raise HTTPException(status_code=404, detail=f"Job {job_id} not found")
 
+    return JobStatus(
+        job_id=job["job_id"],
+        status=job["status"],
+        progress=job["progress"],
+        controls_done=job["controls_done"],
+        controls_total=job["controls_total"],
+        docx_path=job.get("docx_path"),
+        started_at=str(job["started_at"]) if job.get("started_at") else None,
+        completed_at=str(job["completed_at"]) if job.get("completed_at") else None,
+        error=job.get("error"),
+    )
+
+
+@router.post("/cancel", response_model=JobStatus)
+def cancel_job(job_id: str):
+    """Request cancellation of a running SSP generation job.
+
+    Cooperative: the background loop checks this flag between controls, so
+    cancellation takes effect within the current control iteration (~10–20s).
+    No-op if the job is already completed / failed / cancelled.
+    """
+    job = _get_job(job_id)
+    if not job:
+        raise HTTPException(status_code=404, detail=f"Job {job_id} not found")
+
+    if job["status"] not in ("pending", "running"):
+        return JobStatus(
+            job_id=job["job_id"],
+            status=job["status"],
+            progress=job["progress"],
+            controls_done=job["controls_done"],
+            controls_total=job["controls_total"],
+            docx_path=job.get("docx_path"),
+            started_at=str(job["started_at"]) if job.get("started_at") else None,
+            completed_at=str(job["completed_at"]) if job.get("completed_at") else None,
+            error=job.get("error"),
+        )
+
+    _set_job(job_id, status="cancelled", progress=f"Cancelled at {job.get('progress', '')}")
+    job = _get_job(job_id)
     return JobStatus(
         job_id=job["job_id"],
         status=job["status"],
