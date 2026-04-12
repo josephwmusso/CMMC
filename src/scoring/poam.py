@@ -38,30 +38,19 @@ def _generate_id(prefix: str = "poam") -> str:
 
 def _log_audit(session, actor: str, action: str, target_type: str,
                target_id: str, details: dict):
-    prev = session.execute(text(
-        "SELECT entry_hash FROM audit_log ORDER BY id DESC LIMIT 1"
-    )).fetchone()
-    prev_hash = prev[0] if prev else "GENESIS"
-
-    details_json = json.dumps(details)
-    entry_data = f"{actor}|{action}|{target_type}|{target_id}|{details_json}|{prev_hash}"
-    entry_hash = hashlib.sha256(entry_data.encode()).hexdigest()
-
-    session.execute(text("""
-        INSERT INTO audit_log (actor, actor_type, action, target_type, target_id,
-                               details, prev_hash, entry_hash)
-        VALUES (:actor, :actor_type, :action, :target_type, :target_id,
-                CAST(:details AS json), :prev_hash, :entry_hash)
-    """), {
-        "actor": actor,
-        "actor_type": "SYSTEM",
-        "action": action,
-        "target_type": target_type,
-        "target_id": target_id,
-        "details": details_json,
-        "prev_hash": prev_hash,
-        "entry_hash": entry_hash,
-    })
+    # Delegate to the canonical writer so the hash algorithm matches
+    # src/evidence/state_machine.py::_compute_entry_hash exactly.
+    # Otherwise verify_audit_chain rejects the entry.
+    from src.evidence.state_machine import create_audit_entry
+    create_audit_entry(
+        db=session,
+        actor=actor,
+        actor_type="SYSTEM",
+        action=action,
+        target_type=target_type,
+        target_id=target_id,
+        details=details,
+    )
 
 
 class POAMGenerator:

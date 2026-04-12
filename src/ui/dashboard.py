@@ -1417,26 +1417,41 @@ elif page == "🔧 Demo Controls":
 # ═══════════════════════════════════════════════════════════════════════════════
 
 def _write_audit_entry(actor, actor_type, action, target_type, target_id, details):
-    """Write a hash-chained audit log entry."""
-    # Get the last entry's hash
+    """Write a hash-chained audit log entry using the canonical algorithm."""
+    from datetime import datetime, timezone
     last = run_query("SELECT entry_hash FROM audit_log ORDER BY id DESC LIMIT 1")
-    prev_hash = last[0]["entry_hash"] if last else "0" * 64
+    prev_hash = last[0]["entry_hash"] if last else "GENESIS"
 
-    details_json = json.dumps(details)
+    now_iso = datetime.now(timezone.utc).isoformat()
 
-    # Compute entry hash
-    hash_input = f"{prev_hash}|{actor}|{actor_type}|{action}|{target_type}|{target_id}|{details_json}"
-    entry_hash = hashlib.sha256(hash_input.encode()).hexdigest()
+    # MUST match src/evidence/state_machine.py::_compute_entry_hash
+    payload = json.dumps(
+        {
+            "actor": actor,
+            "actor_type": actor_type,
+            "action": action,
+            "target_type": target_type,
+            "target_id": target_id,
+            "details": details,
+            "prev_hash": prev_hash,
+            "timestamp": now_iso,
+        },
+        sort_keys=True,
+        default=str,
+    )
+    entry_hash = hashlib.sha256(payload.encode("utf-8")).hexdigest()
 
     run_exec("""
         INSERT INTO audit_log (timestamp, actor, actor_type, action, target_type,
                                target_id, details, prev_hash, entry_hash)
-        VALUES (NOW(), :actor, :actor_type, :action, :target_type,
+        VALUES (:timestamp, :actor, :actor_type, :action, :target_type,
                 :target_id, CAST(:details AS json), :prev_hash, :entry_hash)
     """, {
+        "timestamp": now_iso,
         "actor": actor, "actor_type": actor_type,
         "action": action, "target_type": target_type, "target_id": target_id,
-        "details": details_json, "prev_hash": prev_hash, "entry_hash": entry_hash,
+        "details": json.dumps(details),
+        "prev_hash": prev_hash, "entry_hash": entry_hash,
     })
 
 
