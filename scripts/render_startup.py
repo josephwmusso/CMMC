@@ -345,6 +345,7 @@ TABLES_DDL = [
             status               VARCHAR(20) NOT NULL DEFAULT 'draft',
             sections_data        JSON NOT NULL DEFAULT '[]',
             file_path            VARCHAR(500),
+            file_content         BYTEA,
             word_count           INTEGER,
             generated_by         VARCHAR(50) DEFAULT 'document_engine',
             evidence_artifact_id VARCHAR(30),
@@ -661,6 +662,47 @@ def main():
     except Exception as e:
         conn.rollback()
         logger.warning(f"  ssp_sections unique constraint migration skipped: {e}")
+
+    # generated_documents.file_content — store DOCX bytes so downloads
+    # survive Render's ephemeral filesystem. Idempotent for existing DBs.
+    try:
+        cur.execute("""
+            ALTER TABLE generated_documents
+            ADD COLUMN IF NOT EXISTS file_content BYTEA
+        """)
+        conn.commit()
+        logger.info("  generated_documents.file_content BYTEA: OK")
+    except Exception as e:
+        conn.rollback()
+        logger.warning(f"  file_content migration skipped: {e}")
+
+    # Backfill file_content from filesystem for any rows that still
+    # have a readable file_path but no stored bytes (local dev mostly).
+    try:
+        import psycopg2 as _pg
+        cur.execute("""
+            SELECT id, file_path FROM generated_documents
+            WHERE file_content IS NULL AND file_path IS NOT NULL
+        """)
+        backfilled = 0
+        for rid, fp in cur.fetchall():
+            if fp and os.path.exists(fp):
+                try:
+                    with open(fp, "rb") as f:
+                        blob = f.read()
+                    cur.execute(
+                        "UPDATE generated_documents SET file_content = %s WHERE id = %s",
+                        (_pg.Binary(blob), rid),
+                    )
+                    backfilled += 1
+                except Exception as read_err:
+                    logger.warning(f"  backfill read failed for {rid}: {read_err}")
+        conn.commit()
+        if backfilled:
+            logger.info(f"  generated_documents: backfilled {backfilled} file_content blobs")
+    except Exception as e:
+        conn.rollback()
+        logger.warning(f"  file_content backfill skipped: {e}")
 
     # Verify tables exist
     cur.execute("SELECT tablename FROM pg_tables WHERE schemaname = 'public' ORDER BY tablename")

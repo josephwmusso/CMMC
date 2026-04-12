@@ -5,6 +5,7 @@ Uses python-docx (already in venv).
 """
 
 import os
+from io import BytesIO
 from datetime import datetime
 from docx import Document
 from docx.shared import Pt, Inches, RGBColor
@@ -18,19 +19,16 @@ def build_docx(
     sections: list[dict],
     output_dir: str = "data/exports",
     doc_type: str = "document",
-) -> str:
+) -> tuple[str, bytes]:
     """
     Build a professional DOCX from generated sections.
 
-    Args:
-        title: Document title
-        company_name: Organization name
-        sections: List of section dicts with id, title, content, parent_id (optional)
-        output_dir: Where to save the file
-        doc_type: Used in filename
+    Writes the file to ``output_dir`` (local-dev convenience) AND returns
+    the raw bytes so callers can persist them in the DB — required on
+    Render where the filesystem is ephemeral.
 
     Returns:
-        Full file path of the generated DOCX
+        (filepath, file_bytes)
     """
     doc = Document()
 
@@ -153,7 +151,10 @@ def build_docx(
     doc.save(filepath)
     print(f"  Saved: {filepath}")
 
-    return filepath
+    buffer = BytesIO()
+    doc.save(buffer)
+    buffer.seek(0)
+    return filepath, buffer.read()
 
 
 def _add_content_paragraphs(doc: Document, content: str):

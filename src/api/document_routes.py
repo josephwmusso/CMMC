@@ -17,7 +17,7 @@ import os
 from datetime import datetime, timezone
 
 from fastapi import APIRouter, HTTPException
-from fastapi.responses import FileResponse
+from fastapi.responses import FileResponse, Response
 from pydantic import BaseModel
 from sqlalchemy import text
 
@@ -99,7 +99,7 @@ async def generate_document(doc_type: str):
     profile = gen.get_company_profile()
     company_name = profile.get("company_name") or "Organization"
 
-    filepath = build_docx(
+    filepath, file_bytes = build_docx(
         title=template["title"],
         company_name=company_name,
         sections=result["sections"],
@@ -107,12 +107,19 @@ async def generate_document(doc_type: str):
         doc_type=doc_type,
     )
 
-    # Update file_path in generated_documents
+    # Persist file_path AND bytes. The bytes survive a Render redeploy;
+    # the path is kept for local dev convenience and as a back-reference.
     with get_session() as db:
         db.execute(text("""
-            UPDATE generated_documents SET file_path = :fp, updated_at = :now
+            UPDATE generated_documents
+            SET file_path = :fp, file_content = :blob, updated_at = :now
             WHERE id = :did
-        """), {"fp": filepath, "now": datetime.now(timezone.utc).isoformat(), "did": result["doc_id"]})
+        """), {
+            "fp": filepath,
+            "blob": file_bytes,
+            "now": datetime.now(timezone.utc).isoformat(),
+            "did": result["doc_id"],
+        })
         db.commit()
 
     # Create evidence artifact
@@ -193,22 +200,40 @@ async def get_document(doc_id: str):
 
 @router.get("/{doc_id}/download")
 async def download_document(doc_id: str):
-    """Download the DOCX file for a generated document."""
+    """Download the DOCX file for a generated document.
+
+    Tries Postgres (file_content BYTEA) first — required on Render where
+    the filesystem is wiped on every deploy. Falls back to the filesystem
+    for local dev or pre-backfill rows.
+    """
     with get_session() as db:
         row = db.execute(text("""
-            SELECT file_path, title FROM generated_documents WHERE id = :did
+            SELECT file_path, file_content, title
+            FROM generated_documents WHERE id = :did
         """), {"did": doc_id}).fetchone()
 
-    if not row or not row[0]:
-        raise HTTPException(404, "Document file not found")
+    if not row:
+        raise HTTPException(404, "Document not found")
 
-    if not os.path.exists(row[0]):
-        raise HTTPException(404, f"File not found on disk: {row[0]}")
+    file_path, file_content, _title = row[0], row[1], row[2]
+    docx_media = "application/vnd.openxmlformats-officedocument.wordprocessingml.document"
 
-    return FileResponse(
-        row[0],
-        media_type="application/vnd.openxmlformats-officedocument.wordprocessingml.document",
-        filename=os.path.basename(row[0]),
+    if file_content:
+        # psycopg2 returns memoryview for BYTEA — Response needs bytes
+        blob = bytes(file_content) if not isinstance(file_content, bytes) else file_content
+        filename = os.path.basename(file_path) if file_path else f"{doc_id}.docx"
+        return Response(
+            content=blob,
+            media_type=docx_media,
+            headers={"Content-Disposition": f'attachment; filename="{filename}"'},
+        )
+
+    if file_path and os.path.exists(file_path):
+        return FileResponse(file_path, media_type=docx_media, filename=os.path.basename(file_path))
+
+    raise HTTPException(
+        404,
+        "Document file not found in database or on disk — regenerate to restore.",
     )
 
 
@@ -255,7 +280,7 @@ async def generate_all_documents():
             profile = gen.get_company_profile()
             company_name = profile.get("company_name") or "Organization"
 
-            filepath = build_docx(
+            filepath, file_bytes = build_docx(
                 title=template["title"],
                 company_name=company_name,
                 sections=result["sections"],
@@ -263,11 +288,18 @@ async def generate_all_documents():
                 doc_type=doc_type,
             )
 
-            # Update file path
+            # Persist path + bytes (bytes survive Render redeploys).
             with get_session() as db:
                 db.execute(text("""
-                    UPDATE generated_documents SET file_path = :fp, updated_at = :now WHERE id = :did
-                """), {"fp": filepath, "now": datetime.now(timezone.utc).isoformat(), "did": result["doc_id"]})
+                    UPDATE generated_documents
+                    SET file_path = :fp, file_content = :blob, updated_at = :now
+                    WHERE id = :did
+                """), {
+                    "fp": filepath,
+                    "blob": file_bytes,
+                    "now": datetime.now(timezone.utc).isoformat(),
+                    "did": result["doc_id"],
+                })
                 db.commit()
 
             # Create evidence artifact
