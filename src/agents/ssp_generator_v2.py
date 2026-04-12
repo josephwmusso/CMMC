@@ -366,7 +366,7 @@ class SSPGeneratorV2:
             "assessment_objectives_not_met": original_parsed.get("assessment_objectives_not_met", []),
         }
 
-    def persist_section(self, parsed: dict, version: str = "1.0") -> str:
+    def persist_section(self, parsed: dict, version: int = 1) -> str:
         """
         Persist a generated section to the ssp_sections table.
         Uses raw SQL with CAST(:x AS json).
