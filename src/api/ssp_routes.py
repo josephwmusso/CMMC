@@ -157,12 +157,19 @@ class JobStatus(BaseModel):
 # Single control generation (synchronous — fast enough for one control)
 # ---------------------------------------------------------------------------
 @router.post("/generate", response_model=ControlResult)
-def generate_single_control(req: SingleControlRequest, db: Session = Depends(get_db)):
+def generate_single_control(
+    req: SingleControlRequest,
+    db: Session = Depends(get_db),
+    current_user: dict = Depends(get_current_user),
+):
     """Generate SSP narrative for a single NIST 800-171 control."""
     if not is_llm_available():
         raise HTTPException(503, "SSP generation requires an LLM API key, which is not configured.")
     from src.agents.ssp_generator_v2 import SSPGenerator
     org = req.org_profile.to_dict()
+    # Always bind persistence to the authenticated user's org so GET
+    # /narrative/{cid} (which filters by current_user.org_id) can read it back.
+    org["org_id"] = current_user["org_id"]
     generator = SSPGenerator(org_profile=org)
 
     result_data = generator.generate_section(req.control_id)
