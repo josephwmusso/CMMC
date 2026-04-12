@@ -175,7 +175,8 @@ TABLES_DDL = [
             generated_by          VARCHAR(50) DEFAULT 'ssp_agent',
             version               INTEGER DEFAULT 1,
             created_at            TIMESTAMPTZ DEFAULT NOW(),
-            updated_at            TIMESTAMPTZ DEFAULT NOW()
+            updated_at            TIMESTAMPTZ DEFAULT NOW(),
+            UNIQUE(org_id, control_id, version)
         )
     """),
 
@@ -638,6 +639,28 @@ def main():
             logger.error(f"FATAL: Could not create table {name}")
             conn.close()
             sys.exit(1)
+
+    # Idempotent migrations for constraints that CREATE TABLE IF NOT EXISTS
+    # won't add to pre-existing tables.
+    try:
+        cur.execute("""
+            DO $$
+            BEGIN
+                IF NOT EXISTS (
+                    SELECT 1 FROM pg_constraint
+                    WHERE conname = 'ssp_sections_org_id_control_id_version_key'
+                ) THEN
+                    ALTER TABLE ssp_sections
+                    ADD CONSTRAINT ssp_sections_org_id_control_id_version_key
+                    UNIQUE (org_id, control_id, version);
+                END IF;
+            END$$;
+        """)
+        conn.commit()
+        logger.info("  ssp_sections UNIQUE(org_id, control_id, version): OK")
+    except Exception as e:
+        conn.rollback()
+        logger.warning(f"  ssp_sections unique constraint migration skipped: {e}")
 
     # Verify tables exist
     cur.execute("SELECT tablename FROM pg_tables WHERE schemaname = 'public' ORDER BY tablename")
