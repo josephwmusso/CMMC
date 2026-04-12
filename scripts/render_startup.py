@@ -469,15 +469,119 @@ def seed_objectives(cur):
     logger.info(f"Loaded {len(ASSESSMENT_OBJECTIVES)} objectives")
 
 
+def _compute_entry_hash(actor, actor_type, action, target_type, target_id,
+                        details, prev_hash, timestamp):
+    """
+    MUST match src/evidence/state_machine.py::_compute_entry_hash exactly.
+    The verifier uses this exact payload shape + sort_keys=True.
+    """
+    payload = json.dumps(
+        {
+            "actor": actor,
+            "actor_type": actor_type,
+            "action": action,
+            "target_type": target_type,
+            "target_id": target_id,
+            "details": details,
+            "prev_hash": prev_hash,
+            "timestamp": timestamp,
+        },
+        sort_keys=True,
+        default=str,
+    )
+    return hashlib.sha256(payload.encode("utf-8")).hexdigest()
+
+
 def seed_audit_genesis(cur):
+    from datetime import datetime, timezone
     cur.execute("SELECT COUNT(*) FROM audit_log")
-    if cur.fetchone()[0] == 0:
-        entry_hash = hashlib.sha256("GENESIS".encode()).hexdigest()
-        cur.execute("""
-            INSERT INTO audit_log (timestamp, actor, actor_type, action, target_type, target_id, details, prev_hash, entry_hash)
-            VALUES (NOW(), 'SYSTEM', 'system', 'GENESIS', 'system', 'system', '{"message":"Audit chain genesis"}', 'GENESIS', %s)
-        """, (entry_hash,))
-        logger.info("Created genesis audit log entry")
+    count = cur.fetchone()[0]
+    if count > 0:
+        logger.info(f"Audit log already has {count} entries — skipping genesis seed")
+        return
+
+    now = datetime.now(timezone.utc)
+    timestamp_iso = now.isoformat()
+    details = {"message": "Audit chain genesis"}
+
+    # Use the same hash algorithm the verifier uses — otherwise the
+    # chain fails verification at entry #1 (the genesis row itself).
+    entry_hash = _compute_entry_hash(
+        actor="SYSTEM",
+        actor_type="system",
+        action="GENESIS",
+        target_type="system",
+        target_id="system",
+        details=details,
+        prev_hash="GENESIS",
+        timestamp=timestamp_iso,
+    )
+
+    cur.execute("""
+        INSERT INTO audit_log (timestamp, actor, actor_type, action, target_type, target_id, details, prev_hash, entry_hash)
+        VALUES (%s, 'SYSTEM', 'system', 'GENESIS', 'system', 'system', CAST(%s AS json), 'GENESIS', %s)
+    """, (now, json.dumps(details), entry_hash))
+    logger.info("Created genesis audit log entry (hash-aligned with verifier)")
+
+
+def heal_audit_chain(cur):
+    """
+    Idempotent self-heal for the audit chain.
+    Walks every audit_log row in id ASC order and recomputes the correct
+    prev_hash + entry_hash. Only writes updates for rows that are wrong.
+    No-op when the chain is already intact.
+
+    Necessary because early seeders used a broken hash algorithm
+    (sha256("GENESIS") instead of sha256(json_payload)). This function
+    repairs any stale data and is safe to run on every deploy.
+    """
+    cur.execute("""
+        SELECT id, actor, actor_type, action, target_type, target_id,
+               details, prev_hash, entry_hash, timestamp
+        FROM audit_log ORDER BY id ASC
+    """)
+    rows = cur.fetchall()
+    if not rows:
+        return
+
+    expected_prev = "GENESIS"
+    fixed = 0
+    for row in rows:
+        (rid, actor, actor_type, action, ttype, tid,
+         details, old_prev, old_hash, ts) = row
+
+        # Normalize details to dict (matches verifier behavior)
+        if isinstance(details, str):
+            try:
+                details_dict = json.loads(details)
+            except Exception:
+                details_dict = {}
+        elif details is None:
+            details_dict = {}
+        else:
+            details_dict = details
+
+        ts_iso = ts.isoformat() if hasattr(ts, "isoformat") else str(ts)
+
+        new_hash = _compute_entry_hash(
+            actor=actor, actor_type=actor_type, action=action,
+            target_type=ttype, target_id=tid,
+            details=details_dict, prev_hash=expected_prev, timestamp=ts_iso,
+        )
+
+        if old_prev != expected_prev or old_hash != new_hash:
+            cur.execute(
+                "UPDATE audit_log SET prev_hash = %s, entry_hash = %s WHERE id = %s",
+                (expected_prev, new_hash, rid),
+            )
+            fixed += 1
+
+        expected_prev = new_hash
+
+    if fixed:
+        logger.info(f"Audit chain: healed {fixed}/{len(rows)} entries")
+    else:
+        logger.info(f"Audit chain: intact ({len(rows)} entries, no repair needed)")
 
 
 def seed_document_templates(cur):
@@ -560,6 +664,7 @@ def main():
         seed_controls(cur)
         seed_objectives(cur)
         seed_audit_genesis(cur)
+        heal_audit_chain(cur)
         seed_document_templates(cur)
         conn.commit()
         logger.info("All seed data committed")
