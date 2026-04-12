@@ -175,7 +175,11 @@ def generate_single_control(req: SingleControlRequest, db: Session = Depends(get
         control_id=parsed.get("control_id", req.control_id),
         status=parsed.get("implementation_status", "Not Assessed"),
         narrative=parsed.get("narrative", ""),
-        evidence_artifacts=parsed.get("evidence_references", []),
+        evidence_artifacts=[
+            e.get("artifact_title") or e.get("description") or str(e)
+            if isinstance(e, dict) else str(e)
+            for e in parsed.get("evidence_references", [])
+        ],
         gaps=[g.get("description", "") for g in parsed.get("gaps", [])],
         generation_time_sec=0.0,
         error=None,
