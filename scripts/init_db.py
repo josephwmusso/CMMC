@@ -57,6 +57,38 @@ def create_tables():
     if missing:
         print(f"\nERROR: Missing tables: {missing}")
         sys.exit(1)
+
+    # intake_responses is created by scripts/init_questionnaire_db.py in the
+    # usual local-dev flow, but keep this self-contained so running just
+    # init_db.py on a fresh DB still gives us a valid intake table with the
+    # question_tier column. Both the CREATE and the ALTER are idempotent.
+    with engine.connect() as conn:
+        conn.execute(text("""
+            CREATE TABLE IF NOT EXISTS intake_responses (
+                id              VARCHAR(30) PRIMARY KEY,
+                session_id      VARCHAR(30) NOT NULL,
+                org_id          VARCHAR(30) NOT NULL,
+                module_id       INTEGER NOT NULL,
+                question_id     VARCHAR(50) NOT NULL,
+                control_ids     JSON NOT NULL DEFAULT '[]',
+                answer_type     VARCHAR(20) NOT NULL DEFAULT 'text',
+                answer_value    TEXT,
+                answer_details  JSON,
+                creates_gap     BOOLEAN NOT NULL DEFAULT FALSE,
+                gap_severity    VARCHAR(20),
+                evidence_action VARCHAR(30),
+                question_tier   VARCHAR(30) DEFAULT 'SCREENING',
+                answered_at     TIMESTAMP NOT NULL DEFAULT NOW(),
+                UNIQUE(session_id, question_id)
+            )
+        """))
+        conn.execute(text("""
+            ALTER TABLE intake_responses
+            ADD COLUMN IF NOT EXISTS question_tier VARCHAR(30) DEFAULT 'SCREENING'
+        """))
+        conn.commit()
+    print(f"  {'intake_responses':30s} [OK — question_tier ensured]")
+
     print("All tables created.\n")
 
 

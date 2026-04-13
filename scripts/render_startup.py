@@ -263,6 +263,7 @@ TABLES_DDL = [
             creates_gap     BOOLEAN NOT NULL DEFAULT FALSE,
             gap_severity    VARCHAR(20),
             evidence_action VARCHAR(30),
+            question_tier   VARCHAR(30) DEFAULT 'SCREENING',
             answered_at     TIMESTAMPTZ NOT NULL DEFAULT NOW(),
             UNIQUE(session_id, question_id)
         )
@@ -662,6 +663,18 @@ def main():
     except Exception as e:
         conn.rollback()
         logger.warning(f"  ssp_sections unique constraint migration skipped: {e}")
+
+    # intake_responses.question_tier — new column for tiered intake. Idempotent.
+    try:
+        cur.execute("""
+            ALTER TABLE intake_responses
+            ADD COLUMN IF NOT EXISTS question_tier VARCHAR(30) DEFAULT 'SCREENING'
+        """)
+        conn.commit()
+        logger.info("  intake_responses.question_tier VARCHAR(30): OK")
+    except Exception as e:
+        conn.rollback()
+        logger.warning(f"  question_tier migration skipped: {e}")
 
     # generated_documents.file_content — store DOCX bytes so downloads
     # survive Render's ephemeral filesystem. Idempotent for existing DBs.
