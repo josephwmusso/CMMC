@@ -394,7 +394,11 @@ class DocumentGenerator:
         ).hexdigest()[:20]
 
         with get_session() as session:
-            session.execute(text("""
+            # RETURNING id ensures we get the PERSISTED row's id, not the
+            # freshly-computed one — when ON CONFLICT triggers, the DB keeps
+            # the original id and we must honour it for downstream UPDATEs
+            # (e.g. file_content blob write in document_routes.py).
+            row = session.execute(text("""
                 INSERT INTO generated_documents
                     (id, org_id, template_id, doc_type, title, version, status,
                      sections_data, word_count, generated_by, created_at, updated_at)
@@ -406,6 +410,7 @@ class DocumentGenerator:
                     sections_data = CAST(:sections AS json),
                     word_count = :words,
                     updated_at = :now
+                RETURNING id
             """), {
                 "id": doc_id,
                 "org_id": self.org_id,
@@ -415,8 +420,10 @@ class DocumentGenerator:
                 "sections": json.dumps(generated_sections),
                 "words": total_words,
                 "now": now.isoformat(),
-            })
+            }).fetchone()
             session.commit()
+            if row:
+                doc_id = row[0]
 
         print(f"\n  Total: {total_words} words, saved as {doc_id}")
 
