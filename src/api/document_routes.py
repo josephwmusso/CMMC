@@ -24,6 +24,7 @@ from sqlalchemy import text
 from src.db.session import get_session
 from src.documents.generator import DocumentGenerator
 from src.documents.docx_builder import build_docx
+from src.documents.intake_context import get_template_readiness
 
 router = APIRouter(prefix="/api/documents", tags=["documents"])
 
@@ -54,6 +55,17 @@ async def list_templates():
             for r in rows
         ]
     }
+
+
+@router.get("/readiness")
+async def documents_readiness():
+    """Per-template readiness based on the current org's intake progress.
+
+    Returns which templates have any source data ("ready") vs. fully
+    answered ("fully_ready"), and the percent completion of each
+    dependent module. Light-weight — no LLM, no DB writes.
+    """
+    return get_template_readiness(ORG_ID)
 
 
 @router.get("/templates/{doc_type}")
