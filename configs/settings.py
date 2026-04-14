@@ -65,3 +65,25 @@ EMBEDDING_MODEL = os.getenv("EMBEDDING_MODEL", "BAAI/bge-small-en-v1.5")
 # SSP Export
 # ---------------------------------------------------------------------------
 SSP_EXPORT_DIR = os.getenv("SSP_EXPORT_DIR", os.path.join("data", "exports"))
+
+# ---------------------------------------------------------------------------
+# Auth / JWT
+# ---------------------------------------------------------------------------
+# Module-level constants (no Settings class) to match the rest of this file.
+JWT_SECRET_KEY = os.getenv("JWT_SECRET_KEY", "dev-secret-change-in-production")
+JWT_ALGORITHM = os.getenv("JWT_ALGORITHM", "HS256")
+JWT_EXPIRE_MINUTES = int(os.getenv("JWT_EXPIRE_MINUTES", "1440"))          # 24 h access
+JWT_REFRESH_EXPIRE_DAYS = int(os.getenv("JWT_REFRESH_EXPIRE_DAYS", "7"))    # 7 d refresh
+
+# Anonymous demo bypass: when true, missing Authorization headers fall back
+# to the built-in demo user so the frontend works without a real login.
+ALLOW_ANONYMOUS = os.getenv("ALLOW_ANONYMOUS", "true").lower() == "true"
+
+# Warn once at import time if a production-style deployment forgot to set
+# a real secret.
+if not ALLOW_ANONYMOUS and JWT_SECRET_KEY == "dev-secret-change-in-production":
+    import logging as _logging
+    _logging.getLogger(__name__).warning(
+        "ALLOW_ANONYMOUS=false but JWT_SECRET_KEY is the dev default — "
+        "set JWT_SECRET_KEY to a real secret for production.",
+    )

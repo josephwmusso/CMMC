@@ -216,7 +216,11 @@ TABLES_DDL = [
     """),
 
     # ── Auth table — matches src/api/auth.py queries exactly ──
-    # Column names: hashed_password (not password), full_name (not name), is_admin (not role)
+    # Column names: hashed_password (not password), full_name (not name).
+    # is_admin kept for backward compat; role is the authoritative field
+    # (SUPERADMIN / ADMIN / MEMBER / VIEWER). The role enum is created
+    # idempotently in the migration block below (CREATE TABLE can't
+    # reference an enum that doesn't yet exist when this block runs).
     ("users", """
         CREATE TABLE IF NOT EXISTS users (
             id              VARCHAR PRIMARY KEY,
@@ -423,15 +427,18 @@ def seed_admin_user(cur):
     password = os.environ.get("ADMIN_PASSWORD", "Intranest2026!")
     hashed = bcrypt.hashpw(password.encode("utf-8"), bcrypt.gensalt()).decode("utf-8")
 
+    # Seed / upsert the admin. role column always set to SUPERADMIN so this
+    # user can access everything regardless of is_admin toggling elsewhere.
     cur.execute("""
-        INSERT INTO users (id, email, org_id, full_name, hashed_password, is_admin)
-        VALUES ('USR-ADMIN000001', %s, %s, 'Admin', %s, TRUE)
+        INSERT INTO users (id, email, org_id, full_name, hashed_password, is_admin, role)
+        VALUES ('USR-ADMIN000001', %s, %s, 'Admin', %s, TRUE, 'SUPERADMIN'::user_role)
         ON CONFLICT (id) DO UPDATE SET
             email = EXCLUDED.email,
             hashed_password = EXCLUDED.hashed_password,
-            is_admin = TRUE
+            is_admin = TRUE,
+            role = 'SUPERADMIN'::user_role
     """, (email, DEMO_ORG_ID, hashed))
-    logger.info(f"Admin user ready: {email}")
+    logger.info(f"Admin user ready: {email} (SUPERADMIN)")
 
 
 def seed_controls(cur):
@@ -663,6 +670,31 @@ def main():
     except Exception as e:
         conn.rollback()
         logger.warning(f"  ssp_sections unique constraint migration skipped: {e}")
+
+    # users.role — SUPERADMIN/ADMIN/MEMBER/VIEWER. Enum + column + backfill, all idempotent.
+    try:
+        cur.execute("""
+            DO $$
+            BEGIN
+                IF NOT EXISTS (SELECT 1 FROM pg_type WHERE typname = 'user_role') THEN
+                    CREATE TYPE user_role AS ENUM ('SUPERADMIN', 'ADMIN', 'MEMBER', 'VIEWER');
+                END IF;
+            END$$;
+        """)
+        cur.execute("""
+            ALTER TABLE users
+            ADD COLUMN IF NOT EXISTS role user_role DEFAULT 'MEMBER'
+        """)
+        cur.execute("""
+            UPDATE users
+            SET role = 'ADMIN'::user_role
+            WHERE is_admin = TRUE AND role = 'MEMBER'::user_role
+        """)
+        conn.commit()
+        logger.info("  users.role user_role enum + column: OK")
+    except Exception as e:
+        conn.rollback()
+        logger.warning(f"  users.role migration skipped: {e}")
 
     # intake_responses.question_tier — new column for tiered intake. Idempotent.
     try:

@@ -26,9 +26,19 @@ from src.db.session import get_db
 router = APIRouter(prefix="/api/auth", tags=["Authentication"])
 
 # ── Config ──────────────────────────────────────────────────────────────────
+# Env is read directly here (and also mirrored in configs/settings.py) so
+# this module has no circular-import dependency during auto-discovery.
 JWT_SECRET_KEY = os.getenv("JWT_SECRET_KEY", "dev-secret-change-in-production")
 JWT_ALGORITHM = os.getenv("JWT_ALGORITHM", "HS256")
-JWT_EXPIRE_MINUTES = int(os.getenv("JWT_EXPIRE_MINUTES", "480"))
+JWT_EXPIRE_MINUTES = int(os.getenv("JWT_EXPIRE_MINUTES", "1440"))           # 24 h
+JWT_REFRESH_EXPIRE_DAYS = int(os.getenv("JWT_REFRESH_EXPIRE_DAYS", "7"))    # 7 d
+
+# Role taxonomy. Postgres enum mirrors these exact strings (UPPERCASE).
+ROLE_SUPERADMIN = "SUPERADMIN"
+ROLE_ADMIN = "ADMIN"
+ROLE_MEMBER = "MEMBER"
+ROLE_VIEWER = "VIEWER"
+ADMIN_ROLES = (ROLE_SUPERADMIN, ROLE_ADMIN)
 
 # Direct bcrypt usage (passlib incompatible with bcrypt>=4.1)
 oauth2_scheme = OAuth2PasswordBearer(tokenUrl="/api/auth/login", auto_error=False)
@@ -44,6 +54,7 @@ DEV_USER = {
     "org_id": "9de53b587b23450b87af",
     "full_name": "Dev User",
     "is_admin": True,
+    "role": ROLE_SUPERADMIN,
 }
 
 
@@ -62,12 +73,23 @@ class UserOut(BaseModel):
     org_id: str
     full_name: str
     is_admin: bool
+    role: str = ROLE_MEMBER
 
 
 class Token(BaseModel):
     access_token: str
     token_type: str
     user: UserOut
+    refresh_token: Optional[str] = None
+
+
+class RefreshRequest(BaseModel):
+    refresh_token: str
+
+
+class RefreshResponse(BaseModel):
+    access_token: str
+    token_type: str = "bearer"
 
 
 # ── Password helpers ────────────────────────────────────────────────────────
@@ -84,21 +106,57 @@ def verify_password(plain: str, hashed: str) -> bool:
 
 def create_access_token(data: dict, expires_delta: Optional[timedelta] = None) -> str:
     payload = data.copy()
+    payload["type"] = "access"
     expire = datetime.now(timezone.utc) + (expires_delta or timedelta(minutes=JWT_EXPIRE_MINUTES))
     payload["exp"] = expire
     return jwt.encode(payload, JWT_SECRET_KEY, algorithm=JWT_ALGORITHM)
 
 
+def create_refresh_token(user_id: str) -> str:
+    """Stateless refresh token — only the user_id + type + exp are signed.
+    Roles/orgs are re-read from DB at refresh time so revocation takes
+    effect immediately without a blocklist."""
+    expire = datetime.now(timezone.utc) + timedelta(days=JWT_REFRESH_EXPIRE_DAYS)
+    payload = {"sub": user_id, "type": "refresh", "exp": expire}
+    return jwt.encode(payload, JWT_SECRET_KEY, algorithm=JWT_ALGORITHM)
+
+
+# ── Role helpers (accept the dict returned by get_current_user) ─────────────
+
+def is_superadmin(user: dict) -> bool:
+    return user.get("role") == ROLE_SUPERADMIN
+
+
+def is_admin_role(user: dict) -> bool:
+    """True for SUPERADMIN or ADMIN (broader than the legacy is_admin bool
+    because a downgraded ADMIN could still have is_admin stale-true)."""
+    return user.get("role") in ADMIN_ROLES
+
+
 # ── DB helpers ──────────────────────────────────────────────────────────────
+
+def _role_from_row(role_val, is_admin: bool) -> str:
+    """Coerce a DB role value (may be None on older rows) to a canonical
+    uppercase role string, falling back to ADMIN/MEMBER from is_admin."""
+    if role_val:
+        return str(role_val).upper()
+    return ROLE_ADMIN if is_admin else ROLE_MEMBER
+
 
 def get_user_by_email(db: Session, email: str) -> Optional[dict]:
     row = db.execute(
-        text("SELECT id, email, org_id, full_name, hashed_password, is_admin FROM users WHERE email = :email"),
+        text("SELECT id, email, org_id, full_name, hashed_password, is_admin, role FROM users WHERE email = :email"),
         {"email": email},
     ).fetchone()
     if not row:
         return None
-    return dict(zip(["id", "email", "org_id", "full_name", "hashed_password", "is_admin"], row))
+    cols = ["id", "email", "org_id", "full_name", "hashed_password", "is_admin", "role"]
+    user = dict(zip(cols, row))
+    # Normalize role; if the DB column doesn't exist yet (pre-migration),
+    # the SELECT would have errored — so reaching here means role is present.
+    user["role"] = _role_from_row(user.get("role"), bool(user.get("is_admin")))
+    user["is_admin"] = user["role"] in ADMIN_ROLES
+    return user
 
 
 # ── FastAPI dependency ───────────────────────────────────────────────────────
@@ -128,20 +186,29 @@ def get_current_user(token: Optional[str] = Depends(oauth2_scheme), db: Session 
     try:
         payload = jwt.decode(token, JWT_SECRET_KEY, algorithms=[JWT_ALGORITHM])
         user_id: str = payload.get("sub")
-        org_id: str = payload.get("org_id")
+        token_type = payload.get("type", "access")
         if user_id is None:
+            raise credentials_error
+        if token_type != "access":
+            # Refresh tokens must go to /api/auth/refresh, not be used as auth.
             raise credentials_error
     except JWTError:
         raise credentials_error
 
     row = db.execute(
-        text("SELECT id, email, org_id, full_name, is_admin FROM users WHERE id = :id"),
+        text("SELECT id, email, org_id, full_name, is_admin, role FROM users WHERE id = :id"),
         {"id": user_id},
     ).fetchone()
     if not row:
         raise credentials_error
 
-    return dict(zip(["id", "email", "org_id", "full_name", "is_admin"], row))
+    user = dict(zip(["id", "email", "org_id", "full_name", "is_admin", "role"], row))
+    # role is fresh from DB (revocation + promotion take effect next request,
+    # not at token expiry). is_admin derived for back-compat with older call
+    # sites that still read user["is_admin"].
+    user["role"] = _role_from_row(user.get("role"), bool(user.get("is_admin")))
+    user["is_admin"] = user["role"] in ADMIN_ROLES
+    return user
 
 
 def verify_org_access(org_id: str, current_user: dict) -> None:
@@ -151,6 +218,22 @@ def verify_org_access(org_id: str, current_user: dict) -> None:
     """
     if current_user["org_id"] != org_id and not current_user.get("is_admin"):
         raise HTTPException(status_code=403, detail="Access denied to this organization")
+
+
+# ── Role-gated dependencies ─────────────────────────────────────────────────
+
+def require_admin_dep(current_user: dict = Depends(get_current_user)) -> dict:
+    """FastAPI dependency: 403 unless user is SUPERADMIN or ADMIN."""
+    if not is_admin_role(current_user):
+        raise HTTPException(status_code=403, detail="Admin access required")
+    return current_user
+
+
+def require_superadmin_dep(current_user: dict = Depends(get_current_user)) -> dict:
+    """FastAPI dependency: 403 unless user is SUPERADMIN."""
+    if not is_superadmin(current_user):
+        raise HTTPException(status_code=403, detail="Superadmin access required")
+    return current_user
 
 
 # ── Routes ───────────────────────────────────────────────────────────────────
@@ -203,16 +286,23 @@ def login(form_data: OAuth2PasswordRequestForm = Depends(), db: Session = Depend
             headers={"WWW-Authenticate": "Bearer"},
         )
 
-    token = create_access_token({"sub": user["id"], "org_id": user["org_id"]})
+    token = create_access_token({
+        "sub": user["id"],
+        "org_id": user["org_id"],
+        "role": user["role"],
+    })
+    refresh = create_refresh_token(user["id"])
     return Token(
         access_token=token,
         token_type="bearer",
+        refresh_token=refresh,
         user=UserOut(
             id=user["id"],
             email=user["email"],
             org_id=user["org_id"],
             full_name=user["full_name"],
             is_admin=user["is_admin"],
+            role=user["role"],
         ),
     )
 
@@ -220,7 +310,43 @@ def login(form_data: OAuth2PasswordRequestForm = Depends(), db: Session = Depend
 @router.get("/me", response_model=UserOut)
 def get_me(current_user: dict = Depends(get_current_user)):
     """Return the currently authenticated user."""
-    return UserOut(**{k: current_user[k] for k in UserOut.model_fields})
+    return UserOut(**{k: current_user.get(k) for k in UserOut.model_fields})
+
+
+@router.post("/refresh", response_model=RefreshResponse)
+def refresh(req: RefreshRequest, db: Session = Depends(get_db)):
+    """Exchange a valid refresh token for a new access token.
+
+    Stateless: refresh tokens aren't stored server-side. Revocation works
+    because role + org are re-read from the DB here — a disabled user
+    can't get a new access token.
+    """
+    credentials_error = HTTPException(
+        status_code=status.HTTP_401_UNAUTHORIZED,
+        detail="Invalid or expired refresh token",
+        headers={"WWW-Authenticate": "Bearer"},
+    )
+    try:
+        payload = jwt.decode(req.refresh_token, JWT_SECRET_KEY, algorithms=[JWT_ALGORITHM])
+    except JWTError:
+        raise credentials_error
+    if payload.get("type") != "refresh":
+        raise credentials_error
+    user_id = payload.get("sub")
+    if not user_id:
+        raise credentials_error
+
+    row = db.execute(
+        text("SELECT id, org_id, is_admin, role FROM users WHERE id = :id"),
+        {"id": user_id},
+    ).fetchone()
+    if not row:
+        raise credentials_error
+
+    uid, org_id, is_admin_val, role_val = row
+    role = _role_from_row(role_val, bool(is_admin_val))
+    token = create_access_token({"sub": uid, "org_id": org_id, "role": role})
+    return RefreshResponse(access_token=token, token_type="bearer")
 
 
 # ── OAuth ───────────────────────────────────────────────────────────────────
@@ -291,13 +417,16 @@ def oauth_login(req: OAuthTokenRequest, db: Session = Depends(get_db)):
         })
         db.commit()
         user = {"id": user_id, "email": email, "org_id": DEFAULT_ORG_ID,
-                "full_name": full_name, "is_admin": False}
+                "full_name": full_name, "is_admin": False, "role": ROLE_MEMBER}
 
-    token = create_access_token({"sub": user["id"], "org_id": user["org_id"]})
+    user.setdefault("role", ROLE_MEMBER)
+    token = create_access_token({"sub": user["id"], "org_id": user["org_id"], "role": user["role"]})
+    refresh_token = create_refresh_token(user["id"])
     return Token(
-        access_token=token, token_type="bearer",
+        access_token=token, token_type="bearer", refresh_token=refresh_token,
         user=UserOut(id=user["id"], email=user["email"], org_id=user["org_id"],
-                     full_name=user["full_name"], is_admin=user["is_admin"]),
+                     full_name=user["full_name"], is_admin=user["is_admin"],
+                     role=user["role"]),
     )
 
 
@@ -320,7 +449,8 @@ def _find_or_create_oauth_user(db: Session, email: str, full_name: str) -> dict:
                "full_name": full_name, "hashed_password": dummy_pw})
         db.commit()
         user = {"id": user_id, "email": email, "org_id": DEFAULT_ORG_ID,
-                "full_name": full_name, "is_admin": False}
+                "full_name": full_name, "is_admin": False, "role": ROLE_MEMBER}
+    user.setdefault("role", ROLE_MEMBER)
     return user
 
 
@@ -362,7 +492,7 @@ def google_callback(code: str, db: Session = Depends(get_db)):
     info = info_resp.json()
 
     user = _find_or_create_oauth_user(db, info["email"], info.get("name", info["email"].split("@")[0]))
-    jwt_token = create_access_token({"sub": user["id"], "org_id": user["org_id"]})
+    jwt_token = create_access_token({"sub": user["id"], "org_id": user["org_id"], "role": user.get("role", "MEMBER")})
     return RedirectResponse(f"{BASE_URL}/login?token={jwt_token}")
 
 
@@ -410,5 +540,5 @@ def microsoft_callback(code: str, db: Session = Depends(get_db)):
     full_name = info.get("displayName", email.split("@")[0])
 
     user = _find_or_create_oauth_user(db, email, full_name)
-    jwt_token = create_access_token({"sub": user["id"], "org_id": user["org_id"]})
+    jwt_token = create_access_token({"sub": user["id"], "org_id": user["org_id"], "role": user.get("role", "MEMBER")})
     return RedirectResponse(f"{BASE_URL}/login?token={jwt_token}")
