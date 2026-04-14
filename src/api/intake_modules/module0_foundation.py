@@ -306,6 +306,31 @@ QUESTIONS = [
         control_ids=["AU.L2-3.3.1", "AU.L2-3.3.2", "AU.L2-3.3.5", "SI.L2-3.14.6", "SI.L2-3.14.7"],
         control_id="AU.L2-3.3.1",
     ),
+    IntakeQuestion(
+        id="m0_training_tool",
+        text="What security awareness training platform does your organization use?",
+        question_type=QuestionType.MULTIPLE_CHOICE,
+        tier=QuestionTier.SCREENING,
+        section=SECTION_TECH,
+        required=True,
+        help_text=(
+            "Security awareness training is required under AT.L2-3.2.1 / 3.2.2. "
+            "This platform delivers new-hire and annual refreshers plus phishing drills."
+        ),
+        options=[
+            "KnowBe4",
+            "Proofpoint Security Awareness",
+            "Cofense PhishMe",
+            "SANS Security Awareness",
+            "Infosec IQ",
+            "Ninjio",
+            "Microsoft Security Awareness (built-in)",
+            "Other",
+            "None",
+        ],
+        control_ids=["AT.L2-3.2.1", "AT.L2-3.2.2", "AT.L2-3.2.3"],
+        control_id="AT.L2-3.2.1",
+    ),
 
     # ── Existing Compliance ──────────────────────────────────────────────
     IntakeQuestion(

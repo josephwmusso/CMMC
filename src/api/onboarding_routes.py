@@ -331,6 +331,7 @@ def complete_onboarding(
         save("m0_edr", req.tech_stack.edr_tool, atype="multiple_choice")
         save("m0_firewall", req.tech_stack.firewall, atype="multiple_choice")
         save("m0_siem", req.tech_stack.siem, atype="multiple_choice")
+        save("m0_training_tool", req.tech_stack.training_tool, atype="multiple_choice")
 
         # CUI types: multi-choice stored as comma-joined string + raw list in details
         if req.cui_types:

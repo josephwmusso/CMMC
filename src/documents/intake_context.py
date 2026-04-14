@@ -47,6 +47,7 @@ M0_TO_CONTEXT = {
     "m0_edr":                "edr_tool",
     "m0_firewall":           "firewall",
     "m0_siem":               "siem",
+    "m0_training_tool":      "training_tool",
     "m0_existing_docs":      "existing_docs",
 }
 
@@ -216,6 +217,8 @@ def _map_module0_to_profile(answers: dict, profile: dict) -> dict:
             ctx["siem"] = profile["siem_product"]
         if profile.get("backup_solution"):
             ctx["backup_tool"] = profile["backup_solution"]
+        if "training_tool" not in ctx and profile.get("training_solution"):
+            ctx["training_tool"] = profile["training_solution"]
         if profile.get("cui_types"):
             types = profile["cui_types"]
             if isinstance(types, list) and types:
