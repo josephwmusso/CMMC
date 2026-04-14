@@ -16,19 +16,18 @@ import json
 import os
 from datetime import datetime, timezone
 
-from fastapi import APIRouter, HTTPException
+from fastapi import APIRouter, Depends, HTTPException
 from fastapi.responses import FileResponse, Response
 from pydantic import BaseModel
 from sqlalchemy import text
 
+from src.api.auth import get_current_user
 from src.db.session import get_session
 from src.documents.generator import DocumentGenerator
 from src.documents.docx_builder import build_docx
 from src.documents.intake_context import get_template_readiness
 
 router = APIRouter(prefix="/api/documents", tags=["documents"])
-
-ORG_ID = "9de53b587b23450b87af"
 
 
 @router.get("/templates")
@@ -58,14 +57,9 @@ async def list_templates():
 
 
 @router.get("/readiness")
-async def documents_readiness():
-    """Per-template readiness based on the current org's intake progress.
-
-    Returns which templates have any source data ("ready") vs. fully
-    answered ("fully_ready"), and the percent completion of each
-    dependent module. Light-weight — no LLM, no DB writes.
-    """
-    return get_template_readiness(ORG_ID)
+async def documents_readiness(current_user: dict = Depends(get_current_user)):
+    """Per-template readiness for the caller's org."""
+    return get_template_readiness(current_user["org_id"])
 
 
 @router.get("/templates/{doc_type}")
@@ -96,9 +90,12 @@ async def get_template(doc_type: str):
 
 
 @router.post("/generate/{doc_type}")
-async def generate_document(doc_type: str):
+async def generate_document(
+    doc_type: str,
+    current_user: dict = Depends(get_current_user),
+):
     """Generate a single document from template + intake answers."""
-    gen = DocumentGenerator(org_id=ORG_ID)
+    gen = DocumentGenerator(org_id=current_user["org_id"])
 
     try:
         template = gen.get_template(doc_type)
@@ -165,8 +162,8 @@ async def generate_document(doc_type: str):
 
 
 @router.get("")
-async def list_generated_documents():
-    """List all generated documents for the org."""
+async def list_generated_documents(current_user: dict = Depends(get_current_user)):
+    """List all generated documents for the caller's org."""
     with get_session() as db:
         rows = db.execute(text("""
             SELECT id, doc_type, title, version, status, word_count,
@@ -174,7 +171,7 @@ async def list_generated_documents():
             FROM generated_documents
             WHERE org_id = :org_id
             ORDER BY created_at DESC
-        """), {"org_id": ORG_ID}).fetchall()
+        """), {"org_id": current_user["org_id"]}).fetchall()
 
     return {
         "documents": [
@@ -190,14 +187,16 @@ async def list_generated_documents():
 
 
 @router.get("/{doc_id}")
-async def get_document(doc_id: str):
-    """Get a generated document with its sections."""
+async def get_document(doc_id: str, current_user: dict = Depends(get_current_user)):
+    """Get a generated document with its sections. Scoped to caller's org
+    so a guessed doc_id from another tenant returns 404."""
     with get_session() as db:
         row = db.execute(text("""
             SELECT id, doc_type, title, version, status, sections_data,
                    word_count, file_path, evidence_artifact_id, created_at
-            FROM generated_documents WHERE id = :did
-        """), {"did": doc_id}).fetchone()
+            FROM generated_documents
+            WHERE id = :did AND org_id = :org_id
+        """), {"did": doc_id, "org_id": current_user["org_id"]}).fetchone()
 
     if not row:
         raise HTTPException(404, "Document not found")
@@ -213,18 +212,22 @@ async def get_document(doc_id: str):
 
 
 @router.get("/{doc_id}/download")
-async def download_document(doc_id: str):
+async def download_document(
+    doc_id: str,
+    current_user: dict = Depends(get_current_user),
+):
     """Download the DOCX file for a generated document.
 
-    Tries Postgres (file_content BYTEA) first — required on Render where
-    the filesystem is wiped on every deploy. Falls back to the filesystem
-    for local dev or pre-backfill rows.
+    Scoped to caller's org so a guessed doc_id from another tenant returns
+    404 instead of leaking a DOCX. DB blob first (survives Render deploys),
+    filesystem fallback for local dev.
     """
     with get_session() as db:
         row = db.execute(text("""
             SELECT file_path, file_content, title
-            FROM generated_documents WHERE id = :did
-        """), {"did": doc_id}).fetchone()
+            FROM generated_documents
+            WHERE id = :did AND org_id = :org_id
+        """), {"did": doc_id, "org_id": current_user["org_id"]}).fetchone()
 
     if not row:
         raise HTTPException(404, "Document not found")
@@ -252,9 +255,10 @@ async def download_document(doc_id: str):
 
 
 @router.post("/generate-all")
-async def generate_all_documents():
+async def generate_all_documents(current_user: dict = Depends(get_current_user)):
     """Generate all applicable documents based on intake answers."""
-    gen = DocumentGenerator(org_id=ORG_ID)
+    org_id = current_user["org_id"]
+    gen = DocumentGenerator(org_id=org_id)
     answers = gen.get_intake_answers()
 
     # Get all templates
@@ -344,7 +348,7 @@ async def generate_all_documents():
 
     # Pull a fresh readiness snapshot so the caller can see which deps are
     # still incomplete — useful for the frontend "regenerate now?" prompt.
-    readiness = get_template_readiness(ORG_ID)
+    readiness = get_template_readiness(org_id)
 
     return {
         "generated": len([r for r in results if "error" not in r]),
@@ -358,7 +362,7 @@ async def generate_all_documents():
 
 
 @router.post("/regenerate-all")
-async def regenerate_all_documents():
+async def regenerate_all_documents(current_user: dict = Depends(get_current_user)):
     """Regenerate every applicable document with the CURRENT intake context.
 
     Functionally identical to POST /generate-all — each run rereads the
@@ -368,4 +372,4 @@ async def regenerate_all_documents():
     includes ``overall_intake_pct`` + ``context_partial`` so the caller
     can warn the user when some modules are still incomplete.
     """
-    return await generate_all_documents()
+    return await generate_all_documents(current_user=current_user)

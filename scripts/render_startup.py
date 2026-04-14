@@ -378,6 +378,7 @@ TABLES_DDL = [
     ("ssp_jobs", """
         CREATE TABLE IF NOT EXISTS ssp_jobs (
             job_id          VARCHAR(20) PRIMARY KEY,
+            org_id          VARCHAR REFERENCES organizations(id),
             status          VARCHAR(20) NOT NULL DEFAULT 'pending',
             progress        TEXT NOT NULL DEFAULT 'Starting...',
             controls_done   INTEGER NOT NULL DEFAULT 0,
@@ -716,6 +717,23 @@ def main():
     except Exception as e:
         conn.rollback()
         logger.warning(f"  users.role migration skipped: {e}")
+
+    # ssp_jobs.org_id — tenant isolation for /api/ssp/status, /cancel, /exports.
+    # Existing rows predate multi-tenancy, so backfill them with the demo org.
+    try:
+        cur.execute("""
+            ALTER TABLE ssp_jobs
+            ADD COLUMN IF NOT EXISTS org_id VARCHAR REFERENCES organizations(id)
+        """)
+        cur.execute(
+            "UPDATE ssp_jobs SET org_id = %s WHERE org_id IS NULL",
+            (DEMO_ORG_ID,),
+        )
+        conn.commit()
+        logger.info("  ssp_jobs.org_id: OK (backfilled NULLs with demo org)")
+    except Exception as e:
+        conn.rollback()
+        logger.warning(f"  ssp_jobs.org_id migration skipped: {e}")
 
     # users.deactivated_at — soft-delete column for 1.6B admin user management.
     try:

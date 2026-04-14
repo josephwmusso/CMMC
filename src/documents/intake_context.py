@@ -32,9 +32,6 @@ from src.db.session import get_session
 # Constants
 # =============================================================================
 
-DEMO_ORG_ID = "9de53b587b23450b87af"
-
-
 # Module 0 question_id -> context field name. Only fields that appear
 # directly in intake_responses; company_profiles columns are handled
 # separately below.

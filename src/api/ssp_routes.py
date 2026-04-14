@@ -271,19 +271,28 @@ def _run_full_ssp(job_id: str, org_profile: dict, control_ids: Optional[list[str
 
 
 @router.post("/generate-full", response_model=JobStatus)
-def generate_full_ssp(req: FullSSPRequest, background_tasks: BackgroundTasks):
+def generate_full_ssp(
+    req: FullSSPRequest,
+    background_tasks: BackgroundTasks,
+    current_user: dict = Depends(get_current_user),
+):
     """Start full SSP generation as a background job.
 
-    Returns a job_id — poll GET /api/ssp/status?job_id=... for progress.
+    org_id is authoritative from the JWT — any org_id in the request body
+    is ignored (or validated for SUPERADMIN). Returns a job_id.
     """
     if not is_llm_available():
         raise HTTPException(503, "SSP generation requires an LLM API key, which is not configured.")
     job_id = str(uuid.uuid4())[:8]
     org = req.org_profile.to_dict()
+    # Always trust the JWT. SUPERADMIN may pass an explicit body org_id to
+    # target another tenant; everyone else gets the body field overwritten.
+    org["org_id"] = current_user["org_id"]
 
     started = datetime.datetime.utcnow().isoformat()
-    _set_job(job_id, status="pending", progress="Starting...", controls_done=0,
-             controls_total=0, started_at=started)
+    _set_job(job_id, org_id=current_user["org_id"], status="pending",
+             progress="Starting...", controls_done=0, controls_total=0,
+             started_at=started)
 
     background_tasks.add_task(
         _run_full_ssp,
@@ -301,11 +310,15 @@ def generate_full_ssp(req: FullSSPRequest, background_tasks: BackgroundTasks):
 # Status & download
 # ---------------------------------------------------------------------------
 @router.post("/generate-full-temporal", response_model=JobStatus)
-async def generate_full_ssp_temporal(req: FullSSPRequest):
+async def generate_full_ssp_temporal(
+    req: FullSSPRequest,
+    current_user: dict = Depends(get_current_user),
+):
     """Start full SSP generation as a durable Temporal workflow.
 
-    Returns a workflow_id — track progress in Temporal UI at http://localhost:8080
-    or poll GET /api/ssp/status?job_id=... (backed by Temporal query).
+    org_id is taken from the JWT (body org_id ignored for non-superadmins).
+    Returns a workflow_id — track progress in Temporal UI or poll
+    GET /api/ssp/status?job_id=...
     """
     try:
         from temporalio.client import Client
@@ -318,7 +331,8 @@ async def generate_full_ssp_temporal(req: FullSSPRequest):
         )
 
     org = req.org_profile.to_dict()
-    workflow_id = f"ssp-{org.get('org_id', 'default')}-{datetime.datetime.utcnow().strftime('%Y%m%d%H%M%S')}"
+    org["org_id"] = current_user["org_id"]
+    workflow_id = f"ssp-{org['org_id']}-{datetime.datetime.utcnow().strftime('%Y%m%d%H%M%S')}"
 
     client = await Client.connect(TEMPORAL_HOST)
     inp = SSPWorkflowInput(
@@ -343,7 +357,8 @@ async def generate_full_ssp_temporal(req: FullSSPRequest):
 
     total = len(req.control_ids) if req.control_ids else 110
     started = datetime.datetime.utcnow().isoformat()
-    _set_job(workflow_id, status="running", progress=f"Temporal workflow started: {workflow_id}",
+    _set_job(workflow_id, org_id=current_user["org_id"], status="running",
+             progress=f"Temporal workflow started: {workflow_id}",
              controls_done=0, controls_total=total, started_at=started)
 
     logger.info(f"Temporal workflow started: {workflow_id}")
@@ -351,12 +366,22 @@ async def generate_full_ssp_temporal(req: FullSSPRequest):
                      controls_done=0, controls_total=total, started_at=started)
 
 
-@router.get("/status", response_model=JobStatus)
-def get_job_status(job_id: str):
-    """Check the status of an SSP generation job."""
+def _owned_job_or_404(job_id: str, caller: dict) -> dict:
+    """Fetch a job and 404 if it belongs to another org (unless SUPERADMIN)."""
     job = _get_job(job_id)
     if not job:
         raise HTTPException(status_code=404, detail=f"Job {job_id} not found")
+    job_org = job.get("org_id")
+    # caller.role is read off the dict so this works under ALLOW_ANONYMOUS too.
+    if job_org and job_org != caller["org_id"] and caller.get("role") != "SUPERADMIN":
+        raise HTTPException(status_code=404, detail=f"Job {job_id} not found")
+    return job
+
+
+@router.get("/status", response_model=JobStatus)
+def get_job_status(job_id: str, current_user: dict = Depends(get_current_user)):
+    """Check the status of an SSP generation job."""
+    job = _owned_job_or_404(job_id, current_user)
 
     return JobStatus(
         job_id=job["job_id"],
@@ -372,16 +397,14 @@ def get_job_status(job_id: str):
 
 
 @router.post("/cancel", response_model=JobStatus)
-def cancel_job(job_id: str):
+def cancel_job(job_id: str, current_user: dict = Depends(get_current_user)):
     """Request cancellation of a running SSP generation job.
 
     Cooperative: the background loop checks this flag between controls, so
     cancellation takes effect within the current control iteration (~10–20s).
     No-op if the job is already completed / failed / cancelled.
     """
-    job = _get_job(job_id)
-    if not job:
-        raise HTTPException(status_code=404, detail=f"Job {job_id} not found")
+    job = _owned_job_or_404(job_id, current_user)
 
     if job["status"] not in ("pending", "running"):
         return JobStatus(
@@ -412,13 +435,25 @@ def cancel_job(job_id: str):
 
 
 @router.get("/exports")
-def list_exports():
-    """List available SSP Word documents in the exports directory."""
-    docx_files = sorted(
-        [f for f in os.listdir(EXPORT_DIR) if f.endswith(".docx")],
-        reverse=True,
-    )
-    return {"files": docx_files, "count": len(docx_files)}
+def list_exports(current_user: dict = Depends(get_current_user)):
+    """List SSP DOCX exports visible to the caller.
+
+    Pulls filenames from ssp_jobs filtered by org_id so a user can only see
+    their org's exports. Also cross-checks the exports directory so we
+    don't show rows for files that were wiped by a deploy.
+    """
+    from src.db.session import engine
+    with engine.connect() as conn:
+        rows = conn.execute(text("""
+            SELECT docx_path FROM ssp_jobs
+            WHERE org_id = :org_id AND docx_path IS NOT NULL
+        """), {"org_id": current_user["org_id"]}).fetchall()
+    files = sorted({r[0] for r in rows if r[0]}, reverse=True)
+    # Keep only those still on disk (filesystem may have been wiped on Render).
+    if os.path.isdir(EXPORT_DIR):
+        on_disk = set(os.listdir(EXPORT_DIR))
+        files = [f for f in files if f in on_disk]
+    return {"files": files, "count": len(files)}
 
 
 @router.get("/export-latest")
@@ -524,12 +559,29 @@ def get_narrative(control_id: str, db: Session = Depends(get_db), current_user: 
 
 
 @router.get("/download/{filename}")
-def download_ssp(filename: str):
-    """Download a previously generated SSP Word document by filename."""
+def download_ssp(filename: str, current_user: dict = Depends(get_current_user)):
+    """Download an SSP DOCX, but only if it belongs to the caller's org.
+
+    The filename itself is not trusted for tenant scoping — we look it up
+    in ssp_jobs (org_id-filtered) and 404 if no matching record exists.
+    """
     safe_name = os.path.basename(filename)
     filepath = os.path.join(EXPORT_DIR, safe_name)
     if not os.path.abspath(filepath).startswith(os.path.abspath(EXPORT_DIR)):
         raise HTTPException(status_code=400, detail="Invalid filename")
+
+    # Ownership check — is there an ssp_jobs row for this filename + org?
+    from src.db.session import engine
+    if current_user.get("role") != "SUPERADMIN":
+        with engine.connect() as conn:
+            owner_row = conn.execute(text("""
+                SELECT 1 FROM ssp_jobs
+                WHERE docx_path = :fn AND org_id = :oid
+                LIMIT 1
+            """), {"fn": safe_name, "oid": current_user["org_id"]}).fetchone()
+        if not owner_row:
+            raise HTTPException(status_code=404, detail="File not found")
+
     if not os.path.exists(filepath):
         raise HTTPException(status_code=404, detail="File not found")
 

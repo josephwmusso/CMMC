@@ -23,10 +23,11 @@ import re
 from datetime import datetime, timezone
 from typing import Optional
 
-from fastapi import APIRouter, HTTPException
+from fastapi import APIRouter, Depends, HTTPException
 from pydantic import BaseModel
 from sqlalchemy import bindparam, text
 
+from src.api.auth import get_current_user, is_superadmin
 from src.db.session import get_session
 from src.api.intake_modules import (
     find_question,
@@ -39,15 +40,16 @@ from src.documents.generator import DOC_TYPE_TO_FRIENDLY
 
 router = APIRouter(prefix="/api/intake", tags=["intake"])
 
-ORG_ID = "9de53b587b23450b87af"  # Dev org
-
 
 # =============================================================================
 # Request / Response models
 # =============================================================================
 
 class StartSessionRequest(BaseModel):
-    org_id: str = ORG_ID
+    # Client may not override org — authoritative source is the JWT.
+    # Field is kept for backward compat but ignored in the handler unless
+    # the caller is SUPERADMIN.
+    org_id: Optional[str] = None
 
 
 class AnswerRequest(BaseModel):
@@ -64,7 +66,9 @@ class BatchAnswerRequest(BaseModel):
 
 
 class CompanyProfileRequest(BaseModel):
-    org_id: str = ORG_ID
+    # org_id is filled from the JWT in the handler; retained as an optional
+    # field so SUPERADMIN can explicitly target a different org.
+    org_id: Optional[str] = None
     company_name: str
     cage_code: Optional[str] = None
     duns_number: Optional[str] = None
@@ -93,6 +97,29 @@ class CompanyProfileRequest(BaseModel):
 # =============================================================================
 
 _QID_PREFIX_RE = re.compile(r"^m(\d+)_")
+
+
+def _resolve_org(req_org_id: Optional[str], caller: dict) -> str:
+    """Decide which org an intake write targets.
+
+    - Regular users: always their JWT org, request body override is ignored.
+    - SUPERADMIN: may override via request body to support admin tooling.
+    """
+    if req_org_id and is_superadmin(caller):
+        return req_org_id
+    return caller["org_id"]
+
+
+def _session_belongs_to(db, session_id: str, caller: dict) -> bool:
+    """True iff the session exists AND belongs to caller's org
+    (or caller is SUPERADMIN)."""
+    row = db.execute(
+        text("SELECT org_id FROM intake_sessions WHERE id = :sid"),
+        {"sid": session_id},
+    ).fetchone()
+    if not row:
+        return False
+    return is_superadmin(caller) or row[0] == caller["org_id"]
 
 
 def _lookup_tier(question_id: str) -> str:
@@ -125,11 +152,16 @@ def _lookup_tier(question_id: str) -> str:
 # =============================================================================
 
 @router.post("/sessions")
-async def start_session(req: StartSessionRequest):
-    """Start a new intake session for an organization."""
+async def start_session(
+    req: StartSessionRequest,
+    current_user: dict = Depends(get_current_user),
+):
+    """Start a new intake session. Always scoped to the caller's JWT org
+    (SUPERADMIN may override via request body)."""
+    org_id = _resolve_org(req.org_id, current_user)
     now = datetime.now(timezone.utc)
     session_id = hashlib.sha256(
-        f"{req.org_id}:{now.isoformat()}".encode()
+        f"{org_id}:{now.isoformat()}".encode()
     ).hexdigest()[:20]
 
     with get_session() as db:
@@ -137,16 +169,21 @@ async def start_session(req: StartSessionRequest):
             INSERT INTO intake_sessions (id, org_id, started_at, updated_at, current_module, status)
             VALUES (:id, :org_id, :now, :now, 0, 'in_progress')
             ON CONFLICT (id) DO NOTHING
-        """), {"id": session_id, "org_id": req.org_id, "now": now.isoformat()})
+        """), {"id": session_id, "org_id": org_id, "now": now.isoformat()})
         db.commit()
 
-    return {"session_id": session_id, "org_id": req.org_id, "current_module": 0}
+    return {"session_id": session_id, "org_id": org_id, "current_module": 0}
 
 
 @router.get("/sessions/{session_id}")
-async def get_session_status(session_id: str):
-    """Get session progress."""
+async def get_session_status(
+    session_id: str,
+    current_user: dict = Depends(get_current_user),
+):
+    """Get session progress. 404 if session is not in caller's org."""
     with get_session() as db:
+        if not _session_belongs_to(db, session_id, current_user):
+            raise HTTPException(404, "Session not found")
         row = db.execute(text("""
             SELECT id, org_id, current_module, status, modules_completed,
                    total_questions, answered_questions, gap_count, estimated_sprs,
@@ -175,7 +212,10 @@ async def get_session_status(session_id: str):
 
 
 @router.get("/sessions/{session_id}/progress")
-async def get_session_progress(session_id: str):
+async def get_session_progress(
+    session_id: str,
+    current_user: dict = Depends(get_current_user),
+):
     """Per-module progress + doc readiness + outdated-doc detection.
 
     Readiness is org-scoped (not session-scoped): templates apply to the
@@ -194,7 +234,11 @@ async def get_session_progress(session_id: str):
             text("SELECT org_id FROM intake_sessions WHERE id = :sid"),
             {"sid": session_id},
         ).fetchone()
-        org_id = session_row[0] if session_row else None
+        if not session_row:
+            raise HTTPException(404, "Session not found")
+        if session_row[0] != current_user["org_id"] and not is_superadmin(current_user):
+            raise HTTPException(404, "Session not found")
+        org_id = session_row[0]
 
         for mod in get_all_modules():
             q_ids = [q.id for q in mod.questions]
@@ -290,8 +334,15 @@ async def get_session_progress(session_id: str):
 
 
 @router.get("/sessions/{session_id}/module/{module_number}")
-async def get_module_questions(session_id: str, module_number: int):
+async def get_module_questions(
+    session_id: str,
+    module_number: int,
+    current_user: dict = Depends(get_current_user),
+):
     """Get questions for a module, each annotated with the session's saved answer."""
+    with get_session() as _db_check:
+        if not _session_belongs_to(_db_check, session_id, current_user):
+            raise HTTPException(404, "Session not found")
     mod = get_module(module_number)
     if mod is None:
         return {
@@ -338,7 +389,11 @@ async def get_module_questions(session_id: str, module_number: int):
 # =============================================================================
 
 @router.post("/sessions/{session_id}/responses")
-async def save_responses(session_id: str, req: BatchAnswerRequest):
+async def save_responses(
+    session_id: str,
+    req: BatchAnswerRequest,
+    current_user: dict = Depends(get_current_user),
+):
     """Save one or more questionnaire answers."""
     now = datetime.now(timezone.utc)
     saved = 0
@@ -349,6 +404,8 @@ async def save_responses(session_id: str, req: BatchAnswerRequest):
             "SELECT org_id FROM intake_sessions WHERE id = :id"
         ), {"id": session_id}).fetchone()
         if not session_row:
+            raise HTTPException(404, "Session not found")
+        if session_row[0] != current_user["org_id"] and not is_superadmin(current_user):
             raise HTTPException(404, "Session not found")
 
         org_id = session_row[0]
@@ -473,11 +530,19 @@ async def save_responses(session_id: str, req: BatchAnswerRequest):
 # =============================================================================
 
 @router.post("/company-profile")
-async def save_company_profile(req: CompanyProfileRequest):
-    """Save or update the company profile (Module 0 structured output)."""
+async def save_company_profile(
+    req: CompanyProfileRequest,
+    current_user: dict = Depends(get_current_user),
+):
+    """Save or update the company profile (Module 0 structured output).
+
+    org_id is resolved from the caller's JWT; SUPERADMIN may target another
+    org by including ``org_id`` in the request body.
+    """
+    org_id = _resolve_org(req.org_id, current_user)
     now = datetime.now(timezone.utc)
     profile_id = hashlib.sha256(
-        f"profile:{req.org_id}".encode()
+        f"profile:{org_id}".encode()
     ).hexdigest()[:20]
 
     with get_session() as db:
@@ -510,7 +575,7 @@ async def save_company_profile(req: CompanyProfileRequest):
                 prior_assessment = :prior, dfars_7012_clause = :dfars,
                 updated_at = :now
         """), {
-            "id": profile_id, "org_id": req.org_id,
+            "id": profile_id, "org_id": org_id,
             "name": req.company_name, "cage": req.cage_code, "duns": req.duns_number,
             "emp": req.employee_count, "fac": req.facility_count, "loc": req.primary_location,
             "cui_types": json.dumps(req.cui_types), "cui_flow": req.cui_flow,
@@ -525,12 +590,18 @@ async def save_company_profile(req: CompanyProfileRequest):
         })
         db.commit()
 
-    return {"profile_id": profile_id, "org_id": req.org_id, "status": "saved"}
+    return {"profile_id": profile_id, "org_id": org_id, "status": "saved"}
 
 
 @router.get("/company-profile/{org_id}")
-async def get_company_profile(org_id: str):
-    """Get the saved company profile."""
+async def get_company_profile(
+    org_id: str,
+    current_user: dict = Depends(get_current_user),
+):
+    """Get the saved company profile. Path org_id must match the caller's
+    JWT org (or caller must be SUPERADMIN) — prevents scanning profiles."""
+    if org_id != current_user["org_id"] and not is_superadmin(current_user):
+        raise HTTPException(404, "Company profile not found")
     with get_session() as db:
         row = db.execute(text("""
             SELECT * FROM company_profiles WHERE org_id = :org_id
