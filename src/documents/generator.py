@@ -19,8 +19,24 @@ from sqlalchemy import text
 from src.agents.llm_client import get_llm
 from src.agents.ssp_prompts_v2 import DEMO_ORG_PROFILE, format_org_context
 from src.db.session import get_session
+from src.documents.intake_context import (
+    FAMILY_BUCKET,
+    get_intake_context,
+)
 
 ORG_ID = "9de53b587b23450b87af"
+
+# Maps DB doc_type -> the friendly keys used by intake_context.TEMPLATE_MODULE_DEPS.
+# Lets the generator look up module dependencies / readiness per doc_type.
+DOC_TYPE_TO_FRIENDLY = {
+    "integrated_security_policy":    "policy_manual",
+    "incident_response_plan":        "ir_plan",
+    "config_management_plan":        "cm_plan",
+    "risk_assessment_report":        "risk_assessment",
+    "training_program":              "training_program",
+    "scope_package":                 "scope_package",
+    "shared_responsibility_matrix":  "crm",
+}
 
 
 # =============================================================================
@@ -174,6 +190,81 @@ This section should describe how {company_name} implements the requirements rela
 Write 2-4 paragraphs of assessor-grade content."""
 
 
+# =============================================================================
+# Intake-context formatters (shared between variable + ai_narrative sections)
+# =============================================================================
+
+def _format_org_context_from_intake(ctx: dict) -> str:
+    """Render an org-context block for LLM prompts using the intake context.
+
+    Mirrors src.agents.ssp_prompts_v2.format_org_context but pulls from the
+    dict produced by src.documents.intake_context.get_intake_context —
+    i.e. the actual answers rather than DEMO_ORG_PROFILE.
+    """
+    lines = [
+        f"Organization: {ctx.get('org_name')}",
+        f"Location: {ctx.get('org_location')}",
+        f"Employee count: {ctx.get('employee_count')}",
+        f"Physical locations: {ctx.get('physical_locations', 1)}",
+        f"CUI types handled: {ctx.get('cui_types') or 'Not specified'}",
+        f"CUI flow: {ctx.get('cui_flow') or 'Not specified'}",
+        "",
+        "Technology Stack:",
+        f"  - Identity provider: {ctx.get('identity_provider')}",
+        f"  - Email platform: {ctx.get('email_platform')}",
+        f"  - Endpoint protection (EDR): {ctx.get('edr_tool')}",
+        f"  - Firewall: {ctx.get('firewall')}",
+        f"  - SIEM: {ctx.get('siem')}",
+        f"  - Backup: {ctx.get('backup_tool')}",
+        f"  - Security awareness training: {ctx.get('training_tool')}",
+    ]
+    if ctx.get("msp_provider"):
+        lines.append(f"  - Managed service provider: {ctx['msp_provider']}")
+    lines.extend([
+        "",
+        f"MFA scope: {ctx.get('mfa_scope')}",
+        f"FIPS scope: {ctx.get('fips_scope')}",
+        "",
+        f"Overall CMMC implementation posture: {ctx.get('implementation_summary')}",
+    ])
+    return "\n".join(str(line) for line in lines)
+
+
+def _family_statuses_for_section(section: dict, ctx: dict) -> str:
+    """Return a readable summary of the control-status answers for the
+    families this section covers. Sections may declare `family` (single
+    or "A+B") or only `control_ids` — in the latter case we derive the
+    family set from the control IDs."""
+    families: set[str] = set()
+    fam_field = section.get("family") or ""
+    if fam_field:
+        for part in str(fam_field).split("+"):
+            part = part.strip()
+            if part:
+                families.add(part)
+    for cid in section.get("control_ids", []):
+        prefix = str(cid).split(".", 1)[0]
+        if prefix in FAMILY_BUCKET:
+            families.add(prefix)
+
+    if not families:
+        return ""
+
+    lines: list[str] = []
+    for fam in sorted(families):
+        bucket_name = FAMILY_BUCKET.get(fam)
+        if not bucket_name:
+            continue
+        bucket = ctx.get(bucket_name) or {}
+        if not bucket:
+            lines.append(f"{fam}: no control statuses answered yet.")
+            continue
+        lines.append(f"{fam} ({len(bucket)} answered):")
+        for cid in sorted(bucket):
+            lines.append(f"  - {cid}: {bucket[cid]}")
+    return "\n".join(lines)
+
+
 class DocumentGenerator:
     """Generates compliance documents from templates + intake answers + LLM."""
 
@@ -267,8 +358,15 @@ class DocumentGenerator:
         template: dict,
         answers: dict,
         company_name: str,
+        ctx: Optional[dict] = None,
     ) -> str:
-        """Generate content for a single section based on its type."""
+        """Generate content for a single section based on its type.
+
+        When ``ctx`` (the intake context dict) is provided, AI-narrative
+        prompts use real org data and the section's family control
+        statuses; variable sections get an extra org-summary lead-in.
+        Falls back cleanly to the old behaviour if ``ctx`` is None.
+        """
         section_type = section.get("type", "boilerplate")
         section_id = section.get("id", "")
         section_title = section.get("title", "Untitled")
@@ -298,11 +396,19 @@ class DocumentGenerator:
             control_ids = section.get("control_ids", [])
             controls_text = ", ".join(control_ids) if control_ids else "General organizational policy"
 
+            if ctx is not None:
+                org_context = _format_org_context_from_intake(ctx)
+                family_block = _family_statuses_for_section(section, ctx)
+                if family_block:
+                    intake_context = f"{intake_context}\n\nControl-family status for this section:\n{family_block}"
+            else:
+                org_context = format_org_context(self.org_profile)
+
             user_prompt = DOC_SECTION_USER_PROMPT.format(
                 section_title=section_title,
                 company_name=company_name,
                 document_title=template["title"],
-                org_context=format_org_context(self.org_profile),
+                org_context=org_context,
                 intake_context=intake_context,
                 controls_context=controls_text,
             )
@@ -329,28 +435,52 @@ class DocumentGenerator:
         template = self.get_template(doc_type)
         answers = self.get_intake_answers()
         profile = self.get_company_profile()
-        company_name = profile.get("company_name") or self.org_profile.get("name", "Organization")
 
-        # Merge profile answers into the answers dict for lookup
+        # Pull the full intake context. Everything the sections need lives
+        # here — profile, tool stack, per-family control statuses, MFA/FIPS
+        # scope, implementation summary, and readiness flags.
+        ctx = get_intake_context(self.org_id)
+
+        # Prefer intake-derived org_name, then company_profiles, then profile kwarg.
+        company_name = (
+            ctx.get("org_name")
+            or profile.get("company_name")
+            or self.org_profile.get("name")
+            or "Organization"
+        )
+        # Don't let the DEFAULTS placeholder bleed into the doc title lines.
+        if company_name == "Organization Name":
+            company_name = profile.get("company_name") or self.org_profile.get("name") or "Organization"
+
+        # Merge profile answers into the answers dict for lookup so variable
+        # sections that key off m0_* IDs work even when the user hasn't yet
+        # answered the intake question directly.
         profile_to_answer = {
-            "m0_company_name": profile.get("company_name", ""),
-            "m0_employee_count": str(profile.get("employee_count", "")),
-            "m0_primary_location": profile.get("primary_location", ""),
+            "m0_company_name":      profile.get("company_name", ""),
+            "m0_employee_count":    str(profile.get("employee_count", "")),
+            "m0_primary_location":  profile.get("primary_location", ""),
             "m0_identity_provider": profile.get("identity_provider", ""),
-            "m0_email_platform": profile.get("email_platform", ""),
-            "m0_edr": profile.get("edr_product", ""),
-            "m0_firewall": profile.get("firewall_product", ""),
-            "m0_siem": profile.get("siem_product", ""),
-            "m0_cui_types": str(profile.get("cui_types", "")),
-            "m0_cui_flow": profile.get("cui_flow", ""),
+            "m0_email_platform":    profile.get("email_platform", ""),
+            "m0_edr":               profile.get("edr_product", ""),
+            "m0_firewall":          profile.get("firewall_product", ""),
+            "m0_siem":              profile.get("siem_product", ""),
+            "m0_cui_types":         str(profile.get("cui_types", "")),
+            "m0_cui_flow":          profile.get("cui_flow", ""),
         }
         for k, v in profile_to_answer.items():
             if v and k not in answers:
                 answers[k] = v
 
+        # Flag partial-context generations so the caller (and logs) know.
+        friendly_key = DOC_TYPE_TO_FRIENDLY.get(doc_type)
+        readiness_detail = ctx.get("templates_readiness_detail") or {}
+        tmpl_ready = readiness_detail.get(friendly_key, {}) if friendly_key else {}
+        context_partial = bool(tmpl_ready) and not tmpl_ready.get("fully_ready", False)
+
         print(f"\nGenerating: {template['title']}")
         print(f"  Company: {company_name}")
         print(f"  Sections: {len(template['sections'])}")
+        print(f"  Intake: overall={ctx.get('overall_intake_pct', 0)}% partial={context_partial}")
 
         generated_sections = []
         total_words = 0
@@ -359,7 +489,7 @@ class DocumentGenerator:
             section_title = section.get("title", "Untitled")
             print(f"  [{section.get('type', '?')}] {section_title}...", end=" ", flush=True)
 
-            content = self.generate_section_content(section, template, answers, company_name)
+            content = self.generate_section_content(section, template, answers, company_name, ctx=ctx)
             word_count = len(content.split())
             total_words += word_count
 
@@ -373,7 +503,7 @@ class DocumentGenerator:
 
             # Handle subsections
             for subsec in section.get("subsections", []):
-                sub_content = self.generate_section_content(subsec, template, answers, company_name)
+                sub_content = self.generate_section_content(subsec, template, answers, company_name, ctx=ctx)
                 sub_words = len(sub_content.split())
                 total_words += sub_words
                 generated_sections.append({
@@ -433,6 +563,8 @@ class DocumentGenerator:
             "doc_type": doc_type,
             "sections": generated_sections,
             "word_count": total_words,
+            "context_partial": context_partial,
+            "overall_intake_pct": ctx.get("overall_intake_pct", 0),
         }
 
     def create_evidence_artifact(self, doc_id: str, doc_type: str, title: str, file_path: str, control_ids: list[str]) -> str:

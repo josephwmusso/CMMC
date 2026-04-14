@@ -159,6 +159,8 @@ async def generate_document(doc_type: str):
         "evidence_artifact_id": artifact_id,
         "status": "draft",
         "message": "Document generated. Review and approve before publishing as evidence.",
+        "context_partial": result.get("context_partial", False),
+        "overall_intake_pct": result.get("overall_intake_pct", 0),
     }
 
 
@@ -335,9 +337,14 @@ async def generate_all_documents():
                 "doc_id": result["doc_id"],
                 "word_count": result["word_count"],
                 "evidence_artifact_id": artifact_id,
+                "context_partial": result.get("context_partial", False),
             })
         except Exception as e:
             results.append({"doc_type": doc_type, "error": str(e)})
+
+    # Pull a fresh readiness snapshot so the caller can see which deps are
+    # still incomplete — useful for the frontend "regenerate now?" prompt.
+    readiness = get_template_readiness(ORG_ID)
 
     return {
         "generated": len([r for r in results if "error" not in r]),
@@ -345,4 +352,20 @@ async def generate_all_documents():
         "skipped": len(skipped),
         "results": results,
         "skipped_details": skipped,
+        "overall_intake_pct": readiness.get("overall_intake_pct", 0),
+        "context_partial": any(r.get("context_partial") for r in results),
     }
+
+
+@router.post("/regenerate-all")
+async def regenerate_all_documents():
+    """Regenerate every applicable document with the CURRENT intake context.
+
+    Functionally identical to POST /generate-all — each run rereads the
+    intake_responses + company_profiles tables, so invoking this endpoint
+    after the user updates their intake answers produces fresh DOCX bytes
+    and evidence artifacts. The response shape matches /generate-all and
+    includes ``overall_intake_pct`` + ``context_partial`` so the caller
+    can warn the user when some modules are still incomplete.
+    """
+    return await generate_all_documents()
