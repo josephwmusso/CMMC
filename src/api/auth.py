@@ -63,8 +63,12 @@ DEV_USER = {
 class UserCreate(BaseModel):
     email: str
     password: str
-    org_id: str
+    # org_id is optional now: when an invite_code is provided the invite
+    # supplies the org; when ALLOW_ANONYMOUS=true the demo org is used;
+    # legacy callers that pass org_id explicitly still work.
+    org_id: Optional[str] = None
     full_name: str = ""
+    invite_code: Optional[str] = None
 
 
 class UserOut(BaseModel):
@@ -240,38 +244,90 @@ def require_superadmin_dep(current_user: dict = Depends(get_current_user)) -> di
 
 @router.post("/register", response_model=UserOut)
 def register(user_in: UserCreate, db: Session = Depends(get_db)):
-    """Create a new user account."""
+    """Create a new user account.
+
+    Resolution order for org_id + role:
+      1. invite_code provided → validate, consume, take its org_id + role.
+      2. org_id provided in body → legacy path (anyone-can-register demo org
+         or explicit dev behavior). Only allowed when ALLOW_ANONYMOUS=true.
+      3. Nothing provided + ALLOW_ANONYMOUS=true → fall back to the demo org
+         with role=MEMBER so the frontend can self-register in dev.
+      4. Nothing provided + ALLOW_ANONYMOUS=false → reject.
+    """
+    import uuid
+
     existing = get_user_by_email(db, user_in.email)
     if existing:
         raise HTTPException(400, "Email already registered")
 
-    import uuid
+    allow_anon = os.getenv("ALLOW_ANONYMOUS", "").lower() == "true"
+    assigned_org_id: Optional[str] = None
+    assigned_role: str = ROLE_MEMBER
+    invite_row = None
+
+    if user_in.invite_code:
+        invite_row = db.execute(text("""
+            SELECT id, org_id, email, role, expires_at, used_at
+            FROM invites WHERE code = :code
+        """), {"code": user_in.invite_code}).fetchone()
+        if not invite_row:
+            raise HTTPException(400, "Invalid invite code")
+        _, inv_org, inv_email, inv_role, inv_expires, inv_used = invite_row
+        now = datetime.now(timezone.utc)
+        if inv_used is not None:
+            raise HTTPException(400, "Invite code has already been used")
+        if inv_expires is not None and inv_expires <= now:
+            raise HTTPException(400, "Invite code has expired")
+        if inv_email and inv_email.lower() != (user_in.email or "").lower():
+            raise HTTPException(400, "Invite is tied to a different email address")
+        assigned_org_id = inv_org
+        assigned_role = (inv_role or ROLE_MEMBER).upper()
+    elif user_in.org_id:
+        if not allow_anon:
+            raise HTTPException(400, "Invite code required")
+        assigned_org_id = user_in.org_id
+    else:
+        if not allow_anon:
+            raise HTTPException(400, "Invite code required")
+        assigned_org_id = "9de53b587b23450b87af"  # demo org fallback
+
     user_id = f"USR-{uuid.uuid4().hex[:12].upper()}"
     hashed_pw = hash_password(user_in.password)
 
     db.execute(
-        text(
-            """
-            INSERT INTO users (id, email, org_id, full_name, hashed_password, is_admin, created_at)
-            VALUES (:id, :email, :org_id, :full_name, :hashed_password, false, NOW())
-            """
-        ),
+        text("""
+            INSERT INTO users (id, email, org_id, full_name, hashed_password,
+                               is_admin, role, created_at)
+            VALUES (:id, :email, :org_id, :full_name, :hashed_password,
+                    :is_admin, :role, NOW())
+        """),
         {
             "id": user_id,
             "email": user_in.email,
-            "org_id": user_in.org_id,
+            "org_id": assigned_org_id,
             "full_name": user_in.full_name,
             "hashed_password": hashed_pw,
+            "is_admin": assigned_role in ADMIN_ROLES,
+            "role": assigned_role,
         },
     )
+
+    # Mark invite consumed only after the user row is in place.
+    if invite_row is not None:
+        db.execute(
+            text("UPDATE invites SET used_at = NOW(), used_by = :uid WHERE id = :id"),
+            {"uid": user_id, "id": invite_row[0]},
+        )
+
     db.commit()
 
     return UserOut(
         id=user_id,
         email=user_in.email,
-        org_id=user_in.org_id,
+        org_id=assigned_org_id,
         full_name=user_in.full_name,
-        is_admin=False,
+        is_admin=assigned_role in ADMIN_ROLES,
+        role=assigned_role,
     )
 
 
@@ -284,6 +340,18 @@ def login(form_data: OAuth2PasswordRequestForm = Depends(), db: Session = Depend
             status_code=status.HTTP_401_UNAUTHORIZED,
             detail="Incorrect email or password",
             headers={"WWW-Authenticate": "Bearer"},
+        )
+
+    # Soft-deleted users cannot log in. get_user_by_email doesn't select this
+    # column (would cascade to lots of call sites) so we check it here.
+    deactivated = db.execute(
+        text("SELECT deactivated_at FROM users WHERE id = :id"),
+        {"id": user["id"]},
+    ).fetchone()
+    if deactivated and deactivated[0] is not None:
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="Account has been deactivated. Contact your administrator.",
         )
 
     token = create_access_token({

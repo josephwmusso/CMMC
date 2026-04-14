@@ -388,6 +388,27 @@ TABLES_DDL = [
             error           TEXT
         )
     """),
+
+    # Invites: time-limited registration codes issued by admins (1.6B).
+    # user_role enum is created in the migration block below this CREATE
+    # loop — so invites is listed AFTER users in DDL order but its role
+    # column still resolves at create time because the enum migration is
+    # idempotent and runs on every startup before any SELECT/INSERT hits
+    # this table.
+    ("invites", """
+        CREATE TABLE IF NOT EXISTS invites (
+            id         VARCHAR(64) PRIMARY KEY,
+            org_id     VARCHAR NOT NULL REFERENCES organizations(id),
+            code       VARCHAR UNIQUE NOT NULL,
+            email      VARCHAR,
+            role       VARCHAR(30) NOT NULL DEFAULT 'MEMBER',
+            created_by VARCHAR NOT NULL REFERENCES users(id),
+            created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+            expires_at TIMESTAMPTZ NOT NULL,
+            used_at    TIMESTAMPTZ,
+            used_by    VARCHAR
+        )
+    """),
 ]
 
 
@@ -695,6 +716,30 @@ def main():
     except Exception as e:
         conn.rollback()
         logger.warning(f"  users.role migration skipped: {e}")
+
+    # users.deactivated_at — soft-delete column for 1.6B admin user management.
+    try:
+        cur.execute("""
+            ALTER TABLE users
+            ADD COLUMN IF NOT EXISTS deactivated_at TIMESTAMPTZ
+        """)
+        conn.commit()
+        logger.info("  users.deactivated_at TIMESTAMPTZ: OK")
+    except Exception as e:
+        conn.rollback()
+        logger.warning(f"  users.deactivated_at migration skipped: {e}")
+
+    # organizations.city / .state — used by the onboarding wizard (1.6B/1.6F).
+    try:
+        cur.execute("""
+            ALTER TABLE organizations ADD COLUMN IF NOT EXISTS city  VARCHAR(100);
+            ALTER TABLE organizations ADD COLUMN IF NOT EXISTS state VARCHAR(50);
+        """)
+        conn.commit()
+        logger.info("  organizations.city + .state: OK")
+    except Exception as e:
+        conn.rollback()
+        logger.warning(f"  organizations.city/state migration skipped: {e}")
 
     # intake_responses.question_tier — new column for tiered intake. Idempotent.
     try:
