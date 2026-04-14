@@ -39,6 +39,12 @@ class ControlScore:
     on_poam: bool = False
     deduction: int = 0
     status_label: str = "NOT ASSESSED"
+    # 2.9B — when an OPEN contradiction covers this control, the scorer
+    # forces NOT MET (full deduction, no POA&M credit) regardless of the
+    # org's intake/implementation answer. DISMISSED/OVERRIDDEN/RESOLVED
+    # contradictions are NOT loaded here — they don't impact scoring.
+    contradiction_override: bool = False
+    contradiction_ids: list = field(default_factory=list)
 
 
 @dataclass
@@ -118,6 +124,31 @@ class SPRSCalculator:
             for pr in poam_rows:
                 poam_controls.add(pr[0])
 
+            # 2.9B — OPEN contradictions force NOT MET on their affected
+            # controls. DISMISSED / OVERRIDDEN / RESOLVED don't impact scoring.
+            contradiction_map: dict[str, list[str]] = {}
+            try:
+                contra_rows = session.execute(text("""
+                    SELECT id, affected_control_ids
+                    FROM intake_contradictions
+                    WHERE org_id = :org_id AND status = 'OPEN'
+                """), {"org_id": self.org_id}).fetchall()
+                import json as _json
+                for contra_id, ctrls_json in contra_rows:
+                    ctrls = ctrls_json
+                    if isinstance(ctrls, str):
+                        try:
+                            ctrls = _json.loads(ctrls)
+                        except Exception:
+                            ctrls = []
+                    if not isinstance(ctrls, list):
+                        ctrls = []
+                    for cid in ctrls:
+                        contradiction_map.setdefault(cid, []).append(contra_id)
+            except Exception:
+                # intake_contradictions table may not exist yet pre-2.9A — fail open.
+                contradiction_map = {}
+
         result.total_controls = len(rows)
 
         for row in rows:
@@ -136,7 +167,21 @@ class SPRSCalculator:
 
             # raw_ded = deduction for raw score (no POA&M credit)
             # cond_ded = deduction for conditional score (with POA&M credit)
-            if impl_status == "Implemented":
+            #
+            # 2.9B — check contradiction override BEFORE reading impl_status.
+            # An OPEN contradiction forces NOT MET and denies POA&M credit
+            # because the dispute (not a remediation plan) is what's causing
+            # the gap. Resolving the contradiction restores normal scoring.
+            overrides = contradiction_map.get(control_id, [])
+            if overrides:
+                cs.contradiction_override = True
+                cs.contradiction_ids = overrides
+                cs.deduction = points
+                raw_ded = points
+                cs.status_label = "NOT MET"
+                result.not_met_count += 1
+
+            elif impl_status == "Implemented":
                 cs.deduction = 0
                 raw_ded = 0
                 cs.status_label = "MET"
@@ -198,6 +243,15 @@ class SPRSCalculator:
 
     def get_score_summary(self) -> dict:
         r = self.calculate()
+
+        # 2.9B — contradiction impact aggregation.
+        overridden = [c for c in r.controls if c.contradiction_override]
+        contradiction_impact = {
+            "controls_overridden": len(overridden),
+            "points_lost": sum(c.points for c in overridden),
+            "open_contradictions": len({cid for c in overridden for cid in c.contradiction_ids}),
+        }
+
         return {
             "score": r.score,
             "conditional_score": r.conditional_score,
@@ -210,6 +264,7 @@ class SPRSCalculator:
             "total_controls": r.total_controls,
             "total_deductions": r.total_deductions,
             "poam_eligible": r.poam_eligible,
+            "contradiction_impact": contradiction_impact,
             "critical_gaps": [
                 {
                     "control_id": c.control_id,
@@ -242,6 +297,8 @@ class SPRSCalculator:
                     "status_label": c.status_label,
                     "deduction": c.deduction,
                     "on_poam": c.on_poam,
+                    "contradiction_override": c.contradiction_override,
+                    "contradiction_ids": list(c.contradiction_ids),
                 }
                 for c in r.controls
             ],

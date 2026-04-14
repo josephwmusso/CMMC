@@ -204,13 +204,40 @@ class POAMGenerator:
                 ORDER BY c.points DESC, p.control_id
             """), {"org_id": self.org_id}).fetchall()
 
+            # 2.9B — derive has_contradiction at list time.
+            # No schema change needed: we join poam_items.control_id against
+            # the set of control_ids covered by OPEN contradictions.
+            open_contra_controls: set[str] = set()
+            try:
+                import json as _json
+                contra_rows = session.execute(text("""
+                    SELECT affected_control_ids FROM intake_contradictions
+                    WHERE org_id = :org_id AND status = 'OPEN'
+                """), {"org_id": self.org_id}).fetchall()
+                for (ctrls_json,) in contra_rows:
+                    ctrls = ctrls_json
+                    if isinstance(ctrls, str):
+                        try:
+                            ctrls = _json.loads(ctrls)
+                        except Exception:
+                            ctrls = []
+                    if isinstance(ctrls, list):
+                        open_contra_controls.update(ctrls)
+            except Exception:
+                # intake_contradictions table missing in very old DBs — fail open.
+                open_contra_controls = set()
+
         total_points_at_risk = 0
         items = []
         status_counts = {"OPEN": 0, "IN_PROGRESS": 0, "CLOSED": 0, "OVERDUE": 0}
+        contradiction_driven = 0
 
         for row in rows:
             pid, cid, weakness, status, deadline, risk, title, fam, points, \
                 remediation_plan, milestone_changes = row
+            has_contradiction = cid in open_contra_controls
+            if has_contradiction:
+                contradiction_driven += 1
             items.append({
                 "poam_id": pid,
                 "control_id": cid,
@@ -223,6 +250,10 @@ class POAMGenerator:
                 "weakness": weakness,
                 "remediation_plan": remediation_plan,
                 "milestone_changes": milestone_changes,
+                # True while an OPEN contradiction covers the control this
+                # POA&M item is tracking. Frontends should surface a
+                # "resolve the contradiction first" hint.
+                "has_contradiction": has_contradiction,
             })
             status_counts[status] = status_counts.get(status, 0) + 1
             if status in ("OPEN", "IN_PROGRESS"):
@@ -232,6 +263,7 @@ class POAMGenerator:
             "total_items": len(items),
             "status_counts": status_counts,
             "total_points_at_risk": total_points_at_risk,
+            "contradiction_driven_items": contradiction_driven,
             "items": items,
         }
 

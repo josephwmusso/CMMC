@@ -148,6 +148,15 @@ def _delete_org_data(conn, org_id: str) -> dict[str, int]:
         conn, "DELETE FROM company_profiles WHERE org_id = :oid", {"oid": org_id}
     )
 
+    # Phase 6b — contradictions (2.9A table; included so demos start clean)
+    try:
+        counts["intake_contradictions"] = _exec_count(
+            conn, "DELETE FROM intake_contradictions WHERE org_id = :oid", {"oid": org_id}
+        )
+    except Exception:
+        # Table absent on very old DBs — ignore.
+        counts["intake_contradictions"] = 0
+
     return counts
 
 
@@ -276,6 +285,7 @@ def main() -> None:
                 ("intake_sessions",      4),
                 ("generated_documents",  5),
                 ("company_profiles",     6),
+                ("intake_contradictions", 6),
             ]
             for table, phase in phase_order:
                 n = counts.get(table, 0)
