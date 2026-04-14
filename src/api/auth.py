@@ -55,6 +55,8 @@ DEV_USER = {
     "full_name": "Dev User",
     "is_admin": True,
     "role": ROLE_SUPERADMIN,
+    # Demo org already has full intake + docs — wizard shouldn't trigger.
+    "onboarding_complete": True,
 }
 
 
@@ -78,6 +80,12 @@ class UserOut(BaseModel):
     full_name: str
     is_admin: bool
     role: str = ROLE_MEMBER
+
+
+class MeResponse(UserOut):
+    """/me-specific superset: same shape as UserOut plus the onboarding flag
+    so the frontend can route first-login users to the wizard."""
+    onboarding_complete: bool = False
 
 
 class Token(BaseModel):
@@ -200,13 +208,19 @@ def get_current_user(token: Optional[str] = Depends(oauth2_scheme), db: Session 
         raise credentials_error
 
     row = db.execute(
-        text("SELECT id, email, org_id, full_name, is_admin, role FROM users WHERE id = :id"),
+        text("""
+            SELECT id, email, org_id, full_name, is_admin, role, onboarding_complete
+            FROM users WHERE id = :id
+        """),
         {"id": user_id},
     ).fetchone()
     if not row:
         raise credentials_error
 
-    user = dict(zip(["id", "email", "org_id", "full_name", "is_admin", "role"], row))
+    user = dict(zip(
+        ["id", "email", "org_id", "full_name", "is_admin", "role", "onboarding_complete"],
+        row,
+    ))
     # role is fresh from DB (revocation + promotion take effect next request,
     # not at token expiry). is_admin derived for back-compat with older call
     # sites that still read user["is_admin"].
@@ -375,10 +389,10 @@ def login(form_data: OAuth2PasswordRequestForm = Depends(), db: Session = Depend
     )
 
 
-@router.get("/me", response_model=UserOut)
+@router.get("/me", response_model=MeResponse)
 def get_me(current_user: dict = Depends(get_current_user)):
-    """Return the currently authenticated user."""
-    return UserOut(**{k: current_user.get(k) for k in UserOut.model_fields})
+    """Return the currently authenticated user, including the onboarding flag."""
+    return MeResponse(**{k: current_user.get(k) for k in MeResponse.model_fields})
 
 
 @router.post("/refresh", response_model=RefreshResponse)

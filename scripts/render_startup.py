@@ -223,14 +223,15 @@ TABLES_DDL = [
     # reference an enum that doesn't yet exist when this block runs).
     ("users", """
         CREATE TABLE IF NOT EXISTS users (
-            id              VARCHAR PRIMARY KEY,
-            email           VARCHAR UNIQUE NOT NULL,
-            org_id          VARCHAR NOT NULL REFERENCES organizations(id),
-            full_name       VARCHAR NOT NULL DEFAULT '',
-            hashed_password VARCHAR NOT NULL,
-            is_admin        BOOLEAN NOT NULL DEFAULT FALSE,
-            created_at      TIMESTAMPTZ NOT NULL DEFAULT NOW(),
-            last_login_at   TIMESTAMPTZ
+            id                  VARCHAR PRIMARY KEY,
+            email               VARCHAR UNIQUE NOT NULL,
+            org_id              VARCHAR NOT NULL REFERENCES organizations(id),
+            full_name           VARCHAR NOT NULL DEFAULT '',
+            hashed_password     VARCHAR NOT NULL,
+            is_admin            BOOLEAN NOT NULL DEFAULT FALSE,
+            onboarding_complete BOOLEAN NOT NULL DEFAULT FALSE,
+            created_at          TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+            last_login_at       TIMESTAMPTZ
         )
     """),
 
@@ -734,6 +735,37 @@ def main():
     except Exception as e:
         conn.rollback()
         logger.warning(f"  ssp_jobs.org_id migration skipped: {e}")
+
+    # users.onboarding_complete — per-user flag for 1.6F wizard gating.
+    # Admin (and any legacy user) is marked complete so the wizard doesn't
+    # trigger for the seeded demo org.
+    try:
+        cur.execute("""
+            ALTER TABLE users
+            ADD COLUMN IF NOT EXISTS onboarding_complete BOOLEAN NOT NULL DEFAULT FALSE
+        """)
+        cur.execute(
+            "UPDATE users SET onboarding_complete = TRUE WHERE email = %s",
+            (os.environ.get("ADMIN_EMAIL", "admin@intranest.ai"),),
+        )
+        conn.commit()
+        logger.info("  users.onboarding_complete BOOLEAN: OK (admin backfilled TRUE)")
+    except Exception as e:
+        conn.rollback()
+        logger.warning(f"  users.onboarding_complete migration skipped: {e}")
+
+    # company_profiles.training_solution — schema gap from 1.6C so onboarding
+    # can persist the training tool (there's no Module 0 question for it).
+    try:
+        cur.execute("""
+            ALTER TABLE company_profiles
+            ADD COLUMN IF NOT EXISTS training_solution VARCHAR(100)
+        """)
+        conn.commit()
+        logger.info("  company_profiles.training_solution VARCHAR(100): OK")
+    except Exception as e:
+        conn.rollback()
+        logger.warning(f"  company_profiles.training_solution migration skipped: {e}")
 
     # users.deactivated_at — soft-delete column for 1.6B admin user management.
     try:
