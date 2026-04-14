@@ -34,6 +34,8 @@ from src.api.intake_modules import (
     get_module,
     get_module_count,
 )
+from src.documents.intake_context import get_template_readiness
+from src.documents.generator import DOC_TYPE_TO_FRIENDLY
 
 router = APIRouter(prefix="/api/intake", tags=["intake"])
 
@@ -174,12 +176,26 @@ async def get_session_status(session_id: str):
 
 @router.get("/sessions/{session_id}/progress")
 async def get_session_progress(session_id: str):
-    """Per-module progress: total questions, answered, completion pct, status."""
+    """Per-module progress + doc readiness + outdated-doc detection.
+
+    Readiness is org-scoped (not session-scoped): templates apply to the
+    whole organization, and the frontend mainly cares whether doc
+    generation will produce fresh output. "outdated" means a doc exists
+    but its updated_at predates the most recent intake response for the
+    org — i.e. regenerating now would yield different content.
+    """
     modules_stats = []
     overall_total = 0
     overall_answered = 0
 
     with get_session() as db:
+        # Resolve the session's org so we can attach org-scoped readiness.
+        session_row = db.execute(
+            text("SELECT org_id FROM intake_sessions WHERE id = :sid"),
+            {"sid": session_id},
+        ).fetchone()
+        org_id = session_row[0] if session_row else None
+
         for mod in get_all_modules():
             q_ids = [q.id for q in mod.questions]
             total = len(q_ids)
@@ -210,9 +226,55 @@ async def get_session_progress(session_id: str):
                 "answered": answered,
                 "completion_pct": pct,
                 "status": status_val,
+                "doc_templates": list(mod.doc_templates),
             })
 
-    overall_pct = round(100.0 * overall_answered / overall_total, 1) if overall_total else 0.0
+        overall_pct = round(100.0 * overall_answered / overall_total, 1) if overall_total else 0.0
+
+        # Doc readiness — only if we could resolve an org.
+        doc_readiness: dict = {}
+        docs_ready_count = 0
+        docs_total = 0
+
+        if org_id:
+            readiness_payload = get_template_readiness(org_id, db)
+            readiness = readiness_payload.get("templates", {})
+            docs_total = len(readiness)
+
+            # Latest answered_at across all sessions for this org.
+            max_resp_row = db.execute(text("""
+                SELECT MAX(ir.answered_at)
+                FROM intake_responses ir
+                JOIN intake_sessions  s ON s.id = ir.session_id
+                WHERE s.org_id = :org_id
+            """), {"org_id": org_id}).fetchone()
+            max_response_at = max_resp_row[0] if max_resp_row else None
+
+            # Latest updated_at per doc_type for this org.
+            doc_rows = db.execute(text("""
+                SELECT doc_type, MAX(updated_at)
+                FROM generated_documents
+                WHERE org_id = :org_id
+                GROUP BY doc_type
+            """), {"org_id": org_id}).fetchall()
+            last_gen_by_doc_type = {row[0]: row[1] for row in doc_rows}
+
+            # Bridge friendly keys (intake_context) ↔ DB doc_types (generator).
+            friendly_to_doc_type = {v: k for k, v in DOC_TYPE_TO_FRIENDLY.items()}
+
+            for friendly, info in readiness.items():
+                doc_type = friendly_to_doc_type.get(friendly)
+                last_dt = last_gen_by_doc_type.get(doc_type) if doc_type else None
+                last_generated = last_dt.isoformat() if last_dt else None
+                outdated = bool(last_dt and max_response_at and max_response_at > last_dt)
+                doc_readiness[friendly] = {
+                    **info,
+                    "outdated":       outdated,
+                    "last_generated": last_generated,
+                }
+                if info.get("ready"):
+                    docs_ready_count += 1
+
     return {
         "session_id": session_id,
         "modules": modules_stats,
@@ -221,6 +283,9 @@ async def get_session_progress(session_id: str):
             "answered": overall_answered,
             "completion_pct": overall_pct,
         },
+        "doc_readiness":    doc_readiness,
+        "docs_ready_count": docs_ready_count,
+        "docs_total":       docs_total,
     }
 
 
