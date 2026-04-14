@@ -391,6 +391,35 @@ TABLES_DDL = [
         )
     """),
 
+    # Contradiction detection: cross-module consistency findings (2.9A).
+    # One row per fired rule for an org. Status flow:
+    #   OPEN → RESOLVED (rule no longer fires)
+    #         → DISMISSED (user chose to ignore)
+    #         → OVERRIDDEN (admin confirmed the claim is correct anyway)
+    ("intake_contradictions", """
+        CREATE TABLE IF NOT EXISTS intake_contradictions (
+            id                       VARCHAR(20) PRIMARY KEY,
+            org_id                   VARCHAR(20) NOT NULL REFERENCES organizations(id) ON DELETE CASCADE,
+            session_id               VARCHAR(30) REFERENCES intake_sessions(id) ON DELETE SET NULL,
+            rule_id                  VARCHAR(50) NOT NULL,
+            family                   VARCHAR(10) NOT NULL,
+            severity                 VARCHAR(20) NOT NULL,
+            status                   VARCHAR(20) NOT NULL DEFAULT 'OPEN',
+            description              TEXT NOT NULL,
+            source_question_id       VARCHAR(100) NOT NULL,
+            source_answer            TEXT,
+            conflicting_question_id  VARCHAR(100),
+            conflicting_answer       TEXT,
+            affected_control_ids     JSON NOT NULL DEFAULT '[]',
+            resolution_notes         TEXT,
+            resolved_by              VARCHAR REFERENCES users(id),
+            resolved_at              TIMESTAMPTZ,
+            detected_at              TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+            updated_at               TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+            UNIQUE (org_id, rule_id)
+        )
+    """),
+
     # Invites: time-limited registration codes issued by admins (1.6B).
     # user_role enum is created in the migration block below this CREATE
     # loop — so invites is listed AFTER users in DDL order but its role

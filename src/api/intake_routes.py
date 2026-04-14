@@ -515,6 +515,29 @@ async def save_responses(
 
         db.commit()
 
+    # Best-effort contradiction detection for the families touched by this
+    # save. Runs in its own try/except and its own commit so any failure
+    # here never affects the answer-save result.
+    contradiction_counters = None
+    try:
+        from src.api.contradiction_engine import MODULE_TO_FAMILIES, run_and_sync
+        touched_modules = {a.module_id for a in req.answers}
+        families: set[str] = set()
+        for mid in touched_modules:
+            families.update(MODULE_TO_FAMILIES.get(mid, []))
+        if families:
+            with get_session() as contra_db:
+                contradiction_counters = run_and_sync(
+                    contra_db,
+                    org_id,
+                    families=families,
+                    session_id=session_id,
+                )
+                contra_db.commit()
+    except Exception:
+        import logging
+        logging.getLogger(__name__).exception("post-save contradiction scan failed")
+
     return {
         "saved": saved,
         "flags": flags,
@@ -522,6 +545,7 @@ async def save_responses(
             "answered": counts[0],
             "gaps": counts[1] or 0,
         },
+        "contradictions": contradiction_counters,
     }
 
 

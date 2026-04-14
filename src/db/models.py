@@ -388,6 +388,48 @@ class POAMItem(Base):
 
 
 # ---------------------------------------------------------------------------
+# Intake Contradiction — cross-module consistency findings (2.9A)
+# ---------------------------------------------------------------------------
+class IntakeContradiction(Base):
+    """A contradiction the rules engine detected in an org's intake data.
+
+    Queries in routes + contradiction_engine use raw SQL for consistency
+    with the rest of the API layer — this model exists for ORM
+    introspection / test setup.
+    """
+
+    __tablename__ = "intake_contradictions"
+
+    id = Column(String(20), primary_key=True)
+    org_id = Column(String(20), ForeignKey("organizations.id", ondelete="CASCADE"), nullable=False, index=True)
+    session_id = Column(String(30), ForeignKey("intake_sessions.id", ondelete="SET NULL"))
+
+    rule_id = Column(String(50), nullable=False)
+    family = Column(String(10), nullable=False)
+    severity = Column(String(20), nullable=False)   # CRITICAL / HIGH / MEDIUM / LOW
+    status = Column(String(20), nullable=False, default="OPEN")  # OPEN / RESOLVED / DISMISSED / OVERRIDDEN
+
+    description = Column(Text, nullable=False)
+    source_question_id = Column(String(100), nullable=False)
+    source_answer = Column(Text)
+    conflicting_question_id = Column(String(100))
+    conflicting_answer = Column(Text)
+    affected_control_ids = Column(JSON, nullable=False, default=list)
+
+    resolution_notes = Column(Text)
+    resolved_by = Column(String, ForeignKey("users.id"))
+    resolved_at = Column(DateTime(timezone=True))
+
+    detected_at = Column(DateTime(timezone=True), nullable=False, server_default=func.now())
+    updated_at = Column(DateTime(timezone=True), nullable=False, server_default=func.now())
+
+    __table_args__ = (
+        UniqueConstraint("org_id", "rule_id", name="uq_intake_contradictions_org_rule"),
+        Index("ix_intake_contradictions_org_status", "org_id", "status"),
+    )
+
+
+# ---------------------------------------------------------------------------
 # Audit Log — append-only, hash-chained
 # ---------------------------------------------------------------------------
 class AuditLog(Base):
