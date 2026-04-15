@@ -67,6 +67,7 @@ for router_import in [
     ("src.api.onboarding_routes", "onboarding"),
     ("src.api.contradiction_routes", "contradictions"),
     ("src.api.routes_scans", "scans"),
+    ("src.baselines.routes", "baselines"),
 ]:
     module_path, name = router_import
     try:

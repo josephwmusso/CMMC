@@ -229,6 +229,75 @@ TABLES_DDL = [
         CREATE INDEX IF NOT EXISTS idx_scan_findings_severity ON scan_findings(severity DESC)
     """),
 
+    # ── Baseline engine (Phase 3.3) ──
+    # Seeded catalog of security baselines (CIS, STIG) shared across orgs.
+    ("baselines", """
+        CREATE TABLE IF NOT EXISTS baselines (
+            id           VARCHAR(20) PRIMARY KEY,
+            name         VARCHAR(200) NOT NULL,
+            version      VARCHAR(50) NOT NULL,
+            source       VARCHAR(100) NOT NULL,
+            platform     VARCHAR(100) NOT NULL,
+            description  TEXT,
+            item_count   INTEGER NOT NULL DEFAULT 0,
+            created_at   TIMESTAMPTZ NOT NULL DEFAULT NOW()
+        )
+    """),
+    ("baseline_items", """
+        CREATE TABLE IF NOT EXISTS baseline_items (
+            id                    VARCHAR(20) PRIMARY KEY,
+            baseline_id           VARCHAR(20) NOT NULL REFERENCES baselines(id) ON DELETE CASCADE,
+            cis_id                VARCHAR(50),
+            section               VARCHAR(200),
+            title                 VARCHAR(500) NOT NULL,
+            description           TEXT,
+            expected_value        TEXT,
+            rationale             TEXT,
+            severity              VARCHAR(20) NOT NULL DEFAULT 'MEDIUM',
+            control_ids           TEXT[] NOT NULL,
+            match_keywords        TEXT[],
+            match_plugin_families TEXT[],
+            created_at            TIMESTAMPTZ NOT NULL DEFAULT NOW()
+        )
+    """),
+    ("org_baselines", """
+        CREATE TABLE IF NOT EXISTS org_baselines (
+            id          VARCHAR(20) PRIMARY KEY,
+            org_id      VARCHAR(20) NOT NULL REFERENCES organizations(id),
+            baseline_id VARCHAR(20) NOT NULL REFERENCES baselines(id),
+            adopted_at  TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+            status      VARCHAR(20) NOT NULL DEFAULT 'ACTIVE',
+            UNIQUE (org_id, baseline_id)
+        )
+    """),
+    ("baseline_deviations", """
+        CREATE TABLE IF NOT EXISTS baseline_deviations (
+            id               VARCHAR(20) PRIMARY KEY,
+            org_id           VARCHAR(20) NOT NULL REFERENCES organizations(id),
+            org_baseline_id  VARCHAR(20) NOT NULL REFERENCES org_baselines(id) ON DELETE CASCADE,
+            baseline_item_id VARCHAR(20) NOT NULL REFERENCES baseline_items(id),
+            scan_finding_id  VARCHAR(20) REFERENCES scan_findings(id) ON DELETE SET NULL,
+            actual_value     TEXT,
+            status           VARCHAR(20) NOT NULL DEFAULT 'OPEN',
+            notes            TEXT,
+            detected_at      TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+            resolved_at      TIMESTAMPTZ,
+            resolved_by      VARCHAR(20) REFERENCES users(id)
+        )
+    """),
+    ("baseline_items_idx", """
+        CREATE INDEX IF NOT EXISTS idx_baseline_items_baseline ON baseline_items(baseline_id)
+    """),
+    ("org_baselines_idx", """
+        CREATE INDEX IF NOT EXISTS idx_org_baselines_org ON org_baselines(org_id)
+    """),
+    ("baseline_deviations_org_idx", """
+        CREATE INDEX IF NOT EXISTS idx_baseline_deviations_org ON baseline_deviations(org_id)
+    """),
+    ("baseline_deviations_status_idx", """
+        CREATE INDEX IF NOT EXISTS idx_baseline_deviations_status ON baseline_deviations(org_id, status)
+    """),
+
     # models_ssp.py OVERRIDES models.py — uses evidence_refs (JSONB) and gaps (JSONB)
     ("ssp_sections", """
         CREATE TABLE IF NOT EXISTS ssp_sections (
@@ -986,6 +1055,11 @@ def main():
         seed_audit_genesis(cur)
         heal_audit_chain(cur)
         seed_document_templates(cur)
+        try:
+            from src.baselines.seeds import seed_baselines
+            seed_baselines(cur)
+        except Exception as e:
+            logger.warning(f"Baseline seeding skipped: {e}")
         conn.commit()
         logger.info("All seed data committed")
     except Exception as e:

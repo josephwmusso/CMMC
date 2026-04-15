@@ -29,6 +29,7 @@ from sqlalchemy import (
     ForeignKey, Index, CheckConstraint, UniqueConstraint,
     Enum as SAEnum,
 )
+from sqlalchemy.dialects.postgresql import ARRAY
 from sqlalchemy.orm import declarative_base, relationship
 from sqlalchemy.sql import func
 
@@ -511,6 +512,72 @@ class ScanFinding(Base):
     __table_args__ = (
         Index("ix_scan_findings_severity_desc", severity.desc()),
     )
+
+
+# ---------------------------------------------------------------------------
+# Baseline engine — CIS/STIG catalog + per-org adoption + deviation records
+# ---------------------------------------------------------------------------
+class Baseline(Base):
+    """Seeded catalog entry for a security baseline (CIS, STIG, custom)."""
+    __tablename__ = "baselines"
+
+    id          = Column(String(20), primary_key=True)
+    name        = Column(String(200), nullable=False)
+    version     = Column(String(50), nullable=False)
+    source      = Column(String(100), nullable=False)    # CIS | DISA_STIG | CUSTOM
+    platform    = Column(String(100), nullable=False)
+    description = Column(Text)
+    item_count  = Column(Integer, nullable=False, default=0)
+    created_at  = Column(DateTime(timezone=True), server_default=func.now())
+
+
+class BaselineItem(Base):
+    """One checkable item within a baseline, with keyword hints for matching."""
+    __tablename__ = "baseline_items"
+
+    id                    = Column(String(20), primary_key=True)
+    baseline_id           = Column(String(20), ForeignKey("baselines.id", ondelete="CASCADE"), nullable=False)
+    cis_id                = Column(String(50))
+    section               = Column(String(200))
+    title                 = Column(String(500), nullable=False)
+    description           = Column(Text)
+    expected_value        = Column(Text)
+    rationale             = Column(Text)
+    severity              = Column(String(20), nullable=False, default="MEDIUM")
+    control_ids           = Column(ARRAY(Text), nullable=False)
+    match_keywords        = Column(ARRAY(Text))
+    match_plugin_families = Column(ARRAY(Text))
+    created_at            = Column(DateTime(timezone=True), server_default=func.now())
+
+
+class OrgBaseline(Base):
+    """An org's adoption of a baseline. Archiving preserves deviation history."""
+    __tablename__ = "org_baselines"
+
+    id          = Column(String(20), primary_key=True)
+    org_id      = Column(String(20), ForeignKey("organizations.id"), nullable=False)
+    baseline_id = Column(String(20), ForeignKey("baselines.id"), nullable=False)
+    adopted_at  = Column(DateTime(timezone=True), server_default=func.now())
+    status      = Column(String(20), nullable=False, default="ACTIVE")  # ACTIVE | ARCHIVED
+
+    __table_args__ = (UniqueConstraint("org_id", "baseline_id"),)
+
+
+class BaselineDeviation(Base):
+    """A scan finding (or manual entry) that violates a baseline item."""
+    __tablename__ = "baseline_deviations"
+
+    id               = Column(String(20), primary_key=True)
+    org_id           = Column(String(20), ForeignKey("organizations.id"), nullable=False)
+    org_baseline_id  = Column(String(20), ForeignKey("org_baselines.id", ondelete="CASCADE"), nullable=False)
+    baseline_item_id = Column(String(20), ForeignKey("baseline_items.id"), nullable=False)
+    scan_finding_id  = Column(String(20), ForeignKey("scan_findings.id", ondelete="SET NULL"))
+    actual_value     = Column(Text)
+    status           = Column(String(20), nullable=False, default="OPEN")  # OPEN | REMEDIATED | ACCEPTED | FALSE_POSITIVE
+    notes            = Column(Text)
+    detected_at      = Column(DateTime(timezone=True), server_default=func.now())
+    resolved_at      = Column(DateTime(timezone=True))
+    resolved_by      = Column(String(20), ForeignKey("users.id"))
 
 
 # ---------------------------------------------------------------------------

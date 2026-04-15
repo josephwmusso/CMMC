@@ -105,6 +105,20 @@ def _delete_org_data(conn, org_id: str) -> dict[str, int]:
     # scan_findings CASCADE-delete with scan_imports, but deleting
     # scan_imports first releases its FK to evidence_artifacts so the
     # artifact delete that follows doesn't hit an integrity error.
+    # baseline_deviations.scan_finding_id FKs into scan_findings, so we
+    # drop baseline rows first. The shared catalog (baselines,
+    # baseline_items) is deliberately preserved.
+    try:
+        counts["baseline_deviations"] = _exec_count(
+            conn, "DELETE FROM baseline_deviations WHERE org_id = :oid", {"oid": org_id}
+        )
+        counts["org_baselines"] = _exec_count(
+            conn, "DELETE FROM org_baselines WHERE org_id = :oid", {"oid": org_id}
+        )
+    except Exception:
+        counts["baseline_deviations"] = 0
+        counts["org_baselines"] = 0
+
     try:
         counts["scan_findings"] = _exec_count(
             conn, "DELETE FROM scan_findings WHERE org_id = :oid", {"oid": org_id}
