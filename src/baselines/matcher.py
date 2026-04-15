@@ -22,8 +22,27 @@ def _generate_id(seed: str) -> str:
     return hashlib.sha256(seed.encode()).hexdigest()[:20]
 
 
-def _finding_matches_item(finding, keywords: list | None, families: list | None) -> bool:
-    """True iff finding matches by plugin family or any keyword."""
+def _finding_matches_item(
+    finding,
+    keywords: list | None,
+    families: list | None,
+    plugin_ids: list | None,
+) -> bool:
+    """Two-tier match.
+
+    Tier 1 (exact): when the item carries ``match_plugin_ids``, we ONLY
+    match findings whose plugin_id is in that list. Keywords are ignored
+    — plugin IDs are authoritative when present and prevent the keyword
+    cross-contamination that made the Win11 match produce ~475 deviations.
+
+    Tier 2 (fallback): when no plugin IDs are defined (M365 items,
+    anything Nessus can't reach), fall back to plugin-family + keyword
+    substring matching.
+    """
+    if plugin_ids:
+        finding_pid = str(finding.plugin_id) if finding.plugin_id else ""
+        return finding_pid in plugin_ids
+
     if families and finding.plugin_family:
         family_lower = finding.plugin_family.lower()
         for fam in families:
@@ -74,7 +93,7 @@ def match_scan_to_baselines(db, org_id: str, scan_import_id: str) -> dict:
         }
 
     findings = db.execute(text("""
-        SELECT id, plugin_name, plugin_family, synopsis, description, severity
+        SELECT id, plugin_id, plugin_name, plugin_family, synopsis, description, severity
         FROM scan_findings
         WHERE scan_import_id = :scan_id
           AND severity >= 1
@@ -95,7 +114,8 @@ def match_scan_to_baselines(db, org_id: str, scan_import_id: str) -> dict:
 
     for ob in org_baselines:
         items = db.execute(text("""
-            SELECT id, title, severity, match_keywords, match_plugin_families
+            SELECT id, title, severity,
+                   match_keywords, match_plugin_families, match_plugin_ids
             FROM baseline_items
             WHERE baseline_id = :baseline_id
         """), {"baseline_id": ob.baseline_id}).fetchall()
@@ -103,11 +123,12 @@ def match_scan_to_baselines(db, org_id: str, scan_import_id: str) -> dict:
         total_items += len(items)
 
         for item in items:
-            keywords = item.match_keywords or []
-            families = item.match_plugin_families or []
+            keywords   = item.match_keywords or []
+            families   = item.match_plugin_families or []
+            plugin_ids = item.match_plugin_ids or []
 
             for finding in findings:
-                if not _finding_matches_item(finding, keywords, families):
+                if not _finding_matches_item(finding, keywords, families, plugin_ids):
                     continue
 
                 existing = db.execute(text("""

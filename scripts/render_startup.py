@@ -951,6 +951,20 @@ def main():
         conn.rollback()
         logger.warning(f"  company_profiles.training_solution migration skipped: {e}")
 
+    # baseline_items.match_plugin_ids — Phase 3.3C: exact Nessus plugin ID
+    # matching for precision. Without this, keyword substring matching
+    # produces way too many false-positive deviations.
+    try:
+        cur.execute("""
+            ALTER TABLE baseline_items
+            ADD COLUMN IF NOT EXISTS match_plugin_ids TEXT[]
+        """)
+        conn.commit()
+        logger.info("  baseline_items.match_plugin_ids TEXT[]: OK")
+    except Exception as e:
+        conn.rollback()
+        logger.warning(f"  baseline_items.match_plugin_ids migration skipped: {e}")
+
     # users.deactivated_at — soft-delete column for 1.6B admin user management.
     try:
         cur.execute("""

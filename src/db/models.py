@@ -547,6 +547,7 @@ class BaselineItem(Base):
     control_ids           = Column(ARRAY(Text), nullable=False)
     match_keywords        = Column(ARRAY(Text))
     match_plugin_families = Column(ARRAY(Text))
+    match_plugin_ids      = Column(ARRAY(Text))
     created_at            = Column(DateTime(timezone=True), server_default=func.now())
 
 
