@@ -162,6 +162,73 @@ TABLES_DDL = [
         )
     """),
 
+    # Nessus scan imports (Phase 3.1A). Parent row per uploaded .nessus file.
+    # Each import optionally links to an auto-created DRAFT evidence artifact.
+    ("scan_imports", """
+        CREATE TABLE IF NOT EXISTS scan_imports (
+            id                   VARCHAR(20) PRIMARY KEY,
+            org_id               VARCHAR(20) NOT NULL REFERENCES organizations(id),
+            filename             VARCHAR(500) NOT NULL,
+            scan_type            VARCHAR(20) NOT NULL DEFAULT 'NESSUS',
+            scanner_version      VARCHAR(100),
+            scan_date            TIMESTAMPTZ,
+            imported_at          TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+            imported_by          VARCHAR REFERENCES users(id),
+            host_count           INTEGER NOT NULL DEFAULT 0,
+            finding_count        INTEGER NOT NULL DEFAULT 0,
+            critical_count       INTEGER NOT NULL DEFAULT 0,
+            high_count           INTEGER NOT NULL DEFAULT 0,
+            medium_count         INTEGER NOT NULL DEFAULT 0,
+            low_count            INTEGER NOT NULL DEFAULT 0,
+            info_count           INTEGER NOT NULL DEFAULT 0,
+            status               VARCHAR(20) NOT NULL DEFAULT 'PROCESSING',
+            error_message        TEXT,
+            evidence_artifact_id VARCHAR(20) REFERENCES evidence_artifacts(id),
+            summary_text         TEXT
+        )
+    """),
+
+    # Individual findings within a scan. CASCADE delete when parent goes.
+    ("scan_findings", """
+        CREATE TABLE IF NOT EXISTS scan_findings (
+            id                   VARCHAR(20) PRIMARY KEY,
+            scan_import_id       VARCHAR(20) NOT NULL REFERENCES scan_imports(id) ON DELETE CASCADE,
+            org_id               VARCHAR(20) NOT NULL REFERENCES organizations(id),
+            host_ip              VARCHAR(45) NOT NULL,
+            hostname             VARCHAR(255),
+            port                 INTEGER NOT NULL DEFAULT 0,
+            protocol             VARCHAR(10),
+            plugin_id            VARCHAR(20) NOT NULL,
+            plugin_name          VARCHAR(500) NOT NULL,
+            plugin_family        VARCHAR(200),
+            severity             INTEGER NOT NULL DEFAULT 0,
+            severity_label       VARCHAR(20) NOT NULL DEFAULT 'INFO',
+            cvss_base_score      FLOAT,
+            cvss3_base_score     FLOAT,
+            cve_ids              JSON DEFAULT '[]',
+            synopsis             TEXT,
+            description          TEXT,
+            solution             TEXT,
+            risk_factor          VARCHAR(20),
+            mapped_control_ids   JSON DEFAULT '[]',
+            status               VARCHAR(20) NOT NULL DEFAULT 'OPEN',
+            notes                TEXT,
+            created_at           TIMESTAMPTZ NOT NULL DEFAULT NOW()
+        )
+    """),
+
+    # Helper indexes — scan_findings grows fast and is queried by
+    # org + severity + scan_import_id.
+    ("scan_findings_idx_import", """
+        CREATE INDEX IF NOT EXISTS idx_scan_findings_import ON scan_findings(scan_import_id)
+    """),
+    ("scan_findings_idx_org", """
+        CREATE INDEX IF NOT EXISTS idx_scan_findings_org ON scan_findings(org_id)
+    """),
+    ("scan_findings_idx_sev", """
+        CREATE INDEX IF NOT EXISTS idx_scan_findings_severity ON scan_findings(severity DESC)
+    """),
+
     # models_ssp.py OVERRIDES models.py — uses evidence_refs (JSONB) and gaps (JSONB)
     ("ssp_sections", """
         CREATE TABLE IF NOT EXISTS ssp_sections (
@@ -194,6 +261,8 @@ TABLES_DDL = [
             status                  VARCHAR(20) DEFAULT 'OPEN',
             risk_level              VARCHAR(20),
             points                  INTEGER DEFAULT 1,
+            source_type             VARCHAR(20) DEFAULT 'ASSESSMENT',
+            source_id               VARCHAR(20),
             created_at              TIMESTAMPTZ DEFAULT NOW(),
             updated_at              TIMESTAMPTZ
         )
@@ -747,6 +816,23 @@ def main():
     except Exception as e:
         conn.rollback()
         logger.warning(f"  users.role migration skipped: {e}")
+
+    # poam_items.source_type / .source_id — 3.1C: distinguish scan-driven
+    # POA&M items from assessment-driven ones. Idempotent.
+    try:
+        cur.execute("""
+            ALTER TABLE poam_items
+            ADD COLUMN IF NOT EXISTS source_type VARCHAR(20) DEFAULT 'ASSESSMENT'
+        """)
+        cur.execute("""
+            ALTER TABLE poam_items
+            ADD COLUMN IF NOT EXISTS source_id   VARCHAR(20)
+        """)
+        conn.commit()
+        logger.info("  poam_items.source_type + .source_id: OK")
+    except Exception as e:
+        conn.rollback()
+        logger.warning(f"  poam_items source_* migration skipped: {e}")
 
     # ssp_jobs.org_id — tenant isolation for /api/ssp/status, /cancel, /exports.
     # Existing rows predate multi-tenancy, so backfill them with the demo org.

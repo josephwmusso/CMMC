@@ -197,7 +197,8 @@ class POAMGenerator:
                     p.id, p.control_id, p.weakness_description, p.status::text,
                     p.scheduled_completion, p.risk_level,
                     c.title, c.family_abbrev, c.points,
-                    p.remediation_plan, p.milestone_changes
+                    p.remediation_plan, p.milestone_changes,
+                    p.source_type, p.source_id
                 FROM poam_items p
                 JOIN controls c ON c.id = p.control_id
                 WHERE p.org_id = :org_id
@@ -234,12 +235,14 @@ class POAMGenerator:
 
         for row in rows:
             pid, cid, weakness, status, deadline, risk, title, fam, points, \
-                remediation_plan, milestone_changes = row
+                remediation_plan, milestone_changes, source_type, source_id = row
             has_contradiction = cid in open_contra_controls
             if has_contradiction:
                 contradiction_driven += 1
             items.append({
                 "poam_id": pid,
+                # Alias so the existing POAM.tsx row-click (item.id) still works.
+                "id": pid,
                 "control_id": cid,
                 "family": fam,
                 "title": title,
@@ -247,13 +250,19 @@ class POAMGenerator:
                 "points": points,
                 "risk_level": risk,
                 "deadline": str(deadline) if deadline else None,
+                # Date column name aligned with the frontend's existing read.
+                "scheduled_completion": deadline.isoformat() if deadline else None,
                 "weakness": weakness,
+                "weakness_description": weakness,
                 "remediation_plan": remediation_plan,
                 "milestone_changes": milestone_changes,
                 # True while an OPEN contradiction covers the control this
                 # POA&M item is tracking. Frontends should surface a
                 # "resolve the contradiction first" hint.
                 "has_contradiction": has_contradiction,
+                # 3.1C — source tracking for the scan-origin badge.
+                "source_type": source_type or "ASSESSMENT",
+                "source_id": source_id,
             })
             status_counts[status] = status_counts.get(status, 0) + 1
             if status in ("OPEN", "IN_PROGRESS"):

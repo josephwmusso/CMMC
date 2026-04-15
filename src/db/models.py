@@ -373,6 +373,11 @@ class POAMItem(Base):
         default=POAMStatus.OPEN,
     )
     risk_level = Column(String(20))  # low, moderate, high, very_high
+    # 3.1C — origin of this POA&M row. 'ASSESSMENT' for the classic
+    # gap-report generator, 'SCAN' for Nessus-driven items,
+    # 'CONTRADICTION' reserved for future use.
+    source_type = Column(String(20), default="ASSESSMENT")
+    source_id = Column(String(20))  # scan_imports.id when source_type=SCAN
     created_at = Column(DateTime(timezone=True), server_default=func.now())
     updated_at = Column(DateTime(timezone=True), onupdate=func.now())
 
@@ -426,6 +431,85 @@ class IntakeContradiction(Base):
     __table_args__ = (
         UniqueConstraint("org_id", "rule_id", name="uq_intake_contradictions_org_rule"),
         Index("ix_intake_contradictions_org_status", "org_id", "status"),
+    )
+
+
+# ---------------------------------------------------------------------------
+# Scan Imports & Findings (Phase 3.1A — Nessus parser MVP)
+# ---------------------------------------------------------------------------
+class ScanImport(Base):
+    """Metadata for one uploaded .nessus file. Each import optionally spawns
+    a DRAFT evidence artifact linked via ``evidence_artifact_id``.
+
+    Routes use raw SQL for inserts/reads — this model is here for
+    introspection / future ORM-style queries."""
+
+    __tablename__ = "scan_imports"
+
+    id = Column(String(20), primary_key=True)
+    org_id = Column(String(20), ForeignKey("organizations.id"), nullable=False, index=True)
+    filename = Column(String(500), nullable=False)
+    scan_type = Column(String(20), nullable=False, default="NESSUS")
+    scanner_version = Column(String(100))
+    scan_date = Column(DateTime(timezone=True))
+    imported_at = Column(DateTime(timezone=True), nullable=False, server_default=func.now())
+    imported_by = Column(String, ForeignKey("users.id"))
+
+    host_count = Column(Integer, nullable=False, default=0)
+    finding_count = Column(Integer, nullable=False, default=0)
+    critical_count = Column(Integer, nullable=False, default=0)
+    high_count = Column(Integer, nullable=False, default=0)
+    medium_count = Column(Integer, nullable=False, default=0)
+    low_count = Column(Integer, nullable=False, default=0)
+    info_count = Column(Integer, nullable=False, default=0)
+
+    status = Column(String(20), nullable=False, default="PROCESSING")
+    error_message = Column(Text)
+    evidence_artifact_id = Column(String(20), ForeignKey("evidence_artifacts.id"))
+    summary_text = Column(Text)
+
+
+class ScanFinding(Base):
+    """One Nessus finding row. Multiple per host × plugin × port."""
+
+    __tablename__ = "scan_findings"
+
+    id = Column(String(20), primary_key=True)
+    scan_import_id = Column(
+        String(20),
+        ForeignKey("scan_imports.id", ondelete="CASCADE"),
+        nullable=False,
+        index=True,
+    )
+    org_id = Column(String(20), ForeignKey("organizations.id"), nullable=False, index=True)
+
+    host_ip = Column(String(45), nullable=False)
+    hostname = Column(String(255))
+    port = Column(Integer, nullable=False, default=0)
+    protocol = Column(String(10))
+
+    plugin_id = Column(String(20), nullable=False)
+    plugin_name = Column(String(500), nullable=False)
+    plugin_family = Column(String(200))
+
+    severity = Column(Integer, nullable=False, default=0)
+    severity_label = Column(String(20), nullable=False, default="INFO")
+    cvss_base_score = Column(Float)
+    cvss3_base_score = Column(Float)
+    cve_ids = Column(JSON, default=list)
+
+    synopsis = Column(Text)
+    description = Column(Text)
+    solution = Column(Text)
+    risk_factor = Column(String(20))
+    mapped_control_ids = Column(JSON, default=list)
+
+    status = Column(String(20), nullable=False, default="OPEN")
+    notes = Column(Text)
+    created_at = Column(DateTime(timezone=True), nullable=False, server_default=func.now())
+
+    __table_args__ = (
+        Index("ix_scan_findings_severity_desc", severity.desc()),
     )
 
 

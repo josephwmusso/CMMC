@@ -1,0 +1,62 @@
+<?xml version="1.0" ?>
+<NessusClientData_v2>
+  <Policy><policyName>Advanced Scan</policyName></Policy>
+  <Report name="Apex Defense - Weekly Scan">
+    <ReportHost name="10.0.1.50">
+      <HostProperties>
+        <tag name="host-ip">10.0.1.50</tag>
+        <tag name="hostname">DC01.apex.local</tag>
+        <tag name="operating-system">Microsoft Windows Server 2022</tag>
+        <tag name="HOST_START">Wed Apr 09 14:30:00 2026</tag>
+      </HostProperties>
+      <ReportItem port="445" svc_name="cifs" protocol="tcp" severity="3" pluginID="57608" pluginName="SMB Signing not required" pluginFamily="Windows">
+        <synopsis>SMB signing is not required on the remote SMB server.</synopsis>
+        <description>The remote SMB server does not enforce SMB signing.</description>
+        <solution>Enforce SMB signing via Group Policy.</solution>
+        <risk_factor>High</risk_factor>
+        <cvss_base_score>5.9</cvss_base_score>
+        <cvss3_base_score>7.4</cvss3_base_score>
+      </ReportItem>
+      <ReportItem port="3389" svc_name="rdp" protocol="tcp" severity="2" pluginID="30218" pluginName="Terminal Services Encryption Level is not FIPS-140 Compliant" pluginFamily="Windows">
+        <synopsis>The remote host does not use FIPS-compliant encryption for RDP.</synopsis>
+        <description>The terminal services encryption level is not FIPS-140 compliant.</description>
+        <solution>Set the RDP encryption level to High or FIPS compliant.</solution>
+        <risk_factor>Medium</risk_factor>
+        <cve>CVE-2023-21234</cve>
+        <cvss_base_score>4.3</cvss_base_score>
+        <cvss3_base_score>5.3</cvss3_base_score>
+      </ReportItem>
+      <ReportItem port="0" svc_name="general" protocol="tcp" severity="0" pluginID="19506" pluginName="Nessus Scan Information" pluginFamily="Settings">
+        <synopsis>This plugin displays information about the Nessus scan.</synopsis>
+        <description>Information about this scan.</description>
+        <solution>n/a</solution>
+        <risk_factor>None</risk_factor>
+      </ReportItem>
+    </ReportHost>
+    <ReportHost name="10.0.1.100">
+      <HostProperties>
+        <tag name="host-ip">10.0.1.100</tag>
+        <tag name="hostname">WS01.apex.local</tag>
+        <tag name="operating-system">Microsoft Windows 11 Pro</tag>
+        <tag name="HOST_START">Wed Apr 09 14:35:00 2026</tag>
+      </HostProperties>
+      <ReportItem port="445" svc_name="cifs" protocol="tcp" severity="4" pluginID="97833" pluginName="MS17-010: Security Update for Microsoft Windows SMB Server (EternalBlue)" pluginFamily="Windows">
+        <synopsis>The remote Windows host is affected by a critical vulnerability.</synopsis>
+        <description>The remote Windows host is missing a critical security update related to EternalBlue.</description>
+        <solution>Apply the MS17-010 security update or disable SMBv1.</solution>
+        <risk_factor>Critical</risk_factor>
+        <cve>CVE-2017-0144</cve>
+        <cve>CVE-2017-0145</cve>
+        <cvss_base_score>9.3</cvss_base_score>
+        <cvss3_base_score>9.8</cvss3_base_score>
+      </ReportItem>
+      <ReportItem port="80" svc_name="www" protocol="tcp" severity="1" pluginID="10863" pluginName="SSL Certificate Information" pluginFamily="General">
+        <synopsis>SSL certificate details for the remote service.</synopsis>
+        <description>The SSL certificate on port 80 is self-signed.</description>
+        <solution>Install a proper SSL certificate from a trusted CA.</solution>
+        <risk_factor>Low</risk_factor>
+        <cvss_base_score>2.6</cvss_base_score>
+      </ReportItem>
+    </ReportHost>
+  </Report>
+</NessusClientData_v2>

@@ -101,7 +101,22 @@ def _delete_org_data(conn, org_id: str) -> dict[str, int]:
     """Returns a dict of {phase_label: rows_deleted} — FK-safe order."""
     counts: dict[str, int] = {}
 
-    # Phase 1 — evidence links + artifacts (evidence_control_map FK blocks otherwise)
+    # Phase 1 — scans + evidence links + artifacts.
+    # scan_findings CASCADE-delete with scan_imports, but deleting
+    # scan_imports first releases its FK to evidence_artifacts so the
+    # artifact delete that follows doesn't hit an integrity error.
+    try:
+        counts["scan_findings"] = _exec_count(
+            conn, "DELETE FROM scan_findings WHERE org_id = :oid", {"oid": org_id}
+        )
+        counts["scan_imports"] = _exec_count(
+            conn, "DELETE FROM scan_imports WHERE org_id = :oid", {"oid": org_id}
+        )
+    except Exception:
+        # scan tables absent on older DBs — ignore.
+        counts["scan_findings"] = 0
+        counts["scan_imports"] = 0
+
     counts["evidence_control_map"] = _exec_count(
         conn,
         """DELETE FROM evidence_control_map
@@ -275,6 +290,8 @@ def main() -> None:
             counts = _delete_org_data(conn, args.org_id)
 
             phase_order = [
+                ("scan_findings",        1),
+                ("scan_imports",         1),
                 ("evidence_control_map", 1),
                 ("evidence_artifacts",   1),
                 ("ssp_sections",         2),
