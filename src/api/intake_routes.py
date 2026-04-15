@@ -65,6 +65,12 @@ class BatchAnswerRequest(BaseModel):
     answers: list[AnswerRequest]
 
 
+class InterpretRequest(BaseModel):
+    question_id: str
+    module_id: int
+    free_text: str
+
+
 class CompanyProfileRequest(BaseModel):
     # org_id is filled from the JWT in the handler; retained as an optional
     # field so SUPERADMIN can explicitly target a different org.
@@ -546,6 +552,58 @@ async def save_responses(
             "gaps": counts[1] or 0,
         },
         "contradictions": contradiction_counters,
+    }
+
+
+# =============================================================================
+# Routes — free-text classification
+# =============================================================================
+
+@router.post("/interpret")
+async def interpret_free_text(
+    req: InterpretRequest,
+    current_user: dict = Depends(get_current_user),
+):
+    """Classify a free-text intake response into one of the question's options.
+
+    Returns structured metadata the frontend can show to the user for
+    confirmation before the answer is saved.
+    """
+    mod = get_module(req.module_id)
+    if mod is None:
+        raise HTTPException(400, f"Module {req.module_id} not registered")
+
+    q_obj = next((q for q in mod.questions if q.id == req.question_id), None)
+    if q_obj is None:
+        raise HTTPException(400, f"Question {req.question_id} not found in module {req.module_id}")
+
+    question_def = q_obj.to_dict()
+    if not question_def.get("allows_free_text"):
+        raise HTTPException(400, f"Question {req.question_id} does not support free text")
+
+    free_text = (req.free_text or "").strip()
+    if not free_text:
+        raise HTTPException(400, "free_text must not be empty")
+
+    try:
+        from src.agents.intake_classifier import classify_free_text
+        classification = classify_free_text(question_def, free_text)
+    except Exception as exc:
+        import logging as _logging
+        _logging.getLogger(__name__).exception("free-text classification failed")
+        raise HTTPException(
+            status_code=503,
+            detail={
+                "error":    "classification_unavailable",
+                "message":  "Unable to analyze your response right now. Please select an option manually.",
+                "raw_text": free_text,
+            },
+        ) from exc
+
+    return {
+        "question_id":    req.question_id,
+        "classification": classification,
+        "raw_text":       free_text,
     }
 
 

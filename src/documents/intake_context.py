@@ -179,19 +179,62 @@ def _get_intake_responses(org_id: str, db) -> dict[str, str]:
     return answers
 
 
+def _get_free_text_narratives(org_id: str, db) -> dict[str, str]:
+    """Return {question_id: ssp_narrative_context} for answers saved from
+    a free-text classification. Most recent answer wins on duplicates.
+
+    Only returns entries where answer_details.source == 'free_text' and
+    the classification produced a non-empty ssp_narrative_context."""
+    rows = db.execute(text("""
+        SELECT ir.question_id, ir.answer_details
+        FROM intake_responses ir
+        JOIN intake_sessions  s ON s.id = ir.session_id
+        WHERE s.org_id = :org_id
+        ORDER BY ir.answered_at DESC
+    """), {"org_id": org_id}).fetchall()
+
+    narratives: dict[str, str] = {}
+    for qid, details in rows:
+        if qid in narratives:
+            continue
+        if isinstance(details, str):
+            try:
+                details = json.loads(details) if details else {}
+            except Exception:
+                continue
+        if not isinstance(details, dict):
+            continue
+        if details.get("source") != "free_text":
+            continue
+        classification = details.get("classification") or {}
+        narrative = classification.get("ssp_narrative_context")
+        if narrative:
+            narratives[qid] = narrative
+    return narratives
+
+
 # =============================================================================
 # Mapping helpers
 # =============================================================================
 
-def _map_module0_to_profile(answers: dict, profile: dict) -> dict:
+def _map_module0_to_profile(answers: dict, profile: dict, narratives: Optional[dict] = None) -> dict:
     """Merge Module 0 intake answers with company_profiles row into the
     canonical context field names. intake_responses wins over profile
-    when both have a value (the response is always at least as fresh)."""
-    ctx: dict[str, Any] = {}
+    when both have a value (the response is always at least as fresh).
 
-    # 1. From Module 0 answers (fresher source)
+    When a question has a free-text classification with an
+    ``ssp_narrative_context``, that narrative is preferred over the raw
+    answer_value for document-generation context — it's richer, more
+    specific, and already written in SSP-ready prose."""
+    ctx: dict[str, Any] = {}
+    narratives = narratives or {}
+
+    # 1. From Module 0 answers (fresher source). Prefer the LLM-generated
+    # narrative if one was saved for this question.
     for qid, field in M0_TO_CONTEXT.items():
-        if qid in answers and answers[qid]:
+        if qid in narratives and narratives[qid]:
+            ctx[field] = narratives[qid]
+        elif qid in answers and answers[qid]:
             ctx[field] = answers[qid]
 
     # 2. Profile fallbacks — company_profiles carries some things that
@@ -369,9 +412,10 @@ def _apply_defaults(ctx: dict) -> dict:
 def _build_context(org_id: str, db) -> dict:
     profile = _get_company_profile(org_id, db)
     answers = _get_intake_responses(org_id, db)
+    narratives = _get_free_text_narratives(org_id, db)
 
     # Module 0 / company profile mapping
-    ctx = _map_module0_to_profile(answers, profile)
+    ctx = _map_module0_to_profile(answers, profile, narratives)
 
     # Per-family control status dicts
     controls = _map_control_statuses(answers)

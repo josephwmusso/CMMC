@@ -64,6 +64,11 @@ class IntakeQuestion:
     weight: Optional[int] = None
     # Extensions for the existing data / save_responses logic:
     control_ids: list = field(default_factory=list)
+    # When True, the frontend shows a free-text box in addition to the
+    # option picker. Submitted text is classified by the LLM via
+    # POST /api/intake/interpret into one of the listed options.
+    allows_free_text: bool = False
+    free_text_prompt: Optional[str] = None
     # Free-form bag for Module 0's ``branch`` / Module 1's ``branching``
     # and ``skip_to``. Keys are spread into the top level of to_dict() so
     # save_responses() keeps finding them exactly where it did before.
@@ -87,6 +92,8 @@ class IntakeQuestion:
             "depends_on": self.depends_on,
             "placeholder": self.placeholder,
             "weight": self.weight,
+            "allows_free_text": self.allows_free_text,
+            "free_text_prompt": self.free_text_prompt,
         }
         # Spread metadata (branch / branching / skip_to / flag / …) so that
         # save_responses()'s existing .get("branch") / .get("branching") /
