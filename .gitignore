@@ -47,3 +47,5 @@ frontend/src_backup_*/
 
 # ── Claude Code ───────────────────────────────────────────────────────────────
 .claude/
+
+docs/INFRASTRUCTURE.md
