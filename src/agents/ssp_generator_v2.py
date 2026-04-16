@@ -14,7 +14,6 @@ from src.agents.llm_client import get_llm
 from src.agents.ssp_prompts_v2 import (
     SSP_SYSTEM_PROMPT,
     build_user_prompt,
-    DEMO_ORG_PROFILE,
 )
 from src.agents.ssp_schemas import SSPSectionOutput, ImplementationStatus
 from src.agents.hallucination_detector import run_verification
@@ -46,8 +45,11 @@ class SSPGeneratorV2:
     """Evidence-gated SSP section generator."""
 
     def __init__(self, org_profile: dict = None):
-        self.org_profile = org_profile or DEMO_ORG_PROFILE
-        self.org_id = self.org_profile["org_id"]
+        if org_profile is None:
+            from src.agents.ssp_prompts_v2 import DEMO_ORG_PROFILE
+            org_profile = DEMO_ORG_PROFILE
+        self.org_profile = org_profile
+        self.org_id = self.org_profile.get("org_id", "default-org")
         self.llm = get_llm()
         self._qdrant = None
         self.collection = settings.QDRANT_COLLECTION

@@ -166,10 +166,11 @@ def generate_single_control(
     if not is_llm_available():
         raise HTTPException(503, "SSP generation requires an LLM API key, which is not configured.")
     from src.agents.ssp_generator_v2 import SSPGenerator
-    org = req.org_profile.to_dict()
-    # Always bind persistence to the authenticated user's org so GET
-    # /narrative/{cid} (which filters by current_user.org_id) can read it back.
-    org["org_id"] = current_user["org_id"]
+    from src.agents.ssp_org_profile import build_ssp_org_profile, CompanyProfileMissing
+    try:
+        org = build_ssp_org_profile(current_user["org_id"], db)
+    except CompanyProfileMissing:
+        raise HTTPException(400, "Your organization must complete onboarding before generating an SSP.")
     generator = SSPGenerator(org_profile=org)
 
     result_data = generator.generate_section(req.control_id)
@@ -283,11 +284,12 @@ def generate_full_ssp(
     """
     if not is_llm_available():
         raise HTTPException(503, "SSP generation requires an LLM API key, which is not configured.")
+    from src.agents.ssp_org_profile import build_ssp_org_profile, CompanyProfileMissing
+    try:
+        org = build_ssp_org_profile(current_user["org_id"], db)
+    except CompanyProfileMissing:
+        raise HTTPException(400, "Your organization must complete onboarding before generating an SSP.")
     job_id = str(uuid.uuid4())[:8]
-    org = req.org_profile.to_dict()
-    # Always trust the JWT. SUPERADMIN may pass an explicit body org_id to
-    # target another tenant; everyone else gets the body field overwritten.
-    org["org_id"] = current_user["org_id"]
 
     started = datetime.datetime.utcnow().isoformat()
     _set_job(job_id, org_id=current_user["org_id"], status="pending",
@@ -330,8 +332,11 @@ async def generate_full_ssp_temporal(
             detail="Temporal is not available in this deployment. Use /api/ssp/generate-full instead.",
         )
 
-    org = req.org_profile.to_dict()
-    org["org_id"] = current_user["org_id"]
+    from src.agents.ssp_org_profile import build_ssp_org_profile, CompanyProfileMissing
+    try:
+        org = build_ssp_org_profile(current_user["org_id"], db)
+    except CompanyProfileMissing:
+        raise HTTPException(400, "Organization must complete onboarding before SSP generation.")
     workflow_id = f"ssp-{org['org_id']}-{datetime.datetime.utcnow().strftime('%Y%m%d%H%M%S')}"
 
     client = await Client.connect(TEMPORAL_HOST)
