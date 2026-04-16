@@ -417,6 +417,37 @@ TABLES_DDL = [
     # Phase 4.4 — per-org freshness threshold overrides. When empty the
     # module constants in src/truth/freshness.py apply. Composite PK
     # (org_id, evidence_type) so each org can tune each type once.
+    # Phase 4.5 — stored simulation snapshots. Captures the truth-model
+    # state, SPRS delta, method coverage, and LLM-generated assessor
+    # findings at a single point in time for trend tracking.
+    ("assessment_snapshots", """
+        CREATE TABLE IF NOT EXISTS assessment_snapshots (
+            id                      VARCHAR(20) PRIMARY KEY,
+            org_id                  VARCHAR(20) NOT NULL REFERENCES organizations(id),
+            created_at              TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+            created_by              VARCHAR(20) REFERENCES users(id),
+            readiness_pct           REAL,
+            sprs_actual             INTEGER,
+            sprs_truth_adjusted     INTEGER,
+            sprs_delta              INTEGER,
+            total_claims            INTEGER,
+            verified_claims         INTEGER,
+            conflict_claims         INTEGER,
+            unverified_claims       INTEGER,
+            stale_claims            INTEGER,
+            controls_at_risk        INTEGER,
+            method_coverage_pct     REAL,
+            findings_json           JSONB,
+            details_json            JSONB
+        )
+    """),
+    ("assessment_snapshots_idx_org", """
+        CREATE INDEX IF NOT EXISTS idx_assessment_snapshots_org ON assessment_snapshots(org_id)
+    """),
+    ("assessment_snapshots_idx_created", """
+        CREATE INDEX IF NOT EXISTS idx_assessment_snapshots_created ON assessment_snapshots(created_at DESC)
+    """),
+
     ("freshness_thresholds", """
         CREATE TABLE IF NOT EXISTS freshness_thresholds (
             org_id        VARCHAR(20) NOT NULL REFERENCES organizations(id),

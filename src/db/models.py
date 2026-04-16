@@ -661,6 +661,31 @@ class Resolution(Base):
 
 
 # ---------------------------------------------------------------------------
+# Assessment snapshots — simulation results persisted for trend tracking (4.5)
+# ---------------------------------------------------------------------------
+class AssessmentSnapshot(Base):
+    __tablename__ = "assessment_snapshots"
+
+    id                  = Column(String(20), primary_key=True)
+    org_id              = Column(String(20), ForeignKey("organizations.id"), nullable=False)
+    created_at          = Column(DateTime(timezone=True), server_default=func.now())
+    created_by          = Column(String(20), ForeignKey("users.id"))
+    readiness_pct       = Column(Float)
+    sprs_actual         = Column(Integer)
+    sprs_truth_adjusted = Column(Integer)
+    sprs_delta          = Column(Integer)
+    total_claims        = Column(Integer)
+    verified_claims     = Column(Integer)
+    conflict_claims     = Column(Integer)
+    unverified_claims   = Column(Integer)
+    stale_claims        = Column(Integer)
+    controls_at_risk    = Column(Integer)
+    method_coverage_pct = Column(Float)
+    findings_json       = Column(JSON)
+    details_json        = Column(JSON)
+
+
+# ---------------------------------------------------------------------------
 # Audit Log — append-only, hash-chained
 # ---------------------------------------------------------------------------
 class AuditLog(Base):

@@ -149,6 +149,12 @@ def _delete_org_data(conn, org_id: str) -> dict[str, int]:
     # explicit DELETE keeps the order obvious and survives a schema
     # where ON DELETE CASCADE might be dropped later.
     try:
+        counts["assessment_snapshots"] = _exec_count(
+            conn, "DELETE FROM assessment_snapshots WHERE org_id = :oid", {"oid": org_id}
+        )
+    except Exception:
+        counts["assessment_snapshots"] = 0
+    try:
         counts["freshness_thresholds"] = _exec_count(
             conn, "DELETE FROM freshness_thresholds WHERE org_id = :oid", {"oid": org_id}
         )
