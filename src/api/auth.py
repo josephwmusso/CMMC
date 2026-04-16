@@ -281,12 +281,13 @@ def register(user_in: UserCreate, db: Session = Depends(get_db)):
 
     if user_in.invite_code:
         invite_row = db.execute(text("""
-            SELECT id, org_id, email, role, expires_at, used_at
+            SELECT id, org_id, email, role, expires_at, used_at,
+                   COALESCE(invite_type, 'USER_TO_ORG') AS invite_type
             FROM invites WHERE code = :code
         """), {"code": user_in.invite_code}).fetchone()
         if not invite_row:
             raise HTTPException(400, "Invalid invite code")
-        _, inv_org, inv_email, inv_role, inv_expires, inv_used = invite_row
+        _, inv_org, inv_email, inv_role, inv_expires, inv_used, inv_type = invite_row
         now = datetime.now(timezone.utc)
         if inv_used is not None:
             raise HTTPException(400, "Invite code has already been used")
@@ -308,12 +309,20 @@ def register(user_in: UserCreate, db: Session = Depends(get_db)):
     user_id = f"USR-{uuid.uuid4().hex[:12].upper()}"
     hashed_pw = hash_password(user_in.password)
 
+    # USER_TO_ORG invitees join an existing org whose profile is already
+    # set up — skip the onboarding wizard. NEW_CUSTOMER invitees use the
+    # dedicated redeem endpoint which sets onboarding_complete=false.
+    # Non-invite paths (demo/legacy) also skip onboarding.
+    onboarding_done = True
+    if invite_row is not None and getattr(invite_row, "invite_type", "USER_TO_ORG") == "NEW_CUSTOMER":
+        onboarding_done = False
+
     db.execute(
         text("""
             INSERT INTO users (id, email, org_id, full_name, hashed_password,
-                               is_admin, role, created_at)
+                               is_admin, role, onboarding_complete, created_at)
             VALUES (:id, :email, :org_id, :full_name, :hashed_password,
-                    :is_admin, :role, NOW())
+                    :is_admin, :role, :onb, NOW())
         """),
         {
             "id": user_id,
@@ -323,6 +332,7 @@ def register(user_in: UserCreate, db: Session = Depends(get_db)):
             "hashed_password": hashed_pw,
             "is_admin": assigned_role in ADMIN_ROLES,
             "role": assigned_role,
+            "onb": onboarding_done,
         },
     )
 
