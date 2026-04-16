@@ -612,6 +612,31 @@ class Claim(Base):
 
 
 # ---------------------------------------------------------------------------
+# Observations — deterministic factual statements from evidence sources (4.2)
+# ---------------------------------------------------------------------------
+class Observation(Base):
+    """One factual statement built from a structured source.
+
+    source_type:      SCAN_FINDING | BASELINE_DEVIATION | INTAKE_RESPONSE |
+                      EVIDENCE_ARTIFACT | CONTRADICTION
+    observation_type: POLICY | TECHNICAL | OPERATIONAL
+    """
+    __tablename__ = "observations"
+
+    id               = Column(String(20), primary_key=True)
+    org_id           = Column(String(20), ForeignKey("organizations.id"), nullable=False)
+    observation_text = Column(Text, nullable=False)
+    source_type      = Column(String(30), nullable=False)
+    source_id        = Column(String(20))
+    control_ids      = Column(ARRAY(Text))
+    observation_type = Column(String(20), nullable=False, default="TECHNICAL")
+    confidence       = Column(Float, default=1.0)
+    observed_at      = Column(DateTime(timezone=True))
+    created_at       = Column(DateTime(timezone=True), server_default=func.now())
+    notes            = Column(Text)
+
+
+# ---------------------------------------------------------------------------
 # Audit Log — append-only, hash-chained
 # ---------------------------------------------------------------------------
 class AuditLog(Base):

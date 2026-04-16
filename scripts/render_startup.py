@@ -355,6 +355,35 @@ TABLES_DDL = [
         CREATE INDEX IF NOT EXISTS idx_claims_status ON claims(verification_status)
     """),
 
+    # Phase 4.2 — deterministic factual statements built from evidence
+    # sources (scan findings, baseline deviations, intake, evidence,
+    # contradictions). No LLM involved; IDs are stable hashes of
+    # (source_type, source_id) so rebuilds are idempotent.
+    ("observations", """
+        CREATE TABLE IF NOT EXISTS observations (
+            id                  VARCHAR(20) PRIMARY KEY,
+            org_id              VARCHAR(20) NOT NULL REFERENCES organizations(id),
+            observation_text    TEXT NOT NULL,
+            source_type         VARCHAR(30) NOT NULL,
+            source_id           VARCHAR(20),
+            control_ids         TEXT[],
+            observation_type    VARCHAR(20) NOT NULL DEFAULT 'TECHNICAL',
+            confidence          REAL DEFAULT 1.0,
+            observed_at         TIMESTAMPTZ,
+            created_at          TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+            notes               TEXT
+        )
+    """),
+    ("observations_idx_org", """
+        CREATE INDEX IF NOT EXISTS idx_observations_org ON observations(org_id)
+    """),
+    ("observations_idx_source", """
+        CREATE INDEX IF NOT EXISTS idx_observations_source ON observations(source_type)
+    """),
+    ("observations_idx_control", """
+        CREATE INDEX IF NOT EXISTS idx_observations_control ON observations USING GIN(control_ids)
+    """),
+
     ("poam_items", """
         CREATE TABLE IF NOT EXISTS poam_items (
             id                      VARCHAR(20) PRIMARY KEY,
