@@ -27,11 +27,23 @@ def run_observations(api: ApiClient, fixture: Fixture, recorder: AssertionRecord
                     by_source.get("BASELINE_DEVIATION", 0) >= 1,
                     actual=by_source.get("BASELINE_DEVIATION", 0))
 
-    # Per contradiction-seed control: at least 1 observation
-    for cid in control_ids[:4]:  # first 4 are contradiction seeds
+    # Per contradiction-seed control: check for observations.
+    # Controls with detection_layer=resolution_engine may have NO observations
+    # (evidence-gap contradictions are detected by absence, not presence).
+    resolution_controls = set()
+    for c in fixture.contradictions:
+        if getattr(c, "detection_layer", None) == "resolution_engine":
+            resolution_controls.update(c.affected_controls)
+
+    for cid in control_ids[:4]:
         cr = api.get(f"/api/observations/by-control/{cid}")
         count = cr.json().get("count", 0) if cr.ok else 0
-        recorder.expect(f"observations.{cid}_has_observations",
-                        count >= 1, actual=count)
+        if cid in resolution_controls and count == 0:
+            recorder.warn(f"observations.{cid}_evidence_gap_expected",
+                          detail=f"{cid} has detection_layer=resolution_engine; no observations is expected",
+                          actual=count)
+        else:
+            recorder.expect(f"observations.{cid}_has_observations",
+                            count >= 1, actual=count)
 
     return data

@@ -113,15 +113,41 @@ SAFE_ACRONYMS = {
 }
 
 
+# Compound adjectives/terms that contain hyphens but aren't hostnames
+_COMPOUND_EXCLUDE = {
+    "role-based", "risk-based", "need-to-know", "deny-by-default",
+    "least-privilege", "multi-factor", "two-factor", "non-compliant",
+    "real-time", "end-to-end", "up-to-date", "out-of-date", "day-to-day",
+    "on-premises", "on-premise", "air-gapped", "off-site", "on-site",
+    "pass-through", "write-once", "read-only", "sign-in", "log-in",
+    "third-party", "single-factor", "time-based", "cloud-based",
+    "web-based", "host-based", "network-based", "file-based",
+    "agent-based", "policy-based", "compliance-based", "evidence-based",
+    "security-aware", "cyber-aware", "well-known", "re-evaluate",
+    "pre-defined", "co-located", "de-provision", "re-provision",
+    "access-control", "change-management", "incident-response",
+}
+
+
 def _is_potential_hostname(token: str) -> bool:
     """True only if token structurally looks like a hostname, not an acronym."""
     if token.upper() in SAFE_ACRONYMS:
         return False
     if token.isupper() and len(token) <= 5:
         return False
+    if token.lower() in _COMPOUND_EXCLUDE:
+        return False
     # Hyphenated: dev-nas, shop-pc-03, dc-primary-01
+    # Require at least one segment to contain a digit OR be a known host prefix
     if "-" in token and re.match(r'^[a-zA-Z][a-zA-Z0-9-]+[a-zA-Z0-9]$', token):
-        return True
+        parts = token.lower().split("-")
+        has_digit = any(any(c.isdigit() for c in p) for p in parts)
+        has_host_prefix = parts[0] in {"dev", "srv", "dc", "fs", "web", "app", "db",
+                                         "mail", "file", "print", "shop", "owner",
+                                         "server", "win", "exchange", "sql"}
+        if has_digit or has_host_prefix:
+            return True
+        return False
     # FQDN: server.domain.local
     if re.match(r'^[a-zA-Z][a-zA-Z0-9-]*\.[a-zA-Z0-9.-]+$', token):
         return True
@@ -137,6 +163,10 @@ _MUST_NOT_MATCH = [
     "RMF", "ATO", "SSO", "TLS", "SSH", "FTP", "RDP", "NTP", "DNS", "VLAN",
     "CSP", "MDM", "SOC", "MSP", "ISSO", "ISSM", "GCC", "LLC", "CA", "NAS",
     "VPN", "ACL", "DMZ", "NAT", "SQL", "PDF", "API", "SDK", "CLI", "DB", "FS",
+    # Compound adjectives
+    "role-based", "need-to-know", "deny-by-default", "real-time",
+    "multi-factor", "on-premises", "air-gapped", "third-party",
+    "access-control", "least-privilege", "risk-based",
 ]
 _MUST_MATCH = [
     "dev-nas", "shop-pc-03", "owner-laptop", "dc-primary-01",

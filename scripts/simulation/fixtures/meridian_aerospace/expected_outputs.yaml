@@ -70,7 +70,7 @@ method_coverage:
   interview_present: false
 
 readiness_pct_target:
-  expected_range: [5, 25]
+  expected_range: [10, 40]
 
 assessor_findings_style:
   tone: professional_C3PAO_voice

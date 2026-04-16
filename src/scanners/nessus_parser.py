@@ -122,6 +122,14 @@ KEYWORD_CONTROL_MAP: dict[str, list[str]] = {
     "mfa": ["IA.L2-3.5.3"],
     "two-factor": ["IA.L2-3.5.3"],
     "2-step verification": ["IA.L2-3.5.3"],
+    # SSL/TLS/cipher findings → SC.L2-3.13.11 (FIPS encryption) alongside SC.L2-3.13.8
+    "tls 1.0": ["SC.L2-3.13.11"],
+    "tls 1.1": ["SC.L2-3.13.11"],
+    "ssl 2": ["SC.L2-3.13.11"],
+    "ssl 3": ["SC.L2-3.13.11"],
+    "weak cipher": ["SC.L2-3.13.11"],
+    "cipher suite": ["SC.L2-3.13.11"],
+    "fips": ["SC.L2-3.13.11"],
 }
 
 
