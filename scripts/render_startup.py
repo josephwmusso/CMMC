@@ -316,6 +316,45 @@ TABLES_DDL = [
         )
     """),
 
+    # Phase 4.1 — atomic claims extracted from SSP narratives. Each claim
+    # is a verifiable factual statement that a C3PAO assessor would check.
+    # ssp_section_id is intentionally unconstrained (no FK) because
+    # sections version by (org, control, version) and claims should
+    # survive section regeneration with a best-effort id carry-forward.
+    ("claims", """
+        CREATE TABLE IF NOT EXISTS claims (
+            id                  VARCHAR(20) PRIMARY KEY,
+            org_id              VARCHAR(20) NOT NULL REFERENCES organizations(id),
+            control_id          VARCHAR(30) NOT NULL REFERENCES controls(id),
+            ssp_section_id      VARCHAR(20),
+            claim_text          TEXT NOT NULL,
+            claim_type          VARCHAR(20) NOT NULL DEFAULT 'TECHNICAL',
+            verification_status VARCHAR(20) NOT NULL DEFAULT 'UNVERIFIED',
+            source_sentence     TEXT,
+            source_span_start   INTEGER,
+            source_span_end     INTEGER,
+            confidence          REAL,
+            evidence_refs       TEXT[],
+            extracted_at        TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+            extraction_model    VARCHAR(50),
+            verified_at         TIMESTAMPTZ,
+            verified_by         VARCHAR(20) REFERENCES users(id),
+            notes               TEXT
+        )
+    """),
+    ("claims_idx_org", """
+        CREATE INDEX IF NOT EXISTS idx_claims_org ON claims(org_id)
+    """),
+    ("claims_idx_control", """
+        CREATE INDEX IF NOT EXISTS idx_claims_control ON claims(control_id)
+    """),
+    ("claims_idx_section", """
+        CREATE INDEX IF NOT EXISTS idx_claims_section ON claims(ssp_section_id)
+    """),
+    ("claims_idx_status", """
+        CREATE INDEX IF NOT EXISTS idx_claims_status ON claims(verification_status)
+    """),
+
     ("poam_items", """
         CREATE TABLE IF NOT EXISTS poam_items (
             id                      VARCHAR(20) PRIMARY KEY,

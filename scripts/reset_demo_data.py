@@ -144,6 +144,14 @@ def _delete_org_data(conn, org_id: str) -> dict[str, int]:
     )
 
     # Phase 2 — SSP
+    # claims has no dependents; delete before ssp_sections so a curious
+    # DBA doesn't leave orphan rows pointing at vanished section ids.
+    try:
+        counts["claims"] = _exec_count(
+            conn, "DELETE FROM claims WHERE org_id = :oid", {"oid": org_id}
+        )
+    except Exception:
+        counts["claims"] = 0
     counts["ssp_sections"] = _exec_count(
         conn, "DELETE FROM ssp_sections WHERE org_id = :oid", {"oid": org_id}
     )

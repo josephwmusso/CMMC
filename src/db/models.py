@@ -582,6 +582,36 @@ class BaselineDeviation(Base):
 
 
 # ---------------------------------------------------------------------------
+# Claims — atomic verifiable statements extracted from SSP narratives (4.1)
+# ---------------------------------------------------------------------------
+class Claim(Base):
+    """One atomic verifiable claim decomposed out of an SSP narrative.
+
+    verification_status: UNVERIFIED | VERIFIED | CONFLICT | STALE
+    claim_type:          POLICY | TECHNICAL | OPERATIONAL
+    """
+    __tablename__ = "claims"
+
+    id                  = Column(String(20), primary_key=True)
+    org_id              = Column(String(20), ForeignKey("organizations.id"), nullable=False)
+    control_id          = Column(String(30), ForeignKey("controls.id"), nullable=False)
+    ssp_section_id      = Column(String(20))
+    claim_text          = Column(Text, nullable=False)
+    claim_type          = Column(String(20), nullable=False, default="TECHNICAL")
+    verification_status = Column(String(20), nullable=False, default="UNVERIFIED")
+    source_sentence     = Column(Text)
+    source_span_start   = Column(Integer)
+    source_span_end     = Column(Integer)
+    confidence          = Column(Float)
+    evidence_refs       = Column(ARRAY(Text))
+    extracted_at        = Column(DateTime(timezone=True), server_default=func.now())
+    extraction_model    = Column(String(50))
+    verified_at         = Column(DateTime(timezone=True))
+    verified_by         = Column(String(20), ForeignKey("users.id"))
+    notes               = Column(Text)
+
+
+# ---------------------------------------------------------------------------
 # Audit Log — append-only, hash-chained
 # ---------------------------------------------------------------------------
 class AuditLog(Base):
