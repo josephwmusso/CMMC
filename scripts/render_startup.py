@@ -448,6 +448,28 @@ TABLES_DDL = [
         CREATE INDEX IF NOT EXISTS idx_assessment_snapshots_created ON assessment_snapshots(created_at DESC)
     """),
 
+    # Phase 6.1 — export audit trail. Tracks what was exported, when,
+    # and the package hash so orgs can verify old exports.
+    ("export_records", """
+        CREATE TABLE IF NOT EXISTS export_records (
+            id              VARCHAR(20) PRIMARY KEY,
+            org_id          VARCHAR(20) NOT NULL REFERENCES organizations(id),
+            export_type     VARCHAR(50) NOT NULL,
+            filename        VARCHAR(255),
+            file_size_bytes BIGINT,
+            package_hash    VARCHAR(128),
+            artifact_count  INTEGER,
+            created_at      TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+            created_by      VARCHAR(20)
+        )
+    """),
+    ("export_records_idx_org", """
+        CREATE INDEX IF NOT EXISTS idx_export_records_org ON export_records(org_id)
+    """),
+    ("export_records_idx_type", """
+        CREATE INDEX IF NOT EXISTS idx_export_records_type ON export_records(export_type)
+    """),
+
     ("freshness_thresholds", """
         CREATE TABLE IF NOT EXISTS freshness_thresholds (
             org_id        VARCHAR(20) NOT NULL REFERENCES organizations(id),

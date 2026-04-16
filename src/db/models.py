@@ -686,6 +686,23 @@ class AssessmentSnapshot(Base):
 
 
 # ---------------------------------------------------------------------------
+# Export records — audit trail for binder/package exports (6.1)
+# ---------------------------------------------------------------------------
+class ExportRecord(Base):
+    __tablename__ = "export_records"
+
+    id              = Column(String(20), primary_key=True)
+    org_id          = Column(String(20), ForeignKey("organizations.id"), nullable=False)
+    export_type     = Column(String(50), nullable=False)
+    filename        = Column(String(255))
+    file_size_bytes = Column(Integer)
+    package_hash    = Column(String(128))
+    artifact_count  = Column(Integer)
+    created_at      = Column(DateTime(timezone=True), server_default=func.now())
+    created_by      = Column(String(20))
+
+
+# ---------------------------------------------------------------------------
 # Audit Log — append-only, hash-chained
 # ---------------------------------------------------------------------------
 class AuditLog(Base):
