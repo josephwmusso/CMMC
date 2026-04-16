@@ -384,6 +384,36 @@ TABLES_DDL = [
         CREATE INDEX IF NOT EXISTS idx_observations_control ON observations USING GIN(control_ids)
     """),
 
+    # Phase 4.3 — LLM-determined relationship between one claim and one
+    # observation (SUPPORTS / CONTRADICTS / UNRELATED). UNIQUE(claim_id,
+    # observation_id) makes resolution idempotent at the row level;
+    # resolve_control() deletes-then-inserts for semantic idempotency
+    # when claims or observations have changed.
+    ("resolutions", """
+        CREATE TABLE IF NOT EXISTS resolutions (
+            id             VARCHAR(20) PRIMARY KEY,
+            org_id         VARCHAR(20) NOT NULL REFERENCES organizations(id),
+            claim_id       VARCHAR(20) NOT NULL REFERENCES claims(id)       ON DELETE CASCADE,
+            observation_id VARCHAR(20) NOT NULL REFERENCES observations(id) ON DELETE CASCADE,
+            relationship   VARCHAR(20) NOT NULL,
+            confidence     REAL NOT NULL DEFAULT 0.0,
+            reasoning      TEXT,
+            resolved_at    TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+            resolved_by    VARCHAR(20) REFERENCES users(id),
+            model_used     VARCHAR(50),
+            UNIQUE (claim_id, observation_id)
+        )
+    """),
+    ("resolutions_idx_org", """
+        CREATE INDEX IF NOT EXISTS idx_resolutions_org ON resolutions(org_id)
+    """),
+    ("resolutions_idx_claim", """
+        CREATE INDEX IF NOT EXISTS idx_resolutions_claim ON resolutions(claim_id)
+    """),
+    ("resolutions_idx_rel", """
+        CREATE INDEX IF NOT EXISTS idx_resolutions_relationship ON resolutions(relationship)
+    """),
+
     ("poam_items", """
         CREATE TABLE IF NOT EXISTS poam_items (
             id                      VARCHAR(20) PRIMARY KEY,

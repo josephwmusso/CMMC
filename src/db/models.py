@@ -637,6 +637,30 @@ class Observation(Base):
 
 
 # ---------------------------------------------------------------------------
+# Resolutions — LLM-determined claim↔observation relationship (4.3)
+# ---------------------------------------------------------------------------
+class Resolution(Base):
+    """One LLM verdict for a (claim, observation) pair.
+
+    relationship: SUPPORTS | CONTRADICTS | UNRELATED
+    """
+    __tablename__ = "resolutions"
+
+    id             = Column(String(20), primary_key=True)
+    org_id         = Column(String(20), ForeignKey("organizations.id"), nullable=False)
+    claim_id       = Column(String(20), ForeignKey("claims.id",       ondelete="CASCADE"), nullable=False)
+    observation_id = Column(String(20), ForeignKey("observations.id", ondelete="CASCADE"), nullable=False)
+    relationship   = Column(String(20), nullable=False)
+    confidence     = Column(Float, nullable=False, default=0.0)
+    reasoning      = Column(Text)
+    resolved_at    = Column(DateTime(timezone=True), server_default=func.now())
+    resolved_by    = Column(String(20), ForeignKey("users.id"))
+    model_used     = Column(String(50))
+
+    __table_args__ = (UniqueConstraint("claim_id", "observation_id"),)
+
+
+# ---------------------------------------------------------------------------
 # Audit Log — append-only, hash-chained
 # ---------------------------------------------------------------------------
 class AuditLog(Base):

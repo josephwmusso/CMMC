@@ -144,9 +144,16 @@ def _delete_org_data(conn, org_id: str) -> dict[str, int]:
     )
 
     # Phase 2 — SSP
-    # claims + observations have no dependents; delete before
-    # ssp_sections so curious DBAs don't see orphan rows pointing at
-    # vanished section ids / source ids.
+    # resolutions → claims → observations → ssp_sections. FK CASCADE
+    # from claims/observations already drops resolutions, but the
+    # explicit DELETE keeps the order obvious and survives a schema
+    # where ON DELETE CASCADE might be dropped later.
+    try:
+        counts["resolutions"] = _exec_count(
+            conn, "DELETE FROM resolutions WHERE org_id = :oid", {"oid": org_id}
+        )
+    except Exception:
+        counts["resolutions"] = 0
     try:
         counts["claims"] = _exec_count(
             conn, "DELETE FROM claims WHERE org_id = :oid", {"oid": org_id}
