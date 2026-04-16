@@ -414,6 +414,21 @@ TABLES_DDL = [
         CREATE INDEX IF NOT EXISTS idx_resolutions_relationship ON resolutions(relationship)
     """),
 
+    # Phase 4.4 — per-org freshness threshold overrides. When empty the
+    # module constants in src/truth/freshness.py apply. Composite PK
+    # (org_id, evidence_type) so each org can tune each type once.
+    ("freshness_thresholds", """
+        CREATE TABLE IF NOT EXISTS freshness_thresholds (
+            org_id        VARCHAR(20) NOT NULL REFERENCES organizations(id),
+            evidence_type VARCHAR(50) NOT NULL,
+            fresh_days    INTEGER NOT NULL,
+            aging_days    INTEGER NOT NULL,
+            stale_days    INTEGER NOT NULL,
+            updated_at    TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+            PRIMARY KEY (org_id, evidence_type)
+        )
+    """),
+
     ("poam_items", """
         CREATE TABLE IF NOT EXISTS poam_items (
             id                      VARCHAR(20) PRIMARY KEY,

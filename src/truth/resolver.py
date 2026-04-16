@@ -217,7 +217,7 @@ def resolve_control(
 
     pairs_evaluated = 0
     verdict_counts = {"SUPPORTS": 0, "CONTRADICTS": 0, "UNRELATED": 0}
-    status_counts  = {"VERIFIED": 0, "CONFLICT": 0, "UNVERIFIED": 0}
+    status_counts  = {"VERIFIED": 0, "CONFLICT": 0, "UNVERIFIED": 0, "STALE": 0}
 
     # If there are no observations, every claim falls through to UNVERIFIED.
     if not observations:
@@ -243,6 +243,7 @@ def resolve_control(
             "verified":   status_counts["VERIFIED"],
             "conflict":   status_counts["CONFLICT"],
             "unverified": status_counts["UNVERIFIED"],
+            "stale":      status_counts.get("STALE", 0),
         }
 
     llm = get_llm()
@@ -259,6 +260,7 @@ def resolve_control(
                 control_id=control_id,
                 _llm=llm,
             )
+            verdict["observation_id"] = ob.id
             pairs_evaluated += 1
             verdict_counts[verdict["relationship"]] = verdict_counts.get(verdict["relationship"], 0) + 1
             per_claim_verdicts.append(verdict)
@@ -294,6 +296,10 @@ def resolve_control(
             })
 
         new_status = _rollup_status(per_claim_verdicts)
+        if new_status == "VERIFIED":
+            from src.truth.freshness import all_supporting_observations_stale
+            if all_supporting_observations_stale(per_claim_verdicts, db, org_id):
+                new_status = "STALE"
         status_counts[new_status] += 1
 
         if new_status == "UNVERIFIED":
@@ -304,7 +310,7 @@ def resolve_control(
                     verified_by         = NULL
                 WHERE id = :id AND org_id = :o
             """), {"id": cl.id, "o": org_id})
-        else:
+        elif new_status in ("VERIFIED", "CONFLICT", "STALE"):
             db.execute(text("""
                 UPDATE claims
                 SET verification_status = :status,
@@ -338,6 +344,7 @@ def resolve_control(
         "verified":        status_counts["VERIFIED"],
         "conflict":        status_counts["CONFLICT"],
         "unverified":      status_counts["UNVERIFIED"],
+        "stale":           status_counts.get("STALE", 0),
         "by_relationship": verdict_counts,
     }
 
