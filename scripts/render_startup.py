@@ -1146,6 +1146,19 @@ def main():
         conn.rollback()
         logger.warning(f"  company_profiles.training_solution migration skipped: {e}")
 
+    # invites: new-customer invites have no org until redemption.
+    for alter_sql in [
+        "ALTER TABLE invites ADD COLUMN IF NOT EXISTS invite_type VARCHAR(30) DEFAULT 'USER_TO_ORG'",
+        "ALTER TABLE invites ADD COLUMN IF NOT EXISTS target_org_name VARCHAR(200)",
+        "ALTER TABLE invites ALTER COLUMN org_id DROP NOT NULL",
+    ]:
+        try:
+            cur.execute(alter_sql)
+            conn.commit()
+        except Exception:
+            conn.rollback()
+    logger.info("  invites new-customer columns: OK")
+
     # company_profiles SPRS submission fields — Phase 6.3.
     for col_ddl in [
         "ALTER TABLE company_profiles ADD COLUMN IF NOT EXISTS uei VARCHAR(20)",

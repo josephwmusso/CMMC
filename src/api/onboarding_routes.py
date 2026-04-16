@@ -293,6 +293,9 @@ def complete_onboarding(
             nonlocal responses_saved
             if value is None or value == "":
                 return
+            merged = {"source": "first_login_wizard"}
+            if details:
+                merged.update(details)
             _upsert_intake_response(
                 db,
                 session_id=session_id,
@@ -300,7 +303,7 @@ def complete_onboarding(
                 question_id=qid,
                 answer_value=value,
                 answer_type=atype,
-                answer_details=details,
+                answer_details=merged,
             )
             responses_saved += 1
 

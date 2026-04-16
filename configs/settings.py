@@ -67,6 +67,11 @@ EMBEDDING_MODEL = os.getenv("EMBEDDING_MODEL", "BAAI/bge-small-en-v1.5")
 SSP_EXPORT_DIR = os.getenv("SSP_EXPORT_DIR", os.path.join("data", "exports"))
 
 # ---------------------------------------------------------------------------
+# Frontend URL (for invite links)
+# ---------------------------------------------------------------------------
+FRONTEND_BASE_URL = os.getenv("FRONTEND_BASE_URL", "http://localhost:5173")
+
+# ---------------------------------------------------------------------------
 # Auth / JWT
 # ---------------------------------------------------------------------------
 # Module-level constants (no Settings class) to match the rest of this file.

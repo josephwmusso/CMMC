@@ -75,6 +75,7 @@ for router_import in [
     ("src.api.routes_assessments", "assessments"),
     ("src.api.routes_exports", "exports"),
     ("src.api.routes_affirmations", "affirmations"),
+    ("src.api.routes_invites_new_customer", "invites-new-customer"),
 ]:
     module_path, name = router_import
     try:
