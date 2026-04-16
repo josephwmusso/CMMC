@@ -325,7 +325,7 @@ def verify_artifact_hash(
     if not artifact:
         raise HTTPException(404, f"Artifact {artifact_id} not found")
     verify_org_access(artifact["org_id"], current_user)
-    if artifact["state"] != "published":
+    if artifact["state"].upper() != "PUBLISHED":
         raise HTTPException(400, "Only published artifacts have hashes to verify")
     if not artifact["sha256_hash"]:
         raise HTTPException(400, "No hash stored for this artifact")

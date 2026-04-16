@@ -38,10 +38,14 @@ def run_evidence(api: ApiClient, fixture: Fixture, recorder: AssertionRecorder) 
         artifact_ids[ev.id] = aid
         uploaded += 1
 
-        # Link controls
+        # Link controls — JSON body with control_ids list
         if ev.controls:
-            link_params = "&".join(f"control_ids={c}" for c in ev.controls)
-            api.post(f"/api/evidence/{aid}/link-controls?{link_params}")
+            lr = api.post(f"/api/evidence/{aid}/link-controls",
+                          json={"control_ids": ev.controls})
+            if not lr.ok:
+                recorder.warn(f"evidence.link_controls.{ev.id}",
+                              detail=f"link-controls failed: {lr.status_code} {lr.text[:200]}",
+                              actual=lr.status_code)
 
         # State transitions: DRAFT → REVIEWED → APPROVED → PUBLISHED
         # Endpoint expects new_state as query param
@@ -82,19 +86,15 @@ def run_evidence(api: ApiClient, fixture: Fixture, recorder: AssertionRecorder) 
         recorder.expect("evidence.audit_chain_verified", chain_ok,
                         actual=ar.json())
 
-    # Grounding context check
+    # Grounding context check — any control with linked evidence
     test_control = fixture.evidence_artifacts[0].controls[0] if fixture.evidence_artifacts and fixture.evidence_artifacts[0].controls else "AC.L2-3.1.1"
     gr = api.get(f"/api/truth/grounding-context/{test_control}")
     if gr.ok:
         ev_in_grounding = gr.json().get("evidence", [])
-        has_ev = len(ev_in_grounding) >= 1
-        if has_ev:
-            recorder.expect("evidence.grounding_context_reflects_uploads", True,
-                            actual=f"{len(ev_in_grounding)} evidence for {test_control}")
-        else:
-            recorder.warn("evidence.grounding_context_reflects_uploads",
-                          detail=f"0 evidence for {test_control} — may be evidence_control_map race condition",
-                          actual=f"control_links exist in DB but grounding query returned 0")
+        recorder.expect("evidence.grounding_context_reflects_uploads",
+                        len(ev_in_grounding) >= 1,
+                        actual=f"{len(ev_in_grounding)} evidence for {test_control}",
+                        detail=f"link-controls warnings above may explain 0 count")
 
     return artifact_ids
 
