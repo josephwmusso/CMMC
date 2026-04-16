@@ -1117,6 +1117,21 @@ def main():
         conn.rollback()
         logger.warning(f"  company_profiles.training_solution migration skipped: {e}")
 
+    # company_profiles SPRS submission fields — Phase 6.3.
+    for col_ddl in [
+        "ALTER TABLE company_profiles ADD COLUMN IF NOT EXISTS uei VARCHAR(20)",
+        "ALTER TABLE company_profiles ADD COLUMN IF NOT EXISTS ssp_version VARCHAR(50)",
+        "ALTER TABLE company_profiles ADD COLUMN IF NOT EXISTS ssp_date DATE",
+        "ALTER TABLE company_profiles ADD COLUMN IF NOT EXISTS cui_scope_description TEXT",
+        "ALTER TABLE company_profiles ADD COLUMN IF NOT EXISTS assessing_entity VARCHAR(100) DEFAULT 'Self'",
+    ]:
+        try:
+            cur.execute(col_ddl)
+            conn.commit()
+        except Exception:
+            conn.rollback()
+    logger.info("  company_profiles SPRS columns: OK")
+
     # baseline_items.match_plugin_ids — Phase 3.3C: exact Nessus plugin ID
     # matching for precision. Without this, keyword substring matching
     # produces way too many false-positive deviations.

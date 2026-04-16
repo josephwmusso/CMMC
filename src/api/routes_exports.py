@@ -1,14 +1,16 @@
 """
 src/api/routes_exports.py
 
-Evidence binder export API (Phase 6.1). The binder ZIP is built
-entirely in memory and streamed back — no temp files on disk.
+Evidence binder + SPRS reporting package export API (Phases 6.1, 6.3).
+All ZIPs are built in memory and streamed back — no temp files on disk.
 """
 from __future__ import annotations
 
 import hashlib
+import io
 import json
 import logging
+import zipfile
 from datetime import datetime, timezone
 
 from fastapi import APIRouter, Depends, HTTPException
@@ -19,6 +21,7 @@ from sqlalchemy.orm import Session
 from src.api.auth import get_current_user, ADMIN_ROLES
 from src.db.session import get_db
 from src.exports.binder import build_binder, preview_binder
+from src.exports.sprs_package import build_sprs_package, collect_sprs_fields
 
 logger = logging.getLogger(__name__)
 router = APIRouter(prefix="/api/exports", tags=["exports"])
@@ -74,7 +77,6 @@ def export_binder(
 
     # Compute package hash from the manifest inside the ZIP
     # (re-parse the manifest we just wrote — simpler than plumbing it out)
-    import zipfile, io
     pkg_hash = None
     artifact_count = 0
     try:
@@ -147,6 +149,85 @@ def export_history(
         ORDER BY created_at DESC
     """), {"o": user["org_id"]}).fetchall()
     return [dict(r._mapping) for r in rows]
+
+
+@router.get("/sprs-preview")
+def sprs_preview(
+    db: Session = Depends(get_db),
+    user: dict = Depends(get_current_user),
+):
+    """Preview SPRS submission fields + warnings without generating the ZIP."""
+    return collect_sprs_fields(user["org_id"], db, use_truth_adjusted=False)
+
+
+@router.post("/sprs-package")
+def export_sprs_package(
+    body: dict | None = None,
+    db: Session = Depends(get_db),
+    user: dict = Depends(get_current_user),
+):
+    """Build and stream the SPRS reporting package ZIP."""
+    _require_admin(user)
+    org_id = user["org_id"]
+    now = datetime.now(timezone.utc)
+
+    use_truth = bool((body or {}).get("use_truth_adjusted", False))
+    zip_bytes = build_sprs_package(org_id, db, user["id"], use_truth_adjusted=use_truth)
+
+    # Extract package hash from metadata inside the ZIP
+    pkg_hash = None
+    try:
+        with zipfile.ZipFile(io.BytesIO(zip_bytes), "r") as zf:
+            if "05_Submission_Metadata.json" in zf.namelist():
+                meta = json.loads(zf.read("05_Submission_Metadata.json"))
+                pkg_hash = meta.get("package_hash")
+    except Exception:
+        pass
+
+    safe_user = _safe_user_fk(db, user["id"])
+    org_row = db.execute(
+        text("SELECT name FROM organizations WHERE id = :o"), {"o": org_id},
+    ).fetchone()
+    org_slug = (org_row.name if org_row else org_id).replace(" ", "_")[:30]
+    filename = f"intranest_sprs_{org_slug}_{now.strftime('%Y%m%d')}.zip"
+
+    export_id = _gen_id(f"sprs:{org_id}:{now.isoformat()}")
+    db.execute(text("""
+        INSERT INTO export_records
+            (id, org_id, export_type, filename, file_size_bytes,
+             package_hash, artifact_count, created_at, created_by)
+        VALUES
+            (:id, :o, 'SPRS_PACKAGE', :fn, :sz,
+             :hash, :ac, :now, :by)
+    """), {
+        "id":   export_id,
+        "o":    org_id,
+        "fn":   filename,
+        "sz":   len(zip_bytes),
+        "hash": pkg_hash,
+        "ac":   0,
+        "now":  now,
+        "by":   safe_user,
+    })
+
+    _audit(
+        db, actor=safe_user or "system", action="SPRS_PACKAGE_EXPORTED",
+        target_id=export_id,
+        details={
+            "org_id":       org_id,
+            "filename":     filename,
+            "size_bytes":   len(zip_bytes),
+            "package_hash": pkg_hash,
+            "use_truth":    use_truth,
+        },
+    )
+    db.commit()
+
+    return StreamingResponse(
+        io.BytesIO(zip_bytes),
+        media_type="application/zip",
+        headers={"Content-Disposition": f'attachment; filename="{filename}"'},
+    )
 
 
 @router.get("/{export_id}/receipt")
