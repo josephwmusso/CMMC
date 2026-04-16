@@ -1,0 +1,102 @@
+{
+  "benchmark": {
+    "title": "CIS Microsoft Windows 11 Enterprise Benchmark",
+    "version": "3.0.0",
+    "profile": "Level 1 (L1) - Corporate/Enterprise Environment"
+  },
+  "target_host": "APEX-WS-001",
+  "timestamp": "2026-04-15T10:30:00Z",
+  "summary": {
+    "total": 10,
+    "pass": 6,
+    "fail": 3,
+    "error": 1,
+    "unknown": 0
+  },
+  "rules": [
+    {
+      "rule_id": "xccdf_org.cisecurity.benchmarks_rule_1.1.1",
+      "title": "Ensure 'Enforce password history' is set to '24 or more password(s)'",
+      "result": "fail",
+      "actual_value": "12",
+      "expected_value": "24",
+      "severity": "medium",
+      "description": "This policy setting determines the number of renewed, unique passwords that must be associated with a user account before an old password can be reused."
+    },
+    {
+      "rule_id": "xccdf_org.cisecurity.benchmarks_rule_1.1.2",
+      "title": "Ensure 'Maximum password age' is set to '365 or fewer days, but not 0'",
+      "result": "pass",
+      "actual_value": "90",
+      "expected_value": "365",
+      "severity": "medium"
+    },
+    {
+      "rule_id": "xccdf_org.cisecurity.benchmarks_rule_1.1.4",
+      "title": "Ensure 'Minimum password length' is set to '14 or more characters'",
+      "result": "fail",
+      "actual_value": "8",
+      "expected_value": "14",
+      "severity": "high",
+      "description": "Password length is a fundamental defense against brute-force guessing."
+    },
+    {
+      "rule_id": "xccdf_org.cisecurity.benchmarks_rule_1.1.5",
+      "title": "Ensure 'Password must meet complexity requirements' is set to 'Enabled'",
+      "result": "pass",
+      "actual_value": "Enabled",
+      "expected_value": "Enabled",
+      "severity": "high"
+    },
+    {
+      "rule_id": "xccdf_org.cisecurity.benchmarks_rule_1.2.2",
+      "title": "Ensure 'Account lockout threshold' is set to '5 or fewer invalid logon attempts, but not 0'",
+      "result": "pass",
+      "actual_value": "5",
+      "expected_value": "5",
+      "severity": "high"
+    },
+    {
+      "rule_id": "xccdf_org.cisecurity.benchmarks_rule_2.3.1",
+      "title": "Ensure 'Audit: Force audit policy subcategory settings' is set to 'Enabled'",
+      "result": "error",
+      "actual_value": null,
+      "expected_value": "Enabled",
+      "severity": "medium",
+      "description": "CIS-CAT could not evaluate the registry path on the target host."
+    },
+    {
+      "rule_id": "xccdf_org.cisecurity.benchmarks_rule_9.1.1",
+      "title": "Ensure 'Windows Firewall: Domain: Firewall state' is set to 'On (recommended)'",
+      "result": "pass",
+      "actual_value": "On",
+      "expected_value": "On",
+      "severity": "critical"
+    },
+    {
+      "rule_id": "xccdf_org.cisecurity.benchmarks_rule_18.4.1",
+      "title": "Ensure 'Configure SMB v1 client driver' is set to 'Enabled: Disable driver'",
+      "result": "fail",
+      "actual_value": "Enabled (vulnerable)",
+      "expected_value": "Disabled",
+      "severity": "critical",
+      "description": "SMBv1 is vulnerable to EternalBlue-class exploits and should be disabled on all modern Windows systems."
+    },
+    {
+      "rule_id": "xccdf_org.cisecurity.benchmarks_rule_18.8.1",
+      "title": "Ensure 'Require encryption on all fixed drives' is set to 'Enabled'",
+      "result": "pass",
+      "actual_value": "Enabled",
+      "expected_value": "Enabled",
+      "severity": "high"
+    },
+    {
+      "rule_id": "xccdf_org.cisecurity.benchmarks_rule_18.10.1",
+      "title": "Ensure 'Turn off Autoplay' is set to 'Enabled: All drives'",
+      "result": "pass",
+      "actual_value": "Enabled",
+      "expected_value": "Enabled",
+      "severity": "medium"
+    }
+  ]
+}

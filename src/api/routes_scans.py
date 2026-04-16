@@ -64,28 +64,79 @@ def _audit(db: Session, *, actor: str, action: str, target_id: str, details: dic
 # POST /api/scans/upload
 # ---------------------------------------------------------------------------
 
+def _sniff_source_type(filename: str, content: bytes) -> str:
+    """Decide whether this upload is a Nessus XML export or a CIS-CAT
+    JSON export. Extension wins; content inspection is the tie-breaker
+    when the extension is ambiguous.
+
+    Returns 'NESSUS' or 'CISCAT'. Raises HTTPException 400 for anything
+    else so the caller gets a clear message.
+    """
+    lname = (filename or "").lower()
+    if lname.endswith(".nessus"):
+        return "NESSUS"
+    if lname.endswith(".json"):
+        return "CISCAT"
+
+    # Extension-less or unknown — sniff the first non-whitespace byte.
+    head = content.lstrip()[:128].lower()
+    if head.startswith(b"<"):
+        return "NESSUS"
+    if head.startswith(b"{") and b'"benchmark"' in head[:512] and b'"rules"' in head[:1024]:
+        return "CISCAT"
+    raise HTTPException(
+        status_code=400,
+        detail="Unsupported file type. Upload a .nessus XML export or a CIS-CAT .json export.",
+    )
+
+
 @router.post("/upload")
 async def upload_scan(
     file: UploadFile = File(...),
     db: Session = Depends(get_db),
     current_user: dict = Depends(get_current_user),
 ):
-    """Upload + parse a .nessus file. Creates:
-      - scan_imports row
-      - one scan_findings row per severity≥1 finding
-      - a DRAFT evidence_artifacts row (SCAN_REPORT)
-      - evidence_control_map rows for every mapped control
-      - one audit_log entry (SCAN_IMPORTED)
+    """Upload + parse a scan file (.nessus XML or CIS-CAT JSON).
+
+    For Nessus exports:
+      - scan_imports row, one scan_findings row per severity≥1 finding
+      - DRAFT SCAN_REPORT evidence artifact + control mappings
+      - audit_log entry (SCAN_IMPORTED)
+
+    For CIS-CAT JSON exports:
+      - scan_imports row (scan_type='CISCAT', finding_count=deviations)
+      - NO scan_findings rows (deviations carry per-rule detail)
+      - baseline auto-adopted if this org hasn't adopted it yet
+      - baseline_deviations row per failing rule (scan_finding_id NULL)
+      - DRAFT SCAN_REPORT evidence artifact + control mappings
+      - audit_log entry (SCAN_IMPORTED)
     """
     org_id = current_user["org_id"]
     user_id = current_user["id"]
 
-    if not file.filename or not file.filename.lower().endswith(".nessus"):
-        raise HTTPException(status_code=400, detail="Only .nessus files are supported")
+    if not file.filename:
+        raise HTTPException(status_code=400, detail="Missing filename")
 
     content = await file.read()
     if len(content) > MAX_UPLOAD_SIZE:
         raise HTTPException(status_code=400, detail="File too large (max 50MB)")
+
+    source_type = _sniff_source_type(file.filename, content)
+
+    # ── CIS-CAT JSON path ─────────────────────────────────────────────────
+    if source_type == "CISCAT":
+        from src.scanners.ciscat_importer import import_ciscat_report
+        try:
+            return import_ciscat_report(
+                file_content=content,
+                filename=file.filename,
+                org_id=org_id,
+                user_id=user_id,
+                user_email=current_user.get("email"),
+                db=db,
+            )
+        except ValueError as exc:
+            raise HTTPException(status_code=400, detail=str(exc)) from exc
 
     scan_id = _gen_id(
         f"scan:{org_id}:{file.filename}:{datetime.now(timezone.utc).isoformat()}"
@@ -236,6 +287,7 @@ async def upload_scan(
 
     return {
         "scan_id": scan_id,
+        "source_type": "NESSUS",
         "filename": file.filename,
         "status": "COMPLETE",
         "host_count": len(result.hosts),
@@ -261,7 +313,8 @@ async def list_scans(
 ):
     org_id = current_user["org_id"]
     rows = db.execute(text("""
-        SELECT id, filename, scan_type, scan_date, imported_at,
+        SELECT id, filename, scan_type, scan_type AS source_type,
+               scan_date, imported_at,
                host_count, finding_count, critical_count, high_count,
                medium_count, low_count, info_count, status,
                evidence_artifact_id, error_message
