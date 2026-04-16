@@ -1,0 +1,43 @@
+# Meridian Aerospace Components, LLC — Company Profile
+# Authored against intake_schema.yaml commit 96437f5
+# Maps to POST /api/onboarding/complete payload shape
+
+organization:
+  name: "Meridian Aerospace Components, LLC"
+  city: "Wichita"
+  state: "KS"
+  employee_count: 14
+  system_name: "Meridian CUI Network"
+
+tech_stack:
+  identity_provider: "Google Identity"            # m0_identity_provider closest match
+  mfa_enabled: true                                # Google 2-Step enabled org-wide (legacy IMAP not blocked → IA_01 seed)
+  email_platform: "Google Workspace"               # m0_email_platform exact match — commercial tier, NOT GCC High
+  edr_tool: "Traditional antivirus only"           # m0_edr closest match — free MS Defender Antivirus, not Defender for Endpoint
+  firewall: "SonicWall"                            # m0_firewall exact match
+  siem: ""                                         # m0_siem → "No log collection"
+  backup_tool: "Google Drive + local USB"          # not a schema dropdown — informational only
+  training_tool: "Other"                           # m0_training_tool → "Other" + free text
+
+cui_types:
+  - "Controlled Technical Information (CTI)"       # Primary — technical drawings for Spirit AeroSystems
+  - "Technical data (drawings, specs, test results)" # Also covers CDI overlapping category
+
+# Additional profile fields for company_profiles table
+cage_code: "9MZ47"
+uei: "MERD12345ABCD"
+duns_number: null
+facility_count: 1
+primary_location: "Wichita, KS"
+has_remote_workers: false
+has_wireless: true
+dfars_7012_clause: true
+prior_assessment: false
+existing_ssp: false
+existing_poam: false
+
+# Free-text supplements for Module 0 questions that use allows_free_text
+free_text_overrides:
+  m0_edr: "Microsoft Defender Antivirus — free built-in version on Windows 10/11. Not Defender for Endpoint Plan 2. No cloud management console, no EDR telemetry, basic real-time scanning only."
+  m0_training_tool: "Annual generic 30-minute cybersecurity awareness video administered via Google Forms quiz. No phishing simulation capability. 12 of 14 employees completed in January 2026."
+  m0_backup_tool: "Combination of Google Drive (automatic sync for office files) and manual USB drive backups for shop floor CNC files. No scheduled backup verification, no off-site rotation. IT contractor handles ad-hoc restores."

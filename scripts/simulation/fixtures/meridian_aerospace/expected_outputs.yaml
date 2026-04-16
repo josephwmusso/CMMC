@@ -1,0 +1,79 @@
+# Meridian Aerospace — Expected Platform Outputs After Full Simulation
+# Machine-assertable by the Phase 3 verification harness.
+# Split by detection layer so harness checks the right API endpoints.
+
+sprs_target:
+  expected_range: [-40, -10]
+  reasoning: >
+    45-person shop with real gaps in MA/MP/IR/encryption. ~30 controls NOT MET
+    or PARTIAL from honest intake. 4 contradiction-driven reversals push some
+    MET controls back. Score range reflects mid-journey immaturity.
+
+# ── Intake-layer contradictions ──
+# Verified via GET /api/contradictions/summary
+# Fired by src/api/contradiction_engine.py from answer inconsistencies.
+intake_contradictions_must_catch:
+  minimum_count: 1
+  required: [SC_01]
+  likely_also: [CM_01]
+  diagnostic_bonus: [IR_01, AT_01, PS_01]
+  notes: >
+    SC_01 is the strongest intake-layer signal: firewall exists (SonicWall)
+    but CUI transit encryption and FIPS are both Not Implemented. CM_01
+    fires if the rule catches fully-implemented baselines with missing
+    sub-controls. IR_01/AT_01/PS_01 may fire based on rule logic details.
+    Diagnostic — if these don't fire, not a failure.
+
+# ── Resolution-layer contradictions ──
+# Verified via GET /api/resolutions/conflicts
+# Requires claims extracted + observations built + resolver run.
+resolution_conflicts_must_catch:
+  minimum_count: 1
+  required:
+    - contradiction_id: IA_01
+      claim_control: IA.L2-3.5.3
+      trigger: "MFA claim vs Nessus legacy-auth finding"
+    - contradiction_id: AC_01
+      claim_control: AC.L2-3.1.5
+      trigger: "Quarterly access review claim vs no evidence"
+  preferred_also:
+    - contradiction_id: CM_01
+      claim_control: CM.L2-3.4.1
+      trigger: "Config baseline claim vs patching reality"
+
+at_risk_top_10:
+  must_include:
+    - IA.L2-3.5.3
+    - SC.L2-3.13.11
+  should_include:
+    - AC.L2-3.1.5
+    - SI.L2-3.14.1
+    - CM.L2-3.4.1
+    - AU.L2-3.3.1
+    - CA.L2-3.12.4
+
+claims_extraction:
+  minimum_claims_per_control_with_narrative: 2
+  claims_must_reference_only_fixture_tools: true
+  notes: >
+    Claims should reference Google Identity, Google Workspace, SonicWall,
+    MS Defender Antivirus, Google Drive — never CrowdStrike, Fortinet,
+    Palo Alto, Sentinel, KnowBe4, Entra ID, Veeam, etc. Forbidden list
+    enforces this.
+
+method_coverage:
+  examine_present_for: [AC, AT, IA, SI, SC, PE, IR, MP, CA]
+  test_present_for: [SC, IA, SI, CM]
+  interview_present: false
+  notes: >
+    Examine observations from evidence artifacts. Test from Nessus + CIS-CAT.
+    No interview evidence exists.
+
+readiness_pct_target:
+  expected_range: [15, 35]
+
+assessor_findings_style:
+  tone: professional_C3PAO_voice
+  must_reference_actual_evidence: true
+  must_not_fabricate_dates: true
+  must_not_reference_forbidden_tools: true

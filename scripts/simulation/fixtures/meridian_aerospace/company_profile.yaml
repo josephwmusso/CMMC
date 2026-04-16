@@ -1,0 +1,42 @@
+# Meridian Aerospace Components, LLC — Company Profile
+# Canonical persona reference. Matches company.yaml, intake.yaml,
+# evidence/*.md, forbidden.yaml, and contradiction seeds.
+
+company_name: "Meridian Aerospace Components, LLC"
+cage_code: "9MZ47"
+uei: "MERD12345ABCD"
+duns_number: null
+employee_count: 14
+facility_count: 1
+primary_location: "Wichita, KS"
+system_name: "Meridian CUI Network"
+
+cui_types:
+  - "Controlled Technical Information (CTI)"
+  - "Technical data (drawings, specs, test results)"
+cui_flow: "CUI is on individual laptops/desktops"
+dfars_7012_clause: true
+
+has_remote_workers: false
+has_wireless: true
+
+# Tool stack — deliberately under-resourced for realistic DIB sub
+identity_provider: "Google Identity"
+email_platform: "Google Workspace"           # commercial, NOT GCC High
+edr_product: "Traditional antivirus only"    # free MS Defender AV, NOT Defender for Endpoint
+firewall_product: "SonicWall"                # SonicWall TZ370
+siem_product: "No log collection"
+backup_solution: "Google Drive + local USB"  # ad-hoc
+training_tool: "Other"                       # Google Forms quiz
+
+existing_ssp: false
+existing_poam: false
+prior_assessment: false
+
+_persona:
+  industry: aerospace_manufacturing
+  primary_work: "Precision CNC machining of titanium components for Spirit AeroSystems"
+  primes: ["Spirit AeroSystems"]
+  compliance_maturity: "early — no consultant, no SSP, no POA&M"
+  it_staff: "1 part-time IT contractor (break-fix only)"
+  key_gap_areas: [encryption, incident_response, media_protection, audit_logging, training]

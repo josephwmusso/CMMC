@@ -1,0 +1,852 @@
+# Meridian Aerospace Components, LLC — Full Intake Answers
+# Authored against intake_schema.yaml commit 96437f5
+# 4 contradiction seeds marked: IA_01, SC_01, AC_01, CM_01/SI_01
+# All answer_values are real values from schema allowed_values
+
+# ═══════════════════════════════════════════════════════════════════════
+# MODULE 0: Foundation (17 questions)
+# ═══════════════════════════════════════════════════════════════════════
+
+- question_id: m0_company_name
+  module: 0
+  answer_value: "Meridian Aerospace Components, LLC"
+  rationale: "Legal name as on contracts"
+  contradiction_seed: null
+
+- question_id: m0_cage_code
+  module: 0
+  answer_value: "9MZ47"
+  rationale: "Active CAGE code"
+  contradiction_seed: null
+
+- question_id: m0_employee_count
+  module: 0
+  answer_value: "14"
+  rationale: "Owner + foreman + 8 machinists + 2 QA + 1 office + 1 part-time IT contractor"
+  contradiction_seed: null
+
+- question_id: m0_locations
+  module: 0
+  answer_value: "1"
+  rationale: "Single facility"
+  contradiction_seed: null
+
+- question_id: m0_primary_location
+  module: 0
+  answer_value: "Wichita, KS"
+  rationale: "8,000 sq ft shop + front office"
+  contradiction_seed: null
+
+- question_id: m0_dfars_clause
+  module: 0
+  answer_value: "Yes"
+  rationale: "DFARS 252.204-7012 present in Spirit AeroSystems subcontracts"
+  contradiction_seed: null
+
+- question_id: m0_cui_types
+  module: 0
+  answer_value: "Controlled Technical Information (CTI)|Technical data (drawings, specs, test results)"
+  rationale: "CTI primary (drawings for Spirit), also general technical data. CDI is secondary but maps to CTI category."
+  contradiction_seed: null
+
+- question_id: m0_cui_flow
+  module: 0
+  answer_value: "CUI is on individual laptops/desktops"
+  rationale: "CUI drawings stored on shop floor PCs and owner-laptop. Some in Google Drive but primarily local."
+  contradiction_seed: null
+
+- question_id: m0_remote_workers
+  module: 0
+  answer_value: "No"
+  rationale: "All 14 employees work on-site. IT contractor visits in-person."
+  contradiction_seed: null
+
+- question_id: m0_wireless
+  module: 0
+  answer_value: "Yes"
+  rationale: "Wi-Fi in office area for owner-laptop and office PC. Shop floor wired."
+  contradiction_seed: null
+
+- question_id: m0_email_platform
+  module: 0
+  answer_value: "Google Workspace"
+  rationale: "Google Workspace commercial tier. NOT GCC High, NOT Assured Workloads. This is a real CUI gap the platform should flag."
+  contradiction_seed: null
+
+- question_id: m0_identity_provider
+  module: 0
+  answer_value: "Google Identity"
+  rationale: "Google Workspace serves as IdP. 2-Step Verification enabled org-wide BUT legacy IMAP/SMTP not blocked. No Entra ID, no Okta."
+  contradiction_seed: null
+
+- question_id: m0_edr
+  module: 0
+  answer_value: "Traditional antivirus only (e.g., Norton, McAfee)"
+  rationale: "Microsoft Defender Antivirus (free built-in). Not Defender for Endpoint. Closest allowed_value is traditional AV."
+  free_text: "Microsoft Defender Antivirus — free built-in version on Windows 10/11. Not Defender for Endpoint Plan 2. No cloud management, no EDR telemetry."
+  contradiction_seed: null
+
+- question_id: m0_firewall
+  module: 0
+  answer_value: "SonicWall"
+  rationale: "SonicWall TZ370 at perimeter. Basic UTM license."
+  contradiction_seed: null
+
+- question_id: m0_siem
+  module: 0
+  answer_value: "No log collection"
+  rationale: "No SIEM, no centralized logging. Windows Event Logs exist locally but nobody reviews them."
+  contradiction_seed: null
+
+- question_id: m0_training_tool
+  module: 0
+  answer_value: "Other"
+  rationale: "Google Forms quiz with generic 30-min cybersecurity video. Not a real training platform."
+  free_text: "Annual generic 30-minute cybersecurity awareness video administered via Google Forms quiz. No phishing simulation. 12 of 14 completed January 2026."
+  contradiction_seed: null
+
+- question_id: m0_existing_docs
+  module: 0
+  answer_value: "Incident Response Plan|Network Diagram"
+  rationale: "2-page informal IR plan and hand-drawn network diagram exist. No SSP, no POA&M, no risk assessment, no formal policies beyond employee handbook and AUP."
+  contradiction_seed: null
+
+# ═══════════════════════════════════════════════════════════════════════
+# MODULE 1: Access Control (28 questions)
+# ═══════════════════════════════════════════════════════════════════════
+
+- question_id: m1_q01
+  module: 1
+  answer_value: "manager_email"
+  rationale: "Owner emails IT contractor to create Google Workspace accounts. No ticketing system."
+  contradiction_seed: null
+
+- question_id: m1_q02
+  module: 1
+  answer_value: "quarterly"
+  rationale: "CONTRADICTION SEED AC_01. Owner CLAIMS quarterly reviews but has no evidence artifact. No access review report, no screenshot, no log. Resolution engine should catch this via EVIDENCE_GAP."
+  contradiction_seed: AC_01
+
+- question_id: m1_q03
+  module: 1
+  answer_value: "within_week"
+  rationale: "IT contractor disables accounts when told, but usually takes a few days."
+  contradiction_seed: null
+
+- question_id: m1_q04
+  module: 1
+  answer_value: "per_user_manual"
+  rationale: "Google Workspace groups exist but permissions are set per-user manually. No RBAC."
+  contradiction_seed: null
+
+- question_id: m1_q05
+  module: 1
+  answer_value: "no_separation"
+  rationale: "Owner handles both purchasing and receiving. Too small to separate duties meaningfully."
+  contradiction_seed: null
+
+- question_id: m1_q06
+  module: 1
+  answer_value: "shared_admin"
+  rationale: "Owner and IT contractor share the Google Workspace super-admin account."
+  contradiction_seed: null
+
+- question_id: m1_q07
+  module: 1
+  answer_value: "no_same_account"
+  rationale: "IT contractor uses owner's admin login. No separate privileged account."
+  contradiction_seed: null
+
+- question_id: m1_q08
+  module: 1
+  answer_value: "yes_local_admin"
+  rationale: "Shop floor PCs have local admin for CNC software installs. No GPO enforcement."
+  contradiction_seed: null
+
+- question_id: m1_q09
+  module: 1
+  answer_value: "nothing"
+  rationale: "No account lockout configured on Google Workspace or local machines."
+  contradiction_seed: null
+
+- question_id: m1_q10
+  module: 1
+  answer_value: "local_workstation"
+  rationale: "Windows login only. No VPN, no domain GPO, no cloud-app session controls."
+  contradiction_seed: null
+
+- question_id: m1_q11
+  module: 1
+  answer_value: "no_banner"
+  rationale: "No login banner on any system."
+  contradiction_seed: null
+
+- question_id: m1_q12
+  module: 1
+  answer_value: "user_discretion"
+  rationale: "No screen lock policy. Users may or may not lock screens."
+  contradiction_seed: null
+
+- question_id: m1_q13
+  module: 1
+  answer_value: "no_termination"
+  rationale: "No automatic session termination. Users stay logged in all day."
+  contradiction_seed: null
+
+- question_id: m1_q14
+  module: 1
+  answer_value: "no_remote"
+  rationale: "No remote access. All work on-site. IT contractor comes in person."
+  contradiction_seed: null
+
+- question_id: m1_q15
+  module: 1
+  answer_value: "no_monitoring"
+  rationale: "No remote access monitoring since there's no remote access."
+  contradiction_seed: null
+
+- question_id: m1_q16
+  module: 1
+  answer_value: "unknown"
+  rationale: "Owner doesn't know what encryption is used for any connections."
+  contradiction_seed: null
+
+- question_id: m1_q17
+  module: 1
+  answer_value: "single_point"
+  rationale: "SonicWall TZ370 is the single managed connection point to the internet."
+  contradiction_seed: null
+
+- question_id: m1_q18
+  module: 1
+  answer_value: "no_onsite_only"
+  rationale: "No external system connections. Standalone network."
+  contradiction_seed: null
+
+- question_id: m1_q19
+  module: 1
+  answer_value: "yes_wpa2_psk"
+  rationale: "Office Wi-Fi uses WPA2 with a shared PSK. Not enterprise authentication."
+  contradiction_seed: null
+
+- question_id: m1_q20
+  module: 1
+  answer_value: "no_flat_network"
+  rationale: "All devices on 192.168.10.0/24. No VLANs, no segmentation."
+  contradiction_seed: null
+
+- question_id: m1_q21
+  module: 1
+  answer_value: "no_detection"
+  rationale: "No wireless intrusion detection. SonicWall doesn't monitor rogue APs."
+  contradiction_seed: null
+
+- question_id: m1_q22
+  module: 1
+  answer_value: "no_mobile"
+  rationale: "No mobile device access to CUI systems. Owner checks email on phone but no CUI apps."
+  contradiction_seed: null
+
+- question_id: m1_q23
+  module: 1
+  answer_value: "no_encryption"
+  rationale: "No mobile device encryption policy (N/A — no mobile CUI access)."
+  contradiction_seed: null
+
+- question_id: m1_q24
+  module: 1
+  answer_value: "no_controls"
+  rationale: "No DLP, no sensitivity labels, no CUI flow controls beyond physical separation of shop."
+  contradiction_seed: null
+
+- question_id: m1_q25
+  module: 1
+  answer_value: "not_restricted"
+  rationale: "No restrictions on posting public information. No social media policy."
+  contradiction_seed: null
+
+- question_id: m1_q26
+  module: 1
+  answer_value: "firewall_controlled"
+  rationale: "SonicWall controls external connections. Basic firewall rules, not an approved-list approach."
+  contradiction_seed: null
+
+- question_id: m1_q27
+  module: 1
+  answer_value: "no_policy"
+  rationale: "No portable storage policy. USB drives used for backups with no encryption requirement."
+  contradiction_seed: null
+
+- question_id: m1_q28
+  module: 1
+  answer_value: "no_public_systems"
+  rationale: "No public-facing systems. No web server, no customer portal."
+  contradiction_seed: null
+
+# ═══════════════════════════════════════════════════════════════════════
+# MODULE 2: Awareness & Training + Audit & Accountability (12 questions)
+# ═══════════════════════════════════════════════════════════════════════
+
+- question_id: m2_at_3.2.1_status
+  module: 2
+  answer_value: "Partially implemented"
+  rationale: "Generic annual video exists but doesn't cover CUI handling, insider threat, or role-based content. 2 employees incomplete."
+  contradiction_seed: null
+
+- question_id: m2_at_3.2.2_status
+  module: 2
+  answer_value: "Not implemented"
+  rationale: "No role-based training. Everyone gets the same 30-min generic video."
+  contradiction_seed: null
+
+- question_id: m2_at_3.2.3_status
+  module: 2
+  answer_value: "Not implemented"
+  rationale: "No insider threat awareness training."
+  contradiction_seed: null
+
+- question_id: m2_au_3.3.1_status
+  module: 2
+  answer_value: "Not implemented"
+  rationale: "No centralized audit logging. Windows Event Logs exist but not collected or reviewed."
+  contradiction_seed: null
+
+- question_id: m2_au_3.3.2_status
+  module: 2
+  answer_value: "Not implemented"
+  rationale: "No audit log review process. No SIEM."
+  contradiction_seed: null
+
+- question_id: m2_au_3.3.3_status
+  module: 2
+  answer_value: "Not implemented"
+  rationale: "No audit record content standards defined."
+  contradiction_seed: null
+
+- question_id: m2_au_3.3.4_status
+  module: 2
+  answer_value: "Not implemented"
+  rationale: "No alert or reporting on audit failures."
+  contradiction_seed: null
+
+- question_id: m2_au_3.3.5_status
+  module: 2
+  answer_value: "Not implemented"
+  rationale: "No audit log correlation or analysis."
+  contradiction_seed: null
+
+- question_id: m2_au_3.3.6_status
+  module: 2
+  answer_value: "Not implemented"
+  rationale: "No audit log reduction."
+  contradiction_seed: null
+
+- question_id: m2_au_3.3.7_status
+  module: 2
+  answer_value: "Not implemented"
+  rationale: "No authoritative time source configured. Machines use default Windows NTP."
+  contradiction_seed: null
+
+- question_id: m2_au_3.3.8_status
+  module: 2
+  answer_value: "Not implemented"
+  rationale: "No audit log protection. Local logs could be tampered with."
+  contradiction_seed: null
+
+- question_id: m2_au_3.3.9_status
+  module: 2
+  answer_value: "Not implemented"
+  rationale: "No audit log management (retention, capacity)."
+  contradiction_seed: null
+
+# ═══════════════════════════════════════════════════════════════════════
+# MODULE 3: Configuration Management + Identification & Authentication (21 questions)
+# ═══════════════════════════════════════════════════════════════════════
+
+- question_id: m3_cm_3.4.1_status
+  module: 3
+  answer_value: "Not implemented"
+  rationale: "No established configuration baselines. Machines configured ad-hoc by IT contractor."
+  contradiction_seed: null
+
+- question_id: m3_cm_3.4.2_status
+  module: 3
+  answer_value: "Not implemented"
+  rationale: "No security configuration enforcement (GPO, MDM, hardening standards)."
+  contradiction_seed: null
+
+- question_id: m3_cm_3.4.3_status
+  module: 3
+  answer_value: "Not implemented"
+  rationale: "No change tracking or change control board."
+  contradiction_seed: null
+
+- question_id: m3_cm_3.4.4_status
+  module: 3
+  answer_value: "Not implemented"
+  rationale: "No security impact analysis before changes."
+  contradiction_seed: null
+
+- question_id: m3_cm_3.4.5_status
+  module: 3
+  answer_value: "Partially implemented"
+  rationale: "SonicWall restricts some ports. But no formal access restriction policy for systems/components."
+  contradiction_seed: null
+
+- question_id: m3_cm_3.4.6_status
+  module: 3
+  answer_value: "Not implemented"
+  rationale: "No application whitelisting or least-functionality enforcement."
+  contradiction_seed: null
+
+- question_id: m3_cm_3.4.7_status
+  module: 3
+  answer_value: "Not implemented"
+  rationale: "No restrictions on nonessential programs/functions."
+  contradiction_seed: null
+
+- question_id: m3_cm_3.4.8_status
+  module: 3
+  answer_value: "Not implemented"
+  rationale: "No application execution policy (whitelisting, blacklisting)."
+  contradiction_seed: null
+
+- question_id: m3_cm_3.4.9_status
+  module: 3
+  answer_value: "Not implemented"
+  rationale: "No user-installed software control."
+  contradiction_seed: null
+
+- question_id: m3_ia_3.5.1_status
+  module: 3
+  answer_value: "Partially implemented"
+  rationale: "Google Workspace identifies users by email. No formal identification policy."
+  contradiction_seed: null
+
+- question_id: m3_ia_3.5.2_status
+  module: 3
+  answer_value: "Partially implemented"
+  rationale: "Google handles authentication. Local machines use Windows login. No centralized directory."
+  contradiction_seed: null
+
+- question_id: m3_ia_3.5.3_status
+  module: 3
+  answer_value: "Fully implemented"
+  rationale: "CONTRADICTION SEED IA_01. Owner claims MFA is fully enforced — Google 2-Step is enabled org-wide. BUT legacy IMAP/SMTP auth is not blocked, allowing non-MFA access. Nessus scan detects this."
+  contradiction_seed: IA_01
+
+- question_id: m3_ia_3.5.3_mfa_scope
+  module: 3
+  answer_value: "All users and access methods"
+  rationale: "CONTRADICTION SEED IA_01 (supporting). Claims all users AND all access methods. Legacy auth contradicts this."
+  contradiction_seed: IA_01
+
+- question_id: m3_ia_3.5.4_status
+  module: 3
+  answer_value: "Not implemented"
+  rationale: "No replay-resistant authentication mechanisms beyond Google's built-in."
+  contradiction_seed: null
+
+- question_id: m3_ia_3.5.5_status
+  module: 3
+  answer_value: "Partially implemented"
+  rationale: "Google prevents password reuse within their platform but no local Windows password policy."
+  contradiction_seed: null
+
+- question_id: m3_ia_3.5.6_status
+  module: 3
+  answer_value: "Partially implemented"
+  rationale: "Google enforces password complexity for cloud accounts. Local Windows has default policy."
+  contradiction_seed: null
+
+- question_id: m3_ia_3.5.7_status
+  module: 3
+  answer_value: "Not implemented"
+  rationale: "No password storage protection beyond defaults. Some shared passwords on sticky notes."
+  contradiction_seed: null
+
+- question_id: m3_ia_3.5.8_status
+  module: 3
+  answer_value: "Not implemented"
+  rationale: "No obscured password feedback mechanism implemented."
+  contradiction_seed: null
+
+- question_id: m3_ia_3.5.9_status
+  module: 3
+  answer_value: "Not implemented"
+  rationale: "No temporary password policy."
+  contradiction_seed: null
+
+- question_id: m3_ia_3.5.10_status
+  module: 3
+  answer_value: "Not implemented"
+  rationale: "No cryptographic key management for authentication."
+  contradiction_seed: null
+
+- question_id: m3_ia_3.5.11_status
+  module: 3
+  answer_value: "Not implemented"
+  rationale: "No device identification/authentication. Any device can join the flat network."
+  contradiction_seed: null
+
+# ═══════════════════════════════════════════════════════════════════════
+# MODULE 4: Incident Response + Maintenance (9 questions)
+# ═══════════════════════════════════════════════════════════════════════
+
+- question_id: m4_ir_3.6.1_status
+  module: 4
+  answer_value: "Partially implemented"
+  rationale: "2-page informal IR plan exists. Names owner as coordinator. No defined roles, no contact tree."
+  contradiction_seed: null
+
+- question_id: m4_ir_3.6.2_status
+  module: 4
+  answer_value: "Not implemented"
+  rationale: "No tabletop exercises, no incident tracking, no after-action reviews."
+  contradiction_seed: null
+
+- question_id: m4_ir_3.6.3_status
+  module: 4
+  answer_value: "Not implemented"
+  rationale: "No external incident reporting procedure. No awareness of DFARS 72-hour notification requirement."
+  contradiction_seed: null
+
+- question_id: m4_ma_3.7.1_status
+  module: 4
+  answer_value: "Partially implemented"
+  rationale: "IT contractor performs ad-hoc maintenance. No scheduled maintenance, no ticketing."
+  contradiction_seed: null
+
+- question_id: m4_ma_3.7.2_status
+  module: 4
+  answer_value: "Not implemented"
+  rationale: "No controls on maintenance tools (IT contractor brings own laptop)."
+  contradiction_seed: null
+
+- question_id: m4_ma_3.7.3_status
+  module: 4
+  answer_value: "Not implemented"
+  rationale: "No equipment sanitization before off-site maintenance."
+  contradiction_seed: null
+
+- question_id: m4_ma_3.7.4_status
+  module: 4
+  answer_value: "Not implemented"
+  rationale: "No media sanitization verification for maintenance."
+  contradiction_seed: null
+
+- question_id: m4_ma_3.7.5_status
+  module: 4
+  answer_value: "Not implemented"
+  rationale: "No remote maintenance policy (no remote maintenance performed, but also no prohibition)."
+  contradiction_seed: null
+
+- question_id: m4_ma_3.7.6_status
+  module: 4
+  answer_value: "Not implemented"
+  rationale: "No maintenance personnel oversight."
+  contradiction_seed: null
+
+# ═══════════════════════════════════════════════════════════════════════
+# MODULE 5: Media, Physical & Personnel Security (17 questions)
+# ═══════════════════════════════════════════════════════════════════════
+
+- question_id: m5_mp_3.8.1_status
+  module: 5
+  answer_value: "Partially implemented"
+  rationale: "CUI drawings stored on local machines. USB drives used but no labeling or tracking."
+  contradiction_seed: null
+
+- question_id: m5_mp_3.8.2_status
+  module: 5
+  answer_value: "Not implemented"
+  rationale: "No media access restrictions beyond physical office locks."
+  contradiction_seed: null
+
+- question_id: m5_mp_3.8.3_status
+  module: 5
+  answer_value: "Not implemented"
+  rationale: "No media sanitization procedures. Old hard drives sit in a closet."
+  contradiction_seed: null
+
+- question_id: m5_mp_3.8.4_status
+  module: 5
+  answer_value: "Not implemented"
+  rationale: "No CUI markings on media."
+  contradiction_seed: null
+
+- question_id: m5_mp_3.8.5_status
+  module: 5
+  answer_value: "Not implemented"
+  rationale: "No media access accountability (no check-out log for USB drives)."
+  contradiction_seed: null
+
+- question_id: m5_mp_3.8.6_status
+  module: 5
+  answer_value: "Partially implemented"
+  rationale: "BitLocker on owner-laptop and some shop PCs. dev-nas unencrypted. USB drives unencrypted."
+  contradiction_seed: null
+
+- question_id: m5_mp_3.8.7_status
+  module: 5
+  answer_value: "Not implemented"
+  rationale: "No control over removable media on CUI systems."
+  contradiction_seed: null
+
+- question_id: m5_mp_3.8.8_status
+  module: 5
+  answer_value: "Not implemented"
+  rationale: "No prohibitions on portable storage devices without identifiable owner."
+  contradiction_seed: null
+
+- question_id: m5_mp_3.8.9_status
+  module: 5
+  answer_value: "Not implemented"
+  rationale: "No backup media protection. USB drives stored in unlocked desk drawer."
+  contradiction_seed: null
+
+- question_id: m5_pe_3.10.1_status
+  module: 5
+  answer_value: "Partially implemented"
+  rationale: "Front door locked during non-business hours. No badge system. Visitors sign paper log."
+  contradiction_seed: null
+
+- question_id: m5_pe_3.10.2_status
+  module: 5
+  answer_value: "Not implemented"
+  rationale: "No physical access logs beyond the visitor sign-in sheet."
+  contradiction_seed: null
+
+- question_id: m5_pe_3.10.3_status
+  module: 5
+  answer_value: "Partially implemented"
+  rationale: "Visitor sign-in sheet exists (3 months of data). No escort policy enforced."
+  contradiction_seed: null
+
+- question_id: m5_pe_3.10.4_status
+  module: 5
+  answer_value: "Not implemented"
+  rationale: "No physical access audit logs."
+  contradiction_seed: null
+
+- question_id: m5_pe_3.10.5_status
+  module: 5
+  answer_value: "Partially implemented"
+  rationale: "Shop has perimeter fence. Server closet has a lock (key under the desk mat)."
+  contradiction_seed: null
+
+- question_id: m5_pe_3.10.6_status
+  module: 5
+  answer_value: "Not implemented"
+  rationale: "No alternative work site security controls (no remote work)."
+  contradiction_seed: null
+
+- question_id: m5_ps_3.9.1_status
+  module: 5
+  answer_value: "Partially implemented"
+  rationale: "Background checks done at hire (via job application). No periodic re-screening."
+  contradiction_seed: null
+
+- question_id: m5_ps_3.9.2_status
+  module: 5
+  answer_value: "Partially implemented"
+  rationale: "Terminated employees return keys. Account disable within a week. No formal off-boarding checklist."
+  contradiction_seed: null
+
+# ═══════════════════════════════════════════════════════════════════════
+# MODULE 6: Risk & Security Assessment (7 questions)
+# ═══════════════════════════════════════════════════════════════════════
+
+- question_id: m6_ra_3.11.1_status
+  module: 6
+  answer_value: "Not implemented"
+  rationale: "No formal risk assessment. Owner knows there are risks but hasn't documented them."
+  contradiction_seed: null
+
+- question_id: m6_ra_3.11.2_status
+  module: 6
+  answer_value: "Partially implemented"
+  rationale: "Nessus scan was run once at prime's suggestion. No regular scanning schedule."
+  contradiction_seed: null
+
+- question_id: m6_ra_3.11.3_status
+  module: 6
+  answer_value: "Not implemented"
+  rationale: "Nessus findings not remediated. No vulnerability remediation tracking."
+  contradiction_seed: null
+
+- question_id: m6_ca_3.12.1_status
+  module: 6
+  answer_value: "Not implemented"
+  rationale: "No security control assessments performed. No self-assessment before Intranest."
+  contradiction_seed: null
+
+- question_id: m6_ca_3.12.2_status
+  module: 6
+  answer_value: "Not implemented"
+  rationale: "No POA&M. No remediation plans."
+  contradiction_seed: null
+
+- question_id: m6_ca_3.12.3_status
+  module: 6
+  answer_value: "Not implemented"
+  rationale: "No continuous monitoring of security controls."
+  contradiction_seed: null
+
+- question_id: m6_ca_3.12.4_status
+  module: 6
+  answer_value: "Not implemented"
+  rationale: "No SSP. This is the POA&M-ineligible control. Meridian has no System Security Plan."
+  contradiction_seed: null
+
+# ═══════════════════════════════════════════════════════════════════════
+# MODULE 7: System & Communications Protection (16 questions + 2 sub)
+# ═══════════════════════════════════════════════════════════════════════
+
+- question_id: m7_sc_3.13.1_status
+  module: 7
+  answer_value: "Partially implemented"
+  rationale: "SonicWall provides boundary protection. But CUI boundary not defined, no DMZ, flat internal network."
+  contradiction_seed: null
+
+- question_id: m7_sc_3.13.2_status
+  module: 7
+  answer_value: "Not implemented"
+  rationale: "No architectural design for CUI system isolation."
+  contradiction_seed: null
+
+- question_id: m7_sc_3.13.3_status
+  module: 7
+  answer_value: "Not implemented"
+  rationale: "No separation of user functionality from system management."
+  contradiction_seed: null
+
+- question_id: m7_sc_3.13.4_status
+  module: 7
+  answer_value: "Not implemented"
+  rationale: "No shared resources protection. All users share same network, same drives."
+  contradiction_seed: null
+
+- question_id: m7_sc_3.13.5_status
+  module: 7
+  answer_value: "Partially implemented"
+  rationale: "SonicWall denies by default for inbound. No internal network segmentation."
+  contradiction_seed: null
+
+- question_id: m7_sc_3.13.6_status
+  module: 7
+  answer_value: "Not implemented"
+  rationale: "No network communication segmentation by criticality."
+  contradiction_seed: null
+
+- question_id: m7_sc_3.13.7_status
+  module: 7
+  answer_value: "Not implemented"
+  rationale: "No split tunneling prevention (no VPN, no remote access)."
+  contradiction_seed: null
+
+- question_id: m7_sc_3.13.8_status
+  module: 7
+  answer_value: "Partially implemented"
+  rationale: "HTTPS used for Google Workspace. But dev-nas has TLS 1.0, expired cert. SonicWall VPN uses modern TLS."
+  contradiction_seed: null
+
+- question_id: m7_sc_3.13.9_status
+  module: 7
+  answer_value: "Not implemented"
+  rationale: "No network connection termination policy."
+  contradiction_seed: null
+
+- question_id: m7_sc_3.13.10_status
+  module: 7
+  answer_value: "Not implemented"
+  rationale: "No cryptographic key management for network protection."
+  contradiction_seed: null
+
+- question_id: m7_sc_3.13.11_status
+  module: 7
+  answer_value: "Fully implemented"
+  rationale: "CONTRADICTION SEED SC_01. Owner claims FIPS-validated encryption for CUI at rest and in transit. Reality: BitLocker (FIPS mode NOT enabled), dev-nas runs TLS 1.0 (not FIPS), Google Workspace commercial (not FIPS). Nessus scan + CIS-CAT catch this."
+  contradiction_seed: SC_01
+
+- question_id: m7_sc_3.13.11_fips_scope
+  module: 7
+  answer_value: "FIPS 140-2/3 validated modules"
+  rationale: "CONTRADICTION SEED SC_01 (supporting). Claims FIPS validated. BitLocker is FIPS-capable but not configured in FIPS mode. NAS uses TLS 1.0."
+  contradiction_seed: SC_01
+
+- question_id: m7_sc_3.13.12_status
+  module: 7
+  answer_value: "Not implemented"
+  rationale: "No collaborative computing device controls."
+  contradiction_seed: null
+
+- question_id: m7_sc_3.13.13_status
+  module: 7
+  answer_value: "Not implemented"
+  rationale: "No mobile code controls."
+  contradiction_seed: null
+
+- question_id: m7_sc_3.13.14_status
+  module: 7
+  answer_value: "Not implemented"
+  rationale: "No VoIP security controls (standard phone system, no VoIP)."
+  contradiction_seed: null
+
+- question_id: m7_sc_3.13.15_status
+  module: 7
+  answer_value: "Not implemented"
+  rationale: "No session authenticity protection beyond HTTPS."
+  contradiction_seed: null
+
+- question_id: m7_sc_3.13.16_status
+  module: 7
+  answer_value: "Partially implemented"
+  rationale: "BitLocker on some endpoints protects CUI at rest. But dev-nas and USB drives unencrypted."
+  contradiction_seed: null
+
+# ═══════════════════════════════════════════════════════════════════════
+# MODULE 8: System & Information Integrity (7 questions)
+# ═══════════════════════════════════════════════════════════════════════
+
+- question_id: m8_si_3.14.1_status
+  module: 8
+  answer_value: "Fully implemented"
+  rationale: "CONTRADICTION SEED CM_01/SI_01. Owner claims monthly patching cycle is implemented. Reality: no MSP contract, no schedule, IT contractor patches 'when he gets to it.' Nessus shows shop-pc-03 missing critical Windows patches including MS17-010."
+  contradiction_seed: CM_01
+
+- question_id: m8_si_3.14.2_status
+  module: 8
+  answer_value: "Partially implemented"
+  rationale: "MS Defender Antivirus runs on endpoints. But no centralized management, no alerting, no reporting. Definitions update via Windows Update."
+  contradiction_seed: null
+
+- question_id: m8_si_3.14.3_status
+  module: 8
+  answer_value: "Not implemented"
+  rationale: "No security alert monitoring. Defender may pop up a notification locally but nobody is watching."
+  contradiction_seed: null
+
+- question_id: m8_si_3.14.4_status
+  module: 8
+  answer_value: "Not implemented"
+  rationale: "No malicious code update verification beyond Windows Update defaults."
+  contradiction_seed: null
+
+- question_id: m8_si_3.14.5_status
+  module: 8
+  answer_value: "Not implemented"
+  rationale: "No system and network monitoring."
+  contradiction_seed: null
+
+- question_id: m8_si_3.14.6_status
+  module: 8
+  answer_value: "Not implemented"
+  rationale: "No communications monitoring for attacks."
+  contradiction_seed: null
+
+- question_id: m8_si_3.14.7_status
+  module: 8
+  answer_value: "Not implemented"
+  rationale: "No unauthorized use detection."
+  contradiction_seed: null

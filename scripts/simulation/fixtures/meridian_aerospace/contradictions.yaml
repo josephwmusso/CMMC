@@ -1,0 +1,109 @@
+# Meridian Aerospace — 4 Baked-In Contradictions
+# Split by detection_layer per runtime rule semantics.
+# Phase 3 verification harness asserts different API endpoints per layer.
+
+contradictions:
+
+  # ══════════════════════════════════════════════════════════════════════════
+  # INTAKE-LAYER — detected by src/api/contradiction_engine.py from answer
+  # inconsistencies alone (no observations/claims needed).
+  # Verified via: GET /api/contradictions/summary
+  # ══════════════════════════════════════════════════════════════════════════
+
+  - contradiction_id: SC_01
+    name: "Firewall exists but CUI transit encryption + FIPS not implemented"
+    detection_layer: intake_contradiction_engine
+    trigger_answers:
+      - question_id: m0_firewall
+        answer_value: "SonicWall"
+        role: "asserts boundary protection exists"
+      - question_id: m7_sc_3.13.8_status
+        answer_value: "Not implemented"
+        role: "contradicts — no CUI transit encryption"
+      - question_id: m7_sc_3.13.11_status
+        answer_value: "Not implemented"
+        role: "contradicts — no FIPS validation"
+      - question_id: m7_sc_3.13.11_fips_scope
+        answer_value: "No encryption"
+        role: "reinforces the encryption gap"
+    affected_controls: [SC.L2-3.13.1, SC.L2-3.13.8, SC.L2-3.13.11]
+    expected_severity: CRITICAL
+    expected_contradiction_rule_id: CONTRADICTION_SC_01
+    must_catch: true
+    caught_by: "GET /api/contradictions/summary"
+
+  - contradiction_id: CM_01
+    name: "Claims config baselines fully implemented but key sub-controls missing"
+    detection_layer: intake_contradiction_engine
+    trigger_answers:
+      - question_id: m3_cm_3.4.1_status
+        answer_value: "Fully implemented"
+        role: "claims baselines established"
+      - question_id: m3_cm_3.4.8_status
+        answer_value: "Not implemented"
+        role: "contradicts — no application whitelisting"
+      - question_id: m3_cm_3.4.9_status
+        answer_value: "Planned"
+        role: "reinforces gap — user-installed software not controlled"
+    affected_controls: [CM.L2-3.4.1, CM.L2-3.4.2]
+    expected_severity: HIGH
+    expected_contradiction_rule_id: CONTRADICTION_CM_01
+    must_catch: true
+    caught_by: "GET /api/contradictions/summary"
+
+  # ══════════════════════════════════════════════════════════════════════════
+  # RESOLUTION-LAYER — detected by Phase 4.3 resolver when claims are
+  # matched against observations. Requires extract-claims + build-observations
+  # + resolve to have run first.
+  # Verified via: GET /api/resolutions/conflicts
+  # ══════════════════════════════════════════════════════════════════════════
+
+  - contradiction_id: IA_01
+    name: "Claims MFA for all users but legacy auth is open"
+    detection_layer: resolution_engine
+    claim_source:
+      question_id: m3_ia_3.5.3_status
+      answer_value: "Fully implemented"
+      scope_question_id: m3_ia_3.5.3_mfa_scope
+      scope_answer: "All users and access methods"
+    claim_extraction_expected:
+      must_produce_claim_text_containing: ["MFA", "multi-factor", "all users"]
+    observation_source: SCAN_FINDING
+    observation_trigger: >
+      Nessus plugin 153953 (Google Workspace Legacy Authentication Enabled)
+      on host 192.168.10.12. Finding shows IMAP/SMTP legacy auth bypasses
+      the 2-Step Verification that the intake claims covers all access methods.
+    affected_controls: [IA.L2-3.5.3]
+    expected_resolution_verdict: CONFLICT
+    expected_contradiction_rule_id: null
+    must_catch: true
+    caught_by: "GET /api/resolutions/conflicts"
+    notes: >
+      Google Identity has no "...with MFA" variant in the Module 0 schema,
+      so CONTRADICTION_IA_01 as coded won't fire from intake alone. But
+      IA_01 IS a real contradiction at the resolution layer: Meridian claims
+      MFA on m3_ia_3.5.3_status, Nessus finding 153953 contradicts it.
+
+  - contradiction_id: AC_01
+    name: "Quarterly access reviews claim with no supporting evidence"
+    detection_layer: resolution_engine
+    claim_source:
+      question_id: m1_q02
+      answer_value: "quarterly"
+    claim_extraction_expected:
+      must_produce_claim_text_containing: ["quarterly", "access review"]
+    observation_source: EVIDENCE_GAP
+    observation_rule: >
+      No evidence_artifact with content_summary matching
+      /access review|user access audit|account review/i AND no
+      intake_response with artifact upload for AC.L2-3.1.5
+    affected_controls: [AC.L2-3.1.5]
+    expected_resolution_verdict: CONFLICT
+    expected_contradiction_rule_id: null
+    must_catch: true
+    caught_by: "GET /api/resolutions/conflicts"
+    notes: >
+      Meridian claims quarterly access reviews but has zero evidence
+      artifacts documenting any access review having been conducted. The
+      resolution engine marks this CONFLICT (or UNVERIFIED if no
+      observation exists at all for this control).

@@ -1,0 +1,68 @@
+# 8 evidence artifacts for Meridian Aerospace
+# Must match evidence/*.md summaries and company.yaml tool stack:
+# Google Workspace / SonicWall TZ370 / MS Defender AV / no SIEM / Google Drive+USB
+
+artifacts:
+  - id: EVD-MERI-001
+    filename: "Meridian_Employee_Handbook_Sec7_IT_Policy.pdf"
+    evidence_type: POLICY_DOCUMENT
+    source_system: manual
+    state: PUBLISHED
+    controls: [AC.L2-3.1.1, AC.L2-3.1.2, AC.L2-3.1.3, MP.L2-3.8.1]
+    content_summary: "See evidence/01_employee_handbook.md"
+
+  - id: EVD-MERI-002
+    filename: "Meridian_Acceptable_Use_Policy_v1.0.pdf"
+    evidence_type: POLICY_DOCUMENT
+    source_system: manual
+    state: PUBLISHED
+    controls: [AC.L2-3.1.1, AC.L2-3.1.20, AC.L2-3.1.22, MP.L2-3.8.1]
+    content_summary: "See evidence/02_acceptable_use_policy.md"
+
+  - id: EVD-MERI-003
+    filename: "Meridian_Incident_Response_Procedures_DRAFT.docx"
+    evidence_type: POLICY_DOCUMENT
+    source_system: manual
+    state: DRAFT
+    controls: [IR.L2-3.6.1, IR.L2-3.6.2, IR.L2-3.6.3]
+    content_summary: "See evidence/03_incident_response_procedures.md"
+
+  - id: EVD-MERI-004
+    filename: "Visitor_Access_Log_2026Q1.xlsx"
+    evidence_type: AUDIT_LOG
+    source_system: manual
+    state: PUBLISHED
+    controls: [PE.L2-3.10.3, PE.L2-3.10.4]
+    content_summary: "See evidence/04_visitor_access_log.md"
+
+  - id: EVD-MERI-005
+    filename: "Google_Workspace_Admin_Security_Screenshot.png"
+    evidence_type: SCREENSHOT
+    source_system: manual
+    state: REVIEWED
+    controls: [IA.L2-3.5.1, IA.L2-3.5.3, AC.L2-3.1.1]
+    content_summary: "See evidence/05_google_workspace_admin_screenshot.md"
+
+  - id: EVD-MERI-006
+    filename: "Meridian_Network_Diagram_v2.vsdx"
+    evidence_type: CONFIG_EXPORT
+    source_system: manual
+    state: PUBLISHED
+    controls: [CA.L2-3.12.4, SC.L2-3.13.1, SC.L2-3.13.5]
+    content_summary: "See evidence/06_network_diagram.md"
+
+  - id: EVD-MERI-007
+    filename: "Annual_Security_Training_Attendance_2025.xlsx"
+    evidence_type: TRAINING_RECORD
+    source_system: manual
+    state: PUBLISHED
+    controls: [AT.L2-3.2.1, AT.L2-3.2.2]
+    content_summary: "See evidence/07_annual_security_training_record.md"
+
+  - id: EVD-MERI-008
+    filename: "Meridian_Vendor_Approved_List.xlsx"
+    evidence_type: POLICY_DOCUMENT
+    source_system: manual
+    state: REVIEWED
+    controls: [CM.L2-3.4.1, SI.L2-3.14.1, MA.L2-3.7.1]
+    content_summary: "See evidence/08_vendor_list.md"

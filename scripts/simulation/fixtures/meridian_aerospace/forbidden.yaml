@@ -1,0 +1,94 @@
+# Meridian Aerospace — Ground Truth for Hallucination Detector
+# Any AI output containing these patterns is a fabrication.
+
+forbidden_tools:
+  - CrowdStrike
+  - Falcon
+  - Palo Alto
+  - PA-450
+  - Cisco
+  - Meraki
+  - Fortinet
+  - FortiGate
+  - Microsoft Sentinel
+  - Splunk
+  - Rapid7
+  - Qualys
+  - Tenable
+  - KnowBe4
+  - Proofpoint
+  - Okta
+  - Duo
+  - Microsoft Entra ID
+  - Azure AD
+  - Entra ID
+  - M365 GCC High
+  - Office 365 Government
+  - GCC High
+  - Veeam
+  - Yubico
+  - YubiKey
+  - Defender for Endpoint
+  - Defender ATP
+  - Microsoft Defender for Endpoint
+  - Arctic Wolf
+  - Blumira
+  - SentinelOne
+  - Carbon Black
+  - Symantec
+  - Norton
+  - McAfee
+  - ESET
+  - Webroot
+
+forbidden_ip_ranges:
+  allowed_cidr: "192.168.10.0/24"
+  flag_any_other_rfc1918: true
+  flag_any_public_ip: true
+  notes: >
+    Only 192.168.10.0/24 exists in Meridian's environment. Any other
+    IP address in AI output is fabricated.
+
+allowed_hostnames:
+  - dev-nas
+  - shop-pc-03
+  - owner-laptop
+  - sonicwall-gw
+  - machine-shop-01
+  - machine-shop-02
+  - machine-shop-03
+  - machine-shop-04
+  - machine-shop-05
+  - machine-shop-06
+  - machine-shop-07
+  - machine-shop-08
+  - machine-shop-09
+  - machine-shop-10
+  - machine-shop-11
+
+allowed_evidence_titles:
+  - Employee Handbook v4.2
+  - Acceptable Use Policy
+  - Incident Response Procedures
+  - Visitor Access Log
+  - Google Workspace Admin Screenshot
+  - Network Diagram
+  - Annual Security Training Record
+  - Vendor List
+
+forbidden_facts:
+  employee_count_other_than: 14
+  location_other_than: "Wichita, KS"
+  cage_code_other_than: "9MZ47"
+  uei_other_than: "MERD12345ABCD"
+  industry_other_than: "PRECISION_MACHINING"
+  company_name_other_than: "Meridian Aerospace Components, LLC"
+
+date_constraints:
+  earliest_allowed: "2023-01-01"
+  latest_allowed: "2026-04-15"
+  flag_future_dates: true
+  notes: >
+    Evidence dates range from 2024-03-15 (handbook) to 2026-04-14 (scans).
+    Any date outside 2023-01-01 to 2026-04-15 is suspicious. Future dates
+    are always fabrications.

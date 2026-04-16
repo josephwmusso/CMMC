@@ -1,0 +1,158 @@
+<?xml version="1.0" ?>
+<NessusClientData_v2>
+  <Policy><policyName>Meridian Weekly Scan</policyName></Policy>
+  <Report name="Meridian Aerospace - Internal Scan">
+
+    <!-- HOST 1: dev-nas (Synology NAS, legacy TLS) -->
+    <ReportHost name="192.168.10.20">
+      <HostProperties>
+        <tag name="host-ip">192.168.10.20</tag>
+        <tag name="hostname">dev-nas</tag>
+        <tag name="operating-system">Linux 4.4 (Synology DSM 7.1)</tag>
+        <tag name="HOST_START">Mon Apr 14 08:00:00 2026</tag>
+      </HostProperties>
+
+      <!-- Plugin 42873: SSL/TLS Version Detection — HIGH (SC_01 contradiction) -->
+      <ReportItem port="443" severity="3" pluginID="42873" pluginName="SSL Medium Strength Cipher Suites Supported / TLS 1.0 Enabled" pluginFamily="General">
+        <synopsis>The remote host supports TLS 1.0 which is considered insecure.</synopsis>
+        <description>The remote NAS device (dev-nas) accepts TLS 1.0 connections on port 443. TLS 1.0 is deprecated and does not meet FIPS 140-2 requirements for CUI protection. This contradicts any claim of FIPS-validated encryption for data in transit.</description>
+        <solution>Disable TLS 1.0 and 1.1 on the Synology NAS. Enable only TLS 1.2+ with FIPS-approved cipher suites.</solution>
+        <risk_factor>High</risk_factor>
+        <cvss_base_score>5.9</cvss_base_score>
+        <cvss3_base_score>7.5</cvss3_base_score>
+      </ReportItem>
+
+      <!-- Plugin 81606: Weak Cipher Suites — MEDIUM -->
+      <ReportItem port="443" severity="2" pluginID="81606" pluginName="SSL/TLS Weak Cipher Suites" pluginFamily="General">
+        <synopsis>The remote host supports weak SSL/TLS cipher suites.</synopsis>
+        <description>dev-nas supports cipher suites using 3DES and RC4 which are considered weak.</description>
+        <solution>Reconfigure the server to only use strong cipher suites (AES-GCM, ChaCha20).</solution>
+        <risk_factor>Medium</risk_factor>
+        <cvss_base_score>4.3</cvss_base_score>
+        <cvss3_base_score>5.3</cvss3_base_score>
+      </ReportItem>
+
+      <!-- Plugin 15901: SSL Cert Expired — MEDIUM -->
+      <ReportItem port="8443" severity="2" pluginID="15901" pluginName="SSL Certificate Expired" pluginFamily="General">
+        <synopsis>The SSL certificate on dev-nas:8443 has expired.</synopsis>
+        <description>The self-signed certificate on the Synology admin interface expired on 2025-09-30. Expired certificates may cause trust warnings and indicate lack of certificate lifecycle management.</description>
+        <solution>Renew or replace the SSL certificate on dev-nas:8443.</solution>
+        <risk_factor>Medium</risk_factor>
+        <cvss_base_score>4.0</cvss_base_score>
+        <cvss3_base_score>5.3</cvss3_base_score>
+      </ReportItem>
+
+      <!-- Plugin 10107: HTTP Server Version Disclosure — INFO -->
+      <ReportItem port="80" severity="0" pluginID="10107" pluginName="HTTP Server Type and Version" pluginFamily="Web Servers">
+        <synopsis>A web server is running on the remote host.</synopsis>
+        <description>dev-nas exposes Apache/2.4.54 (Synology) on port 80. This information aids attackers in targeting known vulnerabilities.</description>
+        <solution>Disable HTTP on the NAS or restrict to HTTPS only.</solution>
+        <risk_factor>None</risk_factor>
+      </ReportItem>
+    </ReportHost>
+
+    <!-- HOST 2: shop-pc-03 (Win10, behind on patches) -->
+    <ReportHost name="192.168.10.45">
+      <HostProperties>
+        <tag name="host-ip">192.168.10.45</tag>
+        <tag name="hostname">shop-pc-03</tag>
+        <tag name="operating-system">Microsoft Windows 10 Enterprise 22H2</tag>
+        <tag name="HOST_START">Mon Apr 14 08:05:00 2026</tag>
+      </HostProperties>
+
+      <!-- Plugin 57608: SMBv1 Enabled — CRITICAL (maps to CM.L2-3.4.1) -->
+      <ReportItem port="445" severity="4" pluginID="57608" pluginName="SMB Signing not required / SMBv1 Enabled" pluginFamily="Windows">
+        <synopsis>SMBv1 is enabled on the remote Windows host. SMBv1 is deprecated and vulnerable to multiple exploits.</synopsis>
+        <description>shop-pc-03 has SMBv1 protocol enabled. This protocol is known to be vulnerable to EternalBlue and related exploits. CMMC requires disabling deprecated protocols.</description>
+        <solution>Disable SMBv1 via Group Policy or PowerShell: Set-SmbServerConfiguration -EnableSMB1Protocol $false</solution>
+        <risk_factor>Critical</risk_factor>
+        <cvss_base_score>9.3</cvss_base_score>
+        <cvss3_base_score>9.8</cvss3_base_score>
+        <cve>CVE-2017-0144</cve>
+      </ReportItem>
+
+      <!-- Plugin 84502: Missing Windows Security Updates — HIGH (SI_01 contradiction) -->
+      <ReportItem port="0" severity="3" pluginID="84502" pluginName="Microsoft Windows Update Missing Security Patches" pluginFamily="Windows">
+        <synopsis>The remote Windows host is missing multiple security updates.</synopsis>
+        <description>shop-pc-03 is missing 14 security updates including KB5034441 (January 2026), KB5035845 (February 2026), and KB5037765 (March 2026). The last successful update was November 2025. This contradicts any claim of a monthly patching cycle.</description>
+        <solution>Apply all missing Windows security updates. Establish and enforce a monthly patching schedule with verification.</solution>
+        <risk_factor>High</risk_factor>
+        <cvss_base_score>7.8</cvss_base_score>
+        <cvss3_base_score>8.1</cvss3_base_score>
+      </ReportItem>
+
+      <!-- Plugin 97737: MS17-010 Not Patched — CRITICAL (SI.L2-3.14.1) -->
+      <ReportItem port="445" severity="4" pluginID="97737" pluginName="MS17-010: Security Update for Microsoft Windows SMB Server (4013389) - EternalBlue" pluginFamily="Windows">
+        <synopsis>The remote Windows host is affected by the EternalBlue vulnerability.</synopsis>
+        <description>shop-pc-03 is missing the MS17-010 security update. This makes it vulnerable to remote code execution via the SMBv1 protocol. Combined with SMBv1 being enabled (plugin 57608), this represents a critical risk to the CUI environment.</description>
+        <solution>Apply Microsoft security update MS17-010 (KB4013389) or later cumulative update.</solution>
+        <risk_factor>Critical</risk_factor>
+        <cvss_base_score>9.3</cvss_base_score>
+        <cvss3_base_score>9.8</cvss3_base_score>
+        <cve>CVE-2017-0144</cve>
+        <cve>CVE-2017-0145</cve>
+      </ReportItem>
+
+      <!-- Plugin 96982: SMBv1 Client Driver — CRITICAL (Tier 1: CIS 18.4.1 exact match in baseline_catalog) -->
+      <ReportItem port="445" severity="4" pluginID="96982" pluginName="SMB1 Client Driver Enabled" pluginFamily="Windows">
+        <synopsis>The SMBv1 client driver is enabled on shop-pc-03.</synopsis>
+        <description>CIS Windows 11 Enterprise Benchmark 18.4.1 requires the SMBv1 client driver to be disabled. This host has it enabled, allowing connections to legacy SMBv1 shares and exposing the system to protocol-level attacks.</description>
+        <solution>Disable SMBv1 client driver via Group Policy: Computer Configuration > Administrative Templates > MS Security Guide > Configure SMB v1 client driver = Disable driver.</solution>
+        <risk_factor>Critical</risk_factor>
+        <cvss_base_score>9.3</cvss_base_score>
+        <cvss3_base_score>9.8</cvss3_base_score>
+      </ReportItem>
+
+      <!-- Plugin 58453: RDP NLA Not Required — HIGH (Tier 1: CIS 18.9.1 exact match in baseline_catalog) -->
+      <ReportItem port="3389" severity="3" pluginID="58453" pluginName="Terminal Services Doesn't Use Network Level Authentication (NLA) Only" pluginFamily="Windows">
+        <synopsis>Remote Desktop connections do not require Network Level Authentication on shop-pc-03.</synopsis>
+        <description>CIS Windows 11 Enterprise Benchmark 18.9.1 requires NLA for all RDP connections. Without NLA, an attacker can reach the Windows logon screen without pre-authentication, expanding the attack surface for credential brute-force and DoS.</description>
+        <solution>Enable NLA: Computer Configuration > Administrative Templates > Windows Components > Remote Desktop Services > Require user authentication for remote connections using NLA.</solution>
+        <risk_factor>High</risk_factor>
+        <cvss_base_score>6.5</cvss_base_score>
+        <cvss3_base_score>7.5</cvss3_base_score>
+      </ReportItem>
+    </ReportHost>
+
+    <!-- HOST 3: owner-laptop (Win11, generally up-to-date) -->
+    <ReportHost name="192.168.10.12">
+      <HostProperties>
+        <tag name="host-ip">192.168.10.12</tag>
+        <tag name="hostname">owner-laptop</tag>
+        <tag name="operating-system">Microsoft Windows 11 Enterprise 23H2</tag>
+        <tag name="HOST_START">Mon Apr 14 08:10:00 2026</tag>
+      </HostProperties>
+
+      <!-- Plugin 153953: Legacy Authentication Allowed — HIGH (IA_01 contradiction) -->
+      <ReportItem port="993" severity="3" pluginID="153953" pluginName="Google Workspace Legacy Authentication Enabled (IMAP/SMTP)" pluginFamily="Misc.">
+        <synopsis>Legacy IMAP/SMTP authentication is enabled for Google Workspace, bypassing multi-factor authentication.</synopsis>
+        <description>The organization's Google Workspace configuration allows legacy IMAP and SMTP authentication protocols. These protocols do not support Google's 2-Step Verification (MFA), allowing email access without the second authentication factor. This directly contradicts the claim that MFA is enforced for all users and all access methods (IA.L2-3.5.3). An attacker with a stolen password can access email containing CUI without triggering MFA.</description>
+        <solution>In Google Workspace Admin Console, navigate to Security > API Permissions > Google Workspace Add-ons and disable "Allow users to access less secure apps." Block IMAP/SMTP access or require OAuth 2.0 for all email clients.</solution>
+        <risk_factor>High</risk_factor>
+        <cvss_base_score>7.5</cvss_base_score>
+        <cvss3_base_score>8.1</cvss3_base_score>
+      </ReportItem>
+
+      <!-- Plugin 10884: NTP Unauthenticated on SonicWall — LOW -->
+      <ReportItem port="123" severity="1" pluginID="10884" pluginName="NTP Server Responds to Mode 6 Queries" pluginFamily="Misc.">
+        <synopsis>The NTP server on sonicwall-gw responds to unauthenticated queries.</synopsis>
+        <description>The SonicWall TZ370 at 192.168.10.1 responds to NTP mode 6 queries without authentication. This could be used for NTP amplification attacks or time manipulation.</description>
+        <solution>Configure NTP to use authentication and restrict query access.</solution>
+        <risk_factor>Low</risk_factor>
+        <cvss_base_score>2.6</cvss_base_score>
+        <cvss3_base_score>3.7</cvss3_base_score>
+      </ReportItem>
+
+      <!-- Plugin 10860: Default Credentials on printer — MEDIUM -->
+      <ReportItem port="80" severity="2" pluginID="10860" pluginName="Default Credentials Detected" pluginFamily="Misc.">
+        <synopsis>Default credentials detected on a networked device at 192.168.10.50.</synopsis>
+        <description>A networked printer/MFP at 192.168.10.50 on the same flat LAN as CUI systems responds with default admin credentials (admin/admin). Any user on the 192.168.10.0/24 network can access the device management interface.</description>
+        <solution>Change default credentials on all networked devices. Consider network segmentation to isolate printers from CUI systems.</solution>
+        <risk_factor>Medium</risk_factor>
+        <cvss_base_score>6.4</cvss_base_score>
+        <cvss3_base_score>6.5</cvss3_base_score>
+      </ReportItem>
+    </ReportHost>
+
+  </Report>
+</NessusClientData_v2>
