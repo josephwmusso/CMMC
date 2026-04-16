@@ -88,12 +88,68 @@ IP_PATTERN = re.compile(
     r'\b(?:\d{1,3}\.){3}\d{1,3}\b'
 )
 
-# Hostnames that look fabricated (e.g., SRV-DC01, FILESERVER-01, etc.)
-HOSTNAME_PATTERN = re.compile(
-    r'\b(?:SRV|DC|FS|FILE|MAIL|WEB|APP|DB|SQL|AD|DNS|DHCP|CA|PKI|WSUS|SCCM|PRINT)'
-    r'[-_]?\d{0,3}\b',
-    re.IGNORECASE
-)
+# Hostnames: require structural signals (hyphen + alphanumeric, or FQDN).
+# Never flag bare acronyms like AD, CA, PKI, DNS, MFA, EDR, etc.
+SAFE_ACRONYMS = {
+    "AD", "AAD", "MFA", "SSO", "PKI", "CAC", "PIV", "SAML", "OAUTH", "LDAP", "RADIUS",
+    "EDR", "XDR", "MDR", "SIEM", "SOAR", "DLP", "IDS", "IPS", "WAF", "NAC", "MDM",
+    "AV", "EPP", "NGFW", "UTM", "VPN", "ZTNA", "CASB", "UEBA",
+    "AWS", "GCP", "CSP", "VM", "VDI",
+    "CUI", "CTI", "CDI", "FCI", "CMMC", "NIST", "FIPS", "DFARS", "ITAR", "EAR",
+    "RMF", "ATO", "ATC", "SSP", "RAR", "SAR", "SAP", "POA", "POAM",
+    "SPRS", "DIBCAC", "DIB", "ISSO", "ISSM", "CISO", "CIO",
+    "TCP", "UDP", "IP", "DNS", "NTP", "DHCP", "SNMP", "HTTP", "HTTPS",
+    "TLS", "SSL", "SSH", "FTP", "SFTP", "SCP", "RDP", "SMB", "LDAPS",
+    "VLAN", "WLAN", "LAN", "WAN", "DMZ", "NAT", "VPC", "ACL",
+    "AL", "AK", "AZ", "AR", "CA", "CO", "CT", "DE", "FL", "GA",
+    "HI", "ID", "IL", "IN", "IA", "KS", "KY", "LA", "ME", "MD",
+    "MA", "MI", "MN", "MS", "MO", "MT", "NE", "NV", "NH", "NJ",
+    "NM", "NY", "NC", "ND", "OH", "OK", "OR", "PA", "RI", "SC",
+    "SD", "TN", "TX", "UT", "VT", "VA", "WA", "WV", "WI", "WY", "DC",
+    "LLC", "INC", "LTD", "GCC", "NAS", "SAN", "UPS",
+    "API", "SDK", "CLI", "GUI", "SQL", "PDF", "CSV", "JSON", "XML", "YAML",
+    "CPU", "GPU", "RAM", "SSD", "HDD",
+    "DB", "FS",  # Database, FileSystem — NOT hostnames by themselves
+}
+
+
+def _is_potential_hostname(token: str) -> bool:
+    """True only if token structurally looks like a hostname, not an acronym."""
+    if token.upper() in SAFE_ACRONYMS:
+        return False
+    if token.isupper() and len(token) <= 5:
+        return False
+    # Hyphenated: dev-nas, shop-pc-03, dc-primary-01
+    if "-" in token and re.match(r'^[a-zA-Z][a-zA-Z0-9-]+[a-zA-Z0-9]$', token):
+        return True
+    # FQDN: server.domain.local
+    if re.match(r'^[a-zA-Z][a-zA-Z0-9-]*\.[a-zA-Z0-9.-]+$', token):
+        return True
+    # Mixed alpha+digit >=6 chars: server01, win2019
+    if len(token) >= 6 and re.match(r'^[a-zA-Z][a-zA-Z0-9]+$', token) and any(c.isdigit() for c in token):
+        return True
+    return False
+
+
+# Inline assertion battery — runs on import
+_MUST_NOT_MATCH = [
+    "AD", "MFA", "EDR", "CUI", "DLP", "SIEM", "KS", "MD", "VA", "PKI",
+    "RMF", "ATO", "SSO", "TLS", "SSH", "FTP", "RDP", "NTP", "DNS", "VLAN",
+    "CSP", "MDM", "SOC", "MSP", "ISSO", "ISSM", "GCC", "LLC", "CA", "NAS",
+    "VPN", "ACL", "DMZ", "NAT", "SQL", "PDF", "API", "SDK", "CLI", "DB", "FS",
+]
+_MUST_MATCH = [
+    "dev-nas", "shop-pc-03", "owner-laptop", "dc-primary-01",
+    "server-backup-02", "win2019srv", "exchange01",
+]
+for _t in _MUST_NOT_MATCH:
+    assert not _is_potential_hostname(_t), f"SAFE_ACRONYMS failed: '{_t}' should not match"
+for _t in _MUST_MATCH:
+    assert _is_potential_hostname(_t), f"Hostname detection failed: '{_t}' should match"
+
+
+# Token extraction pattern — finds word-like tokens to test
+_TOKEN_PATTERN = re.compile(r'\b[a-zA-Z][a-zA-Z0-9._-]{1,30}\b')
 
 # Specific version numbers (e.g., "version 10.4.2", "v3.2.1")
 VERSION_PATTERN = re.compile(
@@ -172,14 +228,16 @@ def verify_narrative(
         ))
 
     # --- Check 2: Fabricated hostnames ---
-    for match in HOSTNAME_PATTERN.finditer(narrative):
-        hostname = match.group()
-        if hostname.lower() in evidence_text_corpus.lower():
+    for match in _TOKEN_PATTERN.finditer(narrative):
+        token = match.group()
+        if not _is_potential_hostname(token):
+            continue
+        if token.lower() in evidence_text_corpus.lower():
             continue
         context = narrative[max(0, match.start()-40):match.end()+40]
         findings.append(HallucinationFinding(
             finding_type="hostname",
-            value=hostname,
+            value=token,
             context=f"...{context}...",
             severity="critical"
         ))

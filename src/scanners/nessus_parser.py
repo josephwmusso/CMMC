@@ -111,6 +111,17 @@ KEYWORD_CONTROL_MAP: dict[str, list[str]] = {
     "telnet": ["CM.L2-3.4.2", "AC.L2-3.1.12"],
     "ftp": ["CM.L2-3.4.2"],
     "ssh": ["AC.L2-3.1.12", "SC.L2-3.13.8"],
+    # Legacy authentication protocols → IA (identification & authentication)
+    "legacy auth": ["IA.L2-3.5.3"],
+    "imap": ["IA.L2-3.5.3"],
+    "smtp": ["IA.L2-3.5.3"],
+    "pop3": ["IA.L2-3.5.3"],
+    "basic auth": ["IA.L2-3.5.3"],
+    "less secure app": ["IA.L2-3.5.3"],
+    "multi-factor": ["IA.L2-3.5.3"],
+    "mfa": ["IA.L2-3.5.3"],
+    "two-factor": ["IA.L2-3.5.3"],
+    "2-step verification": ["IA.L2-3.5.3"],
 }
 
 
