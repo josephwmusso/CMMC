@@ -218,10 +218,9 @@ def _delete_org_data(conn, org_id: str) -> dict[str, int]:
         conn, "DELETE FROM generated_documents WHERE org_id = :oid", {"oid": org_id}
     )
 
-    # Phase 6 — company_profiles
-    counts["company_profiles"] = _exec_count(
-        conn, "DELETE FROM company_profiles WHERE org_id = :oid", {"oid": org_id}
-    )
+    # Phase 6 — company_profiles: PRESERVED. This is the org's identity,
+    # not test clutter. Deleting it forces fallback logic that produces
+    # fabricated output. See audit finding 4.1.
 
     # Phase 6b — contradictions (2.9A table; included so demos start clean)
     try:

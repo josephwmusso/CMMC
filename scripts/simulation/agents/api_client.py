@@ -96,7 +96,7 @@ class ApiClient:
 
         while attempt < max_retries:
             try:
-                resp = self.session.request(method, url, headers=headers, timeout=120, **kwargs)
+                resp = self.session.request(method, url, headers=headers, timeout=300, **kwargs)
             except requests.exceptions.RequestException as e:
                 attempt += 1
                 if attempt >= max_retries:

@@ -44,10 +44,12 @@ class SSPControlResult:
 class SSPGeneratorV2:
     """Evidence-gated SSP section generator."""
 
-    def __init__(self, org_profile: dict = None):
-        if org_profile is None:
-            from src.agents.ssp_prompts_v2 import DEMO_ORG_PROFILE
-            org_profile = DEMO_ORG_PROFILE
+    def __init__(self, org_profile: dict):
+        if not org_profile or not org_profile.get("name"):
+            raise ValueError(
+                "SSPGeneratorV2 requires a populated org_profile dict. "
+                "Use build_org_profile(org_id, db) to construct it."
+            )
         self.org_profile = org_profile
         self.org_id = self.org_profile.get("org_id", "default-org")
         self.llm = get_llm()

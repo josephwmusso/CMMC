@@ -1,8 +1,9 @@
 """
-src/agents/ssp_org_profile.py
+src/agents/org_profile.py
 
-Build the org_profile dict for SSP generation from company_profiles.
+Build the org_profile dict from company_profiles for SSP + document generation.
 Single source of truth — matches /api/truth/grounding-context pattern.
+Used by SSP generator, document generator, and any future generators.
 """
 from __future__ import annotations
 
@@ -14,18 +15,22 @@ class CompanyProfileMissing(Exception):
     pass
 
 
-def build_ssp_org_profile(org_id: str, db: Session) -> dict:
-    """Build org_profile dict from company_profiles for SSP generation.
+def build_org_profile(org_id: str, db: Session) -> dict:
+    """Build org_profile dict from company_profiles.
 
-    Returns a dict matching the shape format_org_context() in
-    ssp_prompts_v2.py expects: name, description, employee_count,
-    facilities, cui_types, contracts, systems{...}, org_id.
+    Returns a dict matching the shape format_org_context() expects:
+    name, description, employee_count, facilities, cui_types, contracts,
+    systems{...}, org_id.
+
+    Raises CompanyProfileMissing if no row exists — caller converts to
+    HTTP 400 with "organization must complete onboarding."
     """
     row = db.execute(text("""
         SELECT company_name, identity_provider, email_platform, email_tier,
                edr_product, firewall_product, siem_product, backup_solution,
                training_solution, primary_location, employee_count, cui_types,
-               cage_code, uei, has_remote_workers, has_wireless
+               cage_code, uei, has_remote_workers, has_wireless,
+               dfars_7012_clause
         FROM company_profiles
         WHERE org_id = :org_id
         ORDER BY updated_at DESC NULLS LAST
@@ -35,7 +40,7 @@ def build_ssp_org_profile(org_id: str, db: Session) -> dict:
     if not row:
         raise CompanyProfileMissing(
             f"No company_profiles row for org_id={org_id}. "
-            "Organization must complete onboarding before generating SSP."
+            "Organization must complete onboarding first."
         )
 
     import json as _json
@@ -51,15 +56,17 @@ def build_ssp_org_profile(org_id: str, db: Session) -> dict:
     name = row.company_name or "Organization"
     location = row.primary_location or ""
     emp = row.employee_count or 0
+    has_dfars = row.dfars_7012_clause if hasattr(row, "dfars_7012_clause") else True
 
     return {
         "org_id":         org_id,
         "name":           name,
-        "description":    f"{emp}-employee defense subcontractor in {location}" if location else f"{emp}-employee defense subcontractor",
+        "company_name":   name,
+        "description":    f"{emp}-employee contractor in {location}" if location else f"{emp}-employee contractor",
         "employee_count": emp,
         "facilities":     f"Single facility in {location}" if location else "Single facility",
         "cui_types":      ", ".join(cui) if cui else "CUI",
-        "contracts":      "DoD subcontractor under DFARS 7012 clause",
+        "contracts":      "DoD subcontractor under DFARS 7012 clause" if has_dfars else "Government contractor",
         "systems": {
             "identity":            row.identity_provider or "Not specified",
             "email_collaboration": row.email_platform or "Not specified",
@@ -73,3 +80,7 @@ def build_ssp_org_profile(org_id: str, db: Session) -> dict:
             "physical_security":   "Physical access controls in place",
         },
     }
+
+
+# Backward-compatible alias
+build_ssp_org_profile = build_org_profile

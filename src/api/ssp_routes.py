@@ -104,16 +104,9 @@ class OrgProfileInput(BaseModel):
     )
 
     def to_dict(self) -> dict:
-        """Convert to dict, filling in demo defaults for empty fields if use_demo_profile is True."""
+        """Convert to dict. No demo fallback — all generators read from company_profiles."""
         d = self.model_dump()
-        if d.pop("use_demo_profile", False):
-            try:
-                from src.agents.ssp_prompts_v2 import DEMO_ORG_PROFILE
-                for key, demo_val in DEMO_ORG_PROFILE.items():
-                    if not d.get(key):
-                        d[key] = demo_val
-            except ImportError:
-                pass
+        d.pop("use_demo_profile", None)
         return d
 
 
@@ -166,9 +159,9 @@ def generate_single_control(
     if not is_llm_available():
         raise HTTPException(503, "SSP generation requires an LLM API key, which is not configured.")
     from src.agents.ssp_generator_v2 import SSPGenerator
-    from src.agents.ssp_org_profile import build_ssp_org_profile, CompanyProfileMissing
+    from src.agents.org_profile import build_org_profile, CompanyProfileMissing
     try:
-        org = build_ssp_org_profile(current_user["org_id"], db)
+        org = build_org_profile(current_user["org_id"], db)
     except CompanyProfileMissing:
         raise HTTPException(400, "Your organization must complete onboarding before generating an SSP.")
     generator = SSPGenerator(org_profile=org)
@@ -284,9 +277,9 @@ def generate_full_ssp(
     """
     if not is_llm_available():
         raise HTTPException(503, "SSP generation requires an LLM API key, which is not configured.")
-    from src.agents.ssp_org_profile import build_ssp_org_profile, CompanyProfileMissing
+    from src.agents.org_profile import build_org_profile, CompanyProfileMissing
     try:
-        org = build_ssp_org_profile(current_user["org_id"], db)
+        org = build_org_profile(current_user["org_id"], db)
     except CompanyProfileMissing:
         raise HTTPException(400, "Your organization must complete onboarding before generating an SSP.")
     job_id = str(uuid.uuid4())[:8]
@@ -332,9 +325,9 @@ async def generate_full_ssp_temporal(
             detail="Temporal is not available in this deployment. Use /api/ssp/generate-full instead.",
         )
 
-    from src.agents.ssp_org_profile import build_ssp_org_profile, CompanyProfileMissing
+    from src.agents.org_profile import build_org_profile, CompanyProfileMissing
     try:
-        org = build_ssp_org_profile(current_user["org_id"], db)
+        org = build_org_profile(current_user["org_id"], db)
     except CompanyProfileMissing:
         raise HTTPException(400, "Organization must complete onboarding before SSP generation.")
     workflow_id = f"ssp-{org['org_id']}-{datetime.datetime.utcnow().strftime('%Y%m%d%H%M%S')}"
@@ -496,11 +489,11 @@ def export_latest(db: Session = Depends(get_db), current_user: dict = Depends(ge
         result.gaps = r[4] if isinstance(r[4], list) else []
         results.append(result)
 
+    from src.agents.org_profile import build_org_profile, CompanyProfileMissing
     try:
-        from src.agents.ssp_prompts_v2 import DEMO_ORG_PROFILE
-        org_profile = DEMO_ORG_PROFILE
-    except ImportError:
-        org_profile = {"org_name": "Apex Defense Solutions"}
+        org_profile = build_org_profile(current_user["org_id"], db)
+    except CompanyProfileMissing:
+        raise HTTPException(400, "Organization must complete onboarding before exporting SSP.")
     timestamp = datetime.datetime.now().strftime("%Y%m%d_%H%M%S")
     filename = f"SSP_Apex_Defense_Solutions_{timestamp}.docx"
     filepath = os.path.join(EXPORT_DIR, filename)

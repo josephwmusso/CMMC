@@ -32,7 +32,7 @@ sys.path.insert(0, os.path.abspath(os.path.join(os.path.dirname(__file__), "..")
 
 from src.agents.llm_client import get_llm
 from src.agents.ssp_generator_v2 import SSPGenerator
-from src.agents.ssp_prompts_v2 import DEMO_ORG_PROFILE
+from src.agents.org_profile import build_org_profile
 from src.ssp.docx_export import export_ssp_to_docx
 from src.db.session import SessionLocal
 from sqlalchemy import text
@@ -54,8 +54,8 @@ def main():
 
     print("=" * 70)
     print("CMMC SSP DOCUMENT GENERATOR")
-    print(f"Organization: {DEMO_ORG_PROFILE['org_name']}")
-    print(f"System: {DEMO_ORG_PROFILE['system_name']}")
+    print(f"Organization: {build_org_profile('9de53b587b23450b87af', db)['org_name']}")
+    print(f"System: {build_org_profile('9de53b587b23450b87af', db)['system_name']}")
     print(f"Started: {datetime.datetime.now().strftime('%Y-%m-%d %H:%M:%S')}")
     print("=" * 70)
 
@@ -115,7 +115,7 @@ def main():
 
         result = generator.generate_single_control(
             control_id=cid,
-            org_profile=DEMO_ORG_PROFILE,
+            org_profile=build_org_profile('9de53b587b23450b87af', db),
             db=db,
         )
         results.append(result)
@@ -139,7 +139,7 @@ def main():
                         updated_at = NOW()
                 """), {
                     "id": _id,
-                    "org_id": DEMO_ORG_PROFILE.get("org_id", "9de53b587b23450b87af"),
+                    "org_id": build_org_profile('9de53b587b23450b87af', db).get("org_id", "9de53b587b23450b87af"),
                     "control_id": cid,
                     "status": result.status,
                     "narrative": result.narrative or "",
@@ -195,10 +195,10 @@ def main():
             docx_path = args.output
         else:
             timestamp = datetime.datetime.now().strftime("%Y%m%d_%H%M%S")
-            org_slug = DEMO_ORG_PROFILE["org_name"].replace(" ", "_")
+            org_slug = build_org_profile('9de53b587b23450b87af', db)["org_name"].replace(" ", "_")
             docx_path = os.path.join("data", "exports", f"SSP_{org_slug}_{timestamp}.docx")
 
-        export_ssp_to_docx(results, DEMO_ORG_PROFILE, docx_path)
+        export_ssp_to_docx(results, build_org_profile('9de53b587b23450b87af', db), docx_path)
         print(f"\n  SSP document saved to: {docx_path}")
         print(f"  Open in Word and review all narratives before submission.")
 

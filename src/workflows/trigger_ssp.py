@@ -24,23 +24,25 @@ from src.workflows.ssp_workflow import (
     SSPGenerationWorkflow,
     SSPWorkflowInput,
 )
-from src.agents.ssp_prompts_v2 import DEMO_ORG_PROFILE
-
-
 async def trigger(org_id: str, control_ids: list | None, export_docx: bool):
     from configs.settings import TEMPORAL_HOST
+    from src.agents.org_profile import build_org_profile
+    from src.db.session import get_session
+
+    with get_session() as db:
+        profile = build_org_profile(org_id, db)
 
     client = await Client.connect(TEMPORAL_HOST)
 
     inp = SSPWorkflowInput(
         org_id=org_id,
-        org_name=DEMO_ORG_PROFILE["org_name"],
-        system_name=DEMO_ORG_PROFILE["system_name"],
-        system_description=DEMO_ORG_PROFILE["system_description"],
-        employee_count=DEMO_ORG_PROFILE["employee_count"],
-        facility_type=DEMO_ORG_PROFILE["facility_type"],
-        tools_description=DEMO_ORG_PROFILE["tools_description"],
-        network_description=DEMO_ORG_PROFILE["network_description"],
+        org_name=profile.get("name", "Organization"),
+        system_name=profile.get("systems", {}).get("identity", ""),
+        system_description=profile.get("description", ""),
+        employee_count=profile.get("employee_count", 0),
+        facility_type=profile.get("facilities", ""),
+        tools_description=str(profile.get("systems", {})),
+        network_description=profile.get("systems", {}).get("network_security", ""),
         control_ids=control_ids or None,
         export_docx=export_docx,
     )

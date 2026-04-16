@@ -17,7 +17,7 @@ from typing import Optional
 from sqlalchemy import text
 
 from src.agents.llm_client import get_llm
-from src.agents.ssp_prompts_v2 import DEMO_ORG_PROFILE, format_org_context
+from src.agents.ssp_prompts_v2 import format_org_context
 from src.db.session import get_session
 from src.documents.intake_context import (
     FAMILY_BUCKET,
@@ -268,9 +268,23 @@ def _family_statuses_for_section(section: dict, ctx: dict) -> str:
 class DocumentGenerator:
     """Generates compliance documents from templates + intake answers + LLM."""
 
-    def __init__(self, org_id: str = ORG_ID, org_profile: dict = None):
+    def __init__(self, org_id: str = ORG_ID, org_profile: dict = None, db=None):
         self.org_id = org_id
-        self.org_profile = org_profile or DEMO_ORG_PROFILE
+        if org_profile is None and db is not None:
+            from src.agents.org_profile import build_org_profile, CompanyProfileMissing
+            try:
+                org_profile = build_org_profile(org_id, db)
+            except CompanyProfileMissing:
+                org_profile = {"name": "Organization", "systems": {}}
+        elif org_profile is None:
+            from src.agents.org_profile import build_org_profile, CompanyProfileMissing
+            from src.db.session import get_session
+            try:
+                with get_session() as sess:
+                    org_profile = build_org_profile(org_id, sess)
+            except CompanyProfileMissing:
+                org_profile = {"name": "Organization", "systems": {}}
+        self.org_profile = org_profile
         self.llm = get_llm()
 
     def get_template(self, doc_type: str) -> dict:

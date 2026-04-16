@@ -19,32 +19,23 @@ from src.agents.ssp_schemas import get_output_schema_prompt
 # DEMO ORG PROFILE — unchanged from original
 # =============================================================================
 
-DEMO_ORG_PROFILE = {
-    "org_id": "9de53b587b23450b87af",
-    "name": "Apex Defense Solutions",
-    "description": "45-employee defense subcontractor specializing in radar signal processing",
-    "employee_count": 45,
-    "facilities": "Single facility in Columbia, MD with server room and secure workspace",
-    "systems": {
-        "identity": "Microsoft Entra ID with MFA enforced for all users",
-        "email_collaboration": "Microsoft 365 GCC High",
-        "endpoint_protection": "CrowdStrike Falcon EDR on all endpoints",
-        "network_security": "Palo Alto PA-450 next-gen firewall",
-        "siem": "Microsoft Sentinel SIEM with 90-day log retention",
-        "network_architecture": "VLAN-segmented network (Corporate, CUI, Guest, Management)",
-        "encryption": "BitLocker on all endpoints, TLS 1.2+ for all network traffic",
-        "training": "KnowBe4 security awareness platform with monthly phishing simulations",
-        "ticketing": "Jira for change management and incident tracking",
-        "physical_security": "HID badge readers at all entry points, visitor logs maintained",
-    },
-    "cui_types": "Technical data (ITAR), specifications, test results",
-    "contracts": "DoD subcontractor under DFARS 7012 clause",
-}
+# DEMO_ORG_PROFILE removed — all generators now read from company_profiles
+# via build_org_profile(org_id, db) in src/agents/org_profile.py.
+# See commit trail: 3d30a6e → e516104 audit → this commit.
 
 
-def format_org_context(org_profile: dict = None) -> str:
-    """Format organization profile for prompt inclusion."""
-    profile = org_profile or DEMO_ORG_PROFILE
+def format_org_context(org_profile: dict) -> str:
+    """Format organization profile for prompt inclusion.
+
+    Requires a populated org_profile dict from build_org_profile().
+    No fallback — caller must provide a real profile.
+    """
+    if not org_profile or not org_profile.get("name"):
+        raise ValueError(
+            "format_org_context called with empty org_profile. "
+            "Caller must pass a populated profile from build_org_profile()."
+        )
+    profile = org_profile
     systems = profile.get("systems", {})
 
     lines = [

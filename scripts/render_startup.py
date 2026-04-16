@@ -1297,6 +1297,11 @@ def main():
             seed_baselines(cur)
         except Exception as e:
             logger.warning(f"Baseline seeding skipped: {e}")
+        try:
+            from scripts.seeds.apex_company_profile import seed_apex_company_profile
+            seed_apex_company_profile(cur)
+        except Exception as e:
+            logger.warning(f"Apex company_profile seeding skipped: {e}")
         conn.commit()
         logger.info("All seed data committed")
     except Exception as e:

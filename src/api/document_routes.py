@@ -95,7 +95,9 @@ async def generate_document(
     current_user: dict = Depends(get_current_user),
 ):
     """Generate a single document from template + intake answers."""
-    gen = DocumentGenerator(org_id=current_user["org_id"])
+    from src.db.session import get_session
+    with get_session() as _db:
+        gen = DocumentGenerator(org_id=current_user["org_id"], db=_db)
 
     try:
         template = gen.get_template(doc_type)
@@ -258,7 +260,9 @@ async def download_document(
 async def generate_all_documents(current_user: dict = Depends(get_current_user)):
     """Generate all applicable documents based on intake answers."""
     org_id = current_user["org_id"]
-    gen = DocumentGenerator(org_id=org_id)
+    from src.db.session import get_session
+    with get_session() as _db:
+        gen = DocumentGenerator(org_id=org_id, db=_db)
     answers = gen.get_intake_answers()
 
     # Get all templates

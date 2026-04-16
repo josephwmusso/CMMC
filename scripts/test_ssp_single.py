@@ -19,7 +19,13 @@ sys.path.insert(0, os.path.abspath(os.path.join(os.path.dirname(__file__), "..")
 
 from src.agents.llm_client import get_llm
 from src.agents.ssp_generator_v2 import SSPGenerator
-from src.agents.ssp_prompts_v2 import DEMO_ORG_PROFILE
+from src.agents.org_profile import build_org_profile
+from src.db.session import get_session
+
+
+def _get_profile():
+    with get_session() as db:
+        return build_org_profile("9de53b587b23450b87af", db)
 
 
 def main():
@@ -52,7 +58,7 @@ def main():
         start = time.time()
         result = generator.generate_single_control(
             control_id=control_id,
-            org_profile=DEMO_ORG_PROFILE,
+            org_profile=_get_profile(),
         )
         elapsed = time.time() - start
 
