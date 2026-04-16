@@ -686,6 +686,31 @@ class AssessmentSnapshot(Base):
 
 
 # ---------------------------------------------------------------------------
+# Affirmations — annual senior-official attestation per 32 CFR 170.22 (6.4)
+# ---------------------------------------------------------------------------
+class Affirmation(Base):
+    __tablename__ = "affirmations"
+
+    id                     = Column(String(20), primary_key=True)
+    org_id                 = Column(String(20), ForeignKey("organizations.id"), nullable=False)
+    affirmed_at            = Column(DateTime(timezone=True), server_default=func.now(), nullable=False)
+    affirmed_by            = Column(String(20), nullable=False)
+    affirmed_by_name       = Column(String(200), nullable=False)
+    affirmed_by_title      = Column(String(200))
+    affirmed_by_email      = Column(String(200), nullable=False)
+    sprs_score_snapshot    = Column(Integer, nullable=False)
+    ssp_version_snapshot   = Column(String(50))
+    assessment_snapshot_id = Column(String(20))
+    attestation_text       = Column(Text)
+    open_poam_count        = Column(Integer)
+    material_changes       = Column(Text)
+    ip_address             = Column(String(45))
+    certificate_hash       = Column(String(128))
+    expires_at             = Column(DateTime(timezone=True), nullable=False)
+    created_at             = Column(DateTime(timezone=True), server_default=func.now())
+
+
+# ---------------------------------------------------------------------------
 # Export records — audit trail for binder/package exports (6.1)
 # ---------------------------------------------------------------------------
 class ExportRecord(Base):

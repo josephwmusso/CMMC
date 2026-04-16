@@ -470,6 +470,35 @@ TABLES_DDL = [
         CREATE INDEX IF NOT EXISTS idx_export_records_type ON export_records(export_type)
     """),
 
+    # Phase 6.4 — annual senior-official affirmation per 32 CFR 170.22.
+    ("affirmations", """
+        CREATE TABLE IF NOT EXISTS affirmations (
+            id                      VARCHAR(20) PRIMARY KEY,
+            org_id                  VARCHAR(20) NOT NULL REFERENCES organizations(id),
+            affirmed_at             TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+            affirmed_by             VARCHAR(20) NOT NULL,
+            affirmed_by_name        VARCHAR(200) NOT NULL,
+            affirmed_by_title       VARCHAR(200),
+            affirmed_by_email       VARCHAR(200) NOT NULL,
+            sprs_score_snapshot     INTEGER NOT NULL,
+            ssp_version_snapshot    VARCHAR(50),
+            assessment_snapshot_id  VARCHAR(20),
+            attestation_text        TEXT,
+            open_poam_count         INTEGER,
+            material_changes        TEXT,
+            ip_address              VARCHAR(45),
+            certificate_hash        VARCHAR(128),
+            expires_at              TIMESTAMPTZ NOT NULL,
+            created_at              TIMESTAMPTZ NOT NULL DEFAULT NOW()
+        )
+    """),
+    ("affirmations_idx_org", """
+        CREATE INDEX IF NOT EXISTS idx_affirmations_org ON affirmations(org_id)
+    """),
+    ("affirmations_idx_expires", """
+        CREATE INDEX IF NOT EXISTS idx_affirmations_expires ON affirmations(expires_at)
+    """),
+
     ("freshness_thresholds", """
         CREATE TABLE IF NOT EXISTS freshness_thresholds (
             org_id        VARCHAR(20) NOT NULL REFERENCES organizations(id),
