@@ -22,6 +22,28 @@ logger = logging.getLogger(__name__)
 router = APIRouter(prefix="/api/truth", tags=["truth"])
 
 
+_GENERIC_FIRST_WORDS = {"The", "A", "An", "New", "Global", "National", "International"}
+
+
+def _extract_company_terms(org_name: str, location: str | None) -> list[str]:
+    """Emit only high-signal terms: full name, first word (if distinctive),
+    and location fragments. Avoids leaking generic words like 'Defense' or
+    'Solutions' that would over-ground the detector."""
+    terms: set[str] = set()
+    if org_name:
+        terms.add(org_name)
+        parts = org_name.split()
+        if parts and len(parts[0]) >= 4 and parts[0] not in _GENERIC_FIRST_WORDS:
+            terms.add(parts[0])
+    if location:
+        terms.add(location)
+        for p in location.split(","):
+            p = p.strip()
+            if len(p) >= 2:
+                terms.add(p)
+    return sorted(terms)
+
+
 def _build_grounding_universe(
     control: dict,
     org_profile: dict,
@@ -37,20 +59,10 @@ def _build_grounding_universe(
         if v and isinstance(v, str) and v.lower() not in ("none", "null", "", "no log collection")
     ))
 
-    company_terms = set()
-    name = org_profile.get("company_name") or ""
-    if name:
-        company_terms.add(name)
-        for part in name.replace(",", "").replace("LLC", "").replace("Inc.", "").split():
-            if len(part) >= 4:
-                company_terms.add(part)
-    loc = org_profile.get("location") or ""
-    if loc:
-        company_terms.add(loc)
-        for part in loc.split(","):
-            p = part.strip()
-            if p:
-                company_terms.add(p)
+    company_terms = _extract_company_terms(
+        org_profile.get("company_name") or "",
+        org_profile.get("location"),
+    )
 
     ev_titles = [e.get("filename", "") for e in evidence if e.get("filename")]
     ev_descriptions = " ".join(
