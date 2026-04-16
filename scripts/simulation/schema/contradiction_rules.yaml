@@ -1,0 +1,89 @@
+# 14 contradiction detection rules from src/api/contradiction_engine.py
+# Each rule fires when intake answers within a NIST family are internally
+# inconsistent. Rules gracefully skip when prerequisite answers are absent.
+# Sticky statuses: DISMISSED/OVERRIDDEN survive re-scans.
+
+rules:
+  - rule_id: CONTRADICTION_AC_01
+    family: AC
+    severity: CRITICAL
+    affected_controls: [AC.L2-3.1.1, AC.L2-3.1.2]
+    trigger: "No centralized identity provider selected but RBAC/access-control claims made in Module 1"
+
+  - rule_id: CONTRADICTION_AT_01
+    family: AT
+    severity: HIGH
+    affected_controls: [AT.L2-3.2.1, AT.L2-3.2.2]
+    trigger: "Training tool claimed in Module 0 but awareness training controls marked not implemented in Module 2"
+
+  - rule_id: CONTRADICTION_AU_01
+    family: AU
+    severity: HIGH
+    affected_controls: [AU.L2-3.3.1, AU.L2-3.3.2]
+    trigger: "SIEM tool claimed in Module 0 but audit logging/review controls marked not implemented in Module 2"
+
+  - rule_id: CONTRADICTION_CM_01
+    family: CM
+    severity: HIGH
+    affected_controls: [CM.L2-3.4.1, CM.L2-3.4.2]
+    trigger: "Configuration baselines claimed implemented but no evidence of baseline configuration in Module 3"
+
+  - rule_id: CONTRADICTION_IA_01
+    family: IA
+    severity: CRITICAL
+    affected_controls: [IA.L2-3.5.3]
+    trigger: "MFA claimed on identity provider but partial/no deployment indicated in Module 3 MFA questions"
+
+  - rule_id: CONTRADICTION_IR_01
+    family: IR
+    severity: HIGH
+    affected_controls: [IR.L2-3.6.1, IR.L2-3.6.2]
+    trigger: "Incident response plan or incident reporting controls marked not implemented in Module 4"
+
+  - rule_id: CONTRADICTION_MA_01
+    family: MA
+    severity: MEDIUM
+    affected_controls: [MA.L2-3.7.1, MA.L2-3.7.5]
+    trigger: "Maintenance controls marked not implemented or only planned in Module 4"
+
+  - rule_id: CONTRADICTION_MP_01
+    family: MP
+    severity: MEDIUM
+    affected_controls: [MP.L2-3.8.1, MP.L2-3.8.3]
+    trigger: "Media sanitization procedures not implemented in Module 5"
+
+  - rule_id: CONTRADICTION_PE_01
+    family: PE
+    severity: MEDIUM
+    affected_controls: [PE.L2-3.10.1, PE.L2-3.10.3]
+    trigger: "Physical access controls claimed but visitor control not implemented in Module 5"
+
+  - rule_id: CONTRADICTION_PS_01
+    family: PS
+    severity: HIGH
+    affected_controls: [PS.L2-3.9.1, PS.L2-3.9.2]
+    trigger: "Personnel screening done but termination/transfer handling not implemented in Module 5"
+
+  - rule_id: CONTRADICTION_RA_01
+    family: RA
+    severity: HIGH
+    affected_controls: [RA.L2-3.11.1, RA.L2-3.11.2]
+    trigger: "Risk assessment or vulnerability scanning not implemented in Module 6"
+
+  - rule_id: CONTRADICTION_CA_01
+    family: CA
+    severity: CRITICAL
+    affected_controls: [CA.L2-3.12.1, CA.L2-3.12.2, CA.L2-3.12.4]
+    trigger: "SSP missing or assessment process incomplete in Module 6 (CA.L2-3.12.4 is POA&M-ineligible)"
+
+  - rule_id: CONTRADICTION_SC_01
+    family: SC
+    severity: CRITICAL
+    affected_controls: [SC.L2-3.13.1, SC.L2-3.13.8, SC.L2-3.13.11]
+    trigger: "Encryption, boundary protection, or FIPS validation not implemented in Module 7"
+
+  - rule_id: CONTRADICTION_SI_01
+    family: SI
+    severity: HIGH
+    affected_controls: [SI.L2-3.14.1, SI.L2-3.14.2, SI.L2-3.14.6]
+    trigger: "EDR tool claimed in Module 0 but malware protection/monitoring not implemented in Module 8"

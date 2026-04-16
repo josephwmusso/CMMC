@@ -1,0 +1,45 @@
+# Evidence type taxonomy + freshness thresholds
+# evidence_type is a free-text VARCHAR(50) on evidence_artifacts — no enum.
+# These are the conventional values used across the codebase.
+
+evidence_types:
+  SCAN_REPORT:
+    description: Nessus or CIS-CAT scan results
+    source_system_examples: [Nessus, CIS-CAT]
+    freshness: {fresh_days: 30, aging_days: 90, stale_days: 90}
+  POLICY_DOCUMENT:
+    description: Written policies, procedures, standards
+    source_system_examples: [manual, document_engine]
+    freshness: {fresh_days: 180, aging_days: 365, stale_days: 365}
+  SCREENSHOT:
+    description: Point-in-time screenshots of configurations
+    source_system_examples: [manual]
+    freshness: {fresh_days: 60, aging_days: 180, stale_days: 180}
+  CONFIG_EXPORT:
+    description: Exported configuration files (firewall rules, GPOs, etc.)
+    source_system_examples: [entra_id, m365, palo_alto]
+    freshness: {fresh_days: 60, aging_days: 180, stale_days: 180}
+  TRAINING_RECORD:
+    description: Security awareness training completion records
+    source_system_examples: [knowbe4, proofpoint, manual]
+    freshness: {fresh_days: 180, aging_days: 365, stale_days: 365}
+  AUDIT_LOG:
+    description: Audit log exports (SIEM, Windows Event Log)
+    source_system_examples: [sentinel, splunk, manual]
+    freshness: {fresh_days: 30, aging_days: 90, stale_days: 90}
+  INCIDENT_REPORT:
+    description: Incident response reports
+    source_system_examples: [manual]
+    freshness: {fresh_days: 365, aging_days: 730, stale_days: 730}
+  DEFAULT:
+    description: Fallback for uncategorized evidence
+    freshness: {fresh_days: 90, aging_days: 180, stale_days: 180}
+
+# EvidenceArtifact required fields (non-nullable in DB):
+#   id, org_id, filename, state, evidence_type, created_at
+# Optional fields:
+#   file_path, file_size_bytes, mime_type, sha256_hash, hash_algorithm,
+#   source_system, description, owner, updated_at, reviewed_at, reviewed_by,
+#   approved_at, approved_by, published_at, metadata_json
+
+# State machine: DRAFT -> REVIEWED -> APPROVED -> PUBLISHED (terminal)

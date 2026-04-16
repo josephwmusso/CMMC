@@ -1,0 +1,659 @@
+baselines:
+- baseline_id: a109d505e4d2c7921a2e
+  name: CIS Microsoft Windows 11 Enterprise Benchmark L1 v3.0
+  items:
+  - cis_id: 1.1.1
+    title: Enforce password history
+    section: Account Policies > Password Policy
+    expected_value: 24 or more passwords remembered
+    severity: MEDIUM
+    control_ids:
+    - IA.L2-3.5.7
+    match_keywords:
+    - password history
+    - password policy
+    match_plugin_families:
+    - Windows
+    - Policy Compliance
+    match_plugin_ids:
+    - '63063'
+  - cis_id: 1.1.2
+    title: Maximum password age
+    section: Account Policies > Password Policy
+    expected_value: 365 or fewer days
+    severity: MEDIUM
+    control_ids:
+    - IA.L2-3.5.8
+    match_keywords:
+    - password age
+    - password expir
+    match_plugin_families:
+    - Windows
+    - Policy Compliance
+    match_plugin_ids:
+    - '63064'
+  - cis_id: 1.1.3
+    title: Minimum password age
+    section: Account Policies > Password Policy
+    expected_value: 1 or more days
+    severity: LOW
+    control_ids:
+    - IA.L2-3.5.8
+    match_keywords:
+    - minimum password age
+    match_plugin_families:
+    - Windows
+    - Policy Compliance
+    match_plugin_ids:
+    - '63065'
+  - cis_id: 1.1.4
+    title: Minimum password length
+    section: Account Policies > Password Policy
+    expected_value: 14 or more characters
+    severity: HIGH
+    control_ids:
+    - IA.L2-3.5.7
+    match_keywords:
+    - password length
+    - minimum password
+    match_plugin_families:
+    - Windows
+    - Policy Compliance
+    match_plugin_ids:
+    - '63060'
+  - cis_id: 1.1.5
+    title: Password must meet complexity requirements
+    section: Account Policies > Password Policy
+    expected_value: Enabled
+    severity: HIGH
+    control_ids:
+    - IA.L2-3.5.7
+    match_keywords:
+    - password complexity
+    - complexity requirements
+    match_plugin_families:
+    - Windows
+    - Policy Compliance
+    match_plugin_ids:
+    - '63061'
+  - cis_id: 1.2.1
+    title: Account lockout duration
+    section: Account Policies > Account Lockout Policy
+    expected_value: 15 or more minutes
+    severity: MEDIUM
+    control_ids:
+    - AC.L2-3.1.8
+    match_keywords:
+    - account lockout
+    - lockout duration
+    match_plugin_families:
+    - Windows
+    - Policy Compliance
+    match_plugin_ids:
+    - '63066'
+  - cis_id: 1.2.2
+    title: Account lockout threshold
+    section: Account Policies > Account Lockout Policy
+    expected_value: 5 or fewer invalid logon attempts
+    severity: HIGH
+    control_ids:
+    - AC.L2-3.1.8
+    match_keywords:
+    - lockout threshold
+    - failed logon
+    match_plugin_families:
+    - Windows
+    - Policy Compliance
+    match_plugin_ids:
+    - '63062'
+  - cis_id: 2.2.1
+    title: Deny access to this computer from the network — Guest
+    section: Local Policies > User Rights Assignment
+    expected_value: Configured to include Guests
+    severity: HIGH
+    control_ids:
+    - AC.L2-3.1.1
+    match_keywords:
+    - guest account
+    - deny access
+    - network access
+    match_plugin_families:
+    - Windows
+    - Policy Compliance
+    match_plugin_ids:
+    - '44690'
+  - cis_id: 2.3.1
+    title: 'Audit: Force audit policy subcategory settings'
+    section: Local Policies > Security Options
+    expected_value: Enabled
+    severity: MEDIUM
+    control_ids:
+    - AU.L2-3.3.1
+    match_keywords:
+    - audit policy
+    - subcategory
+    match_plugin_families:
+    - Windows
+    - Policy Compliance
+    match_plugin_ids:
+    - '78430'
+  - cis_id: 5.1.1
+    title: Disable unnecessary system services
+    section: System Services
+    expected_value: Per benchmark recommendation
+    severity: MEDIUM
+    control_ids:
+    - CM.L2-3.4.7
+    match_keywords:
+    - unnecessary service
+    - disable service
+    match_plugin_families:
+    - Windows
+    - Policy Compliance
+    match_plugin_ids:
+    - '55901'
+  - cis_id: 9.1.1
+    title: Firewall state
+    section: Windows Defender Firewall > Domain Profile
+    expected_value: 'On'
+    severity: CRITICAL
+    control_ids:
+    - SC.L2-3.13.1
+    - SC.L2-3.13.5
+    match_keywords:
+    - windows firewall
+    - firewall domain
+    - firewall state
+    match_plugin_families:
+    - Windows
+    - Firewalls
+    match_plugin_ids:
+    - '56210'
+    - '56211'
+  - cis_id: 9.2.1
+    title: Firewall state
+    section: Windows Defender Firewall > Private Profile
+    expected_value: 'On'
+    severity: CRITICAL
+    control_ids:
+    - SC.L2-3.13.1
+    - SC.L2-3.13.5
+    match_keywords:
+    - windows firewall
+    - firewall private
+    match_plugin_families:
+    - Windows
+    - Firewalls
+    match_plugin_ids:
+    - '56212'
+    - '56213'
+  - cis_id: 9.3.1
+    title: Firewall state
+    section: Windows Defender Firewall > Public Profile
+    expected_value: 'On'
+    severity: CRITICAL
+    control_ids:
+    - SC.L2-3.13.1
+    - SC.L2-3.13.5
+    match_keywords:
+    - windows firewall
+    - firewall public
+    match_plugin_families:
+    - Windows
+    - Firewalls
+    match_plugin_ids:
+    - '56214'
+    - '56215'
+  - cis_id: 17.1.1
+    title: Audit Credential Validation
+    section: Advanced Audit Policy > Account Logon
+    expected_value: Success and Failure
+    severity: MEDIUM
+    control_ids:
+    - AU.L2-3.3.1
+    - AU.L2-3.3.2
+    match_keywords:
+    - credential validation
+    - audit logon
+    match_plugin_families:
+    - Windows
+    - Policy Compliance
+    match_plugin_ids:
+    - '78432'
+  - cis_id: 17.2.1
+    title: Audit Application Group Management
+    section: Advanced Audit Policy > Account Management
+    expected_value: Success and Failure
+    severity: MEDIUM
+    control_ids:
+    - AU.L2-3.3.1
+    match_keywords:
+    - group management
+    - audit account
+    match_plugin_families:
+    - Windows
+    - Policy Compliance
+    match_plugin_ids:
+    - '78435'
+  - cis_id: 17.5.1
+    title: Audit Logoff
+    section: Advanced Audit Policy > Logon/Logoff
+    expected_value: Success
+    severity: LOW
+    control_ids:
+    - AU.L2-3.3.1
+    - AU.L2-3.3.2
+    match_keywords:
+    - audit logoff
+    match_plugin_families:
+    - Windows
+    - Policy Compliance
+    match_plugin_ids:
+    - '78437'
+  - cis_id: 17.5.2
+    title: Audit Logon
+    section: Advanced Audit Policy > Logon/Logoff
+    expected_value: Success and Failure
+    severity: MEDIUM
+    control_ids:
+    - AU.L2-3.3.1
+    - AU.L2-3.3.2
+    match_keywords:
+    - audit logon
+    - logon events
+    match_plugin_families:
+    - Windows
+    - Policy Compliance
+    match_plugin_ids:
+    - '78433'
+  - cis_id: 17.9.1
+    title: Audit Removable Storage
+    section: Advanced Audit Policy > Object Access
+    expected_value: Success and Failure
+    severity: MEDIUM
+    control_ids:
+    - AU.L2-3.3.1
+    - MP.L2-3.8.7
+    match_keywords:
+    - removable storage
+    - usb audit
+    match_plugin_families:
+    - Windows
+    - Policy Compliance
+    match_plugin_ids:
+    - '78440'
+  - cis_id: 18.4.1
+    title: Configure SMB v1 client driver
+    section: Administrative Templates > MS Security Guide
+    expected_value: Disable driver
+    severity: CRITICAL
+    control_ids:
+    - SC.L2-3.13.8
+    match_keywords:
+    - smb v1
+    - smbv1
+    - smb1
+    match_plugin_families:
+    - Windows
+    - Misc.
+    match_plugin_ids:
+    - '96982'
+  - cis_id: 18.5.1
+    title: 'MSS: Screen saver grace period'
+    section: Administrative Templates > MSS (Legacy)
+    expected_value: 5 seconds or less
+    severity: MEDIUM
+    control_ids:
+    - AC.L2-3.1.10
+    match_keywords:
+    - screen saver
+    - screensaver
+    - session lock
+    match_plugin_families:
+    - Windows
+    - Policy Compliance
+    match_plugin_ids:
+    - '63070'
+  - cis_id: 18.8.1
+    title: Require encryption on all fixed drives
+    section: Administrative Templates > BitLocker Drive Encryption
+    expected_value: Enabled
+    severity: HIGH
+    control_ids:
+    - MP.L2-3.8.6
+    - SC.L2-3.13.16
+    match_keywords:
+    - bitlocker
+    - drive encryption
+    match_plugin_families:
+    - Windows
+    - Policy Compliance
+    match_plugin_ids:
+    - '82034'
+  - cis_id: 18.9.1
+    title: Require user authentication for remote connections by using Network Level Authentication
+    section: Administrative Templates > Remote Desktop Services
+    expected_value: Enabled
+    severity: HIGH
+    control_ids:
+    - AC.L2-3.1.12
+    - IA.L2-3.5.2
+    match_keywords:
+    - remote desktop
+    - nla
+    - network level auth
+    match_plugin_families:
+    - Windows
+    - Policy Compliance
+    match_plugin_ids:
+    - '58453'
+  - cis_id: 18.9.2
+    title: Set client connection encryption level
+    section: Administrative Templates > Remote Desktop Services
+    expected_value: High Level
+    severity: HIGH
+    control_ids:
+    - SC.L2-3.13.8
+    match_keywords:
+    - rdp encryption
+    - remote desktop encrypt
+    match_plugin_families:
+    - Windows
+    - Policy Compliance
+    match_plugin_ids:
+    - '58454'
+  - cis_id: 18.10.1
+    title: Turn off Autoplay
+    section: Administrative Templates > AutoPlay Policies
+    expected_value: Enabled (disable Autoplay)
+    severity: MEDIUM
+    control_ids:
+    - CM.L2-3.4.6
+    match_keywords:
+    - autorun
+    - autoplay
+    match_plugin_families:
+    - Windows
+    - Policy Compliance
+    match_plugin_ids:
+    - '55803'
+  - cis_id: 18.10.2
+    title: Turn off Microsoft Defender Antivirus
+    section: Administrative Templates > Windows Defender
+    expected_value: Disabled (Defender enabled)
+    severity: HIGH
+    control_ids:
+    - SI.L2-3.14.2
+    match_keywords:
+    - windows defender
+    - antimalware
+    - real-time protection
+    match_plugin_families:
+    - Windows
+    - Policy Compliance
+    match_plugin_ids:
+    - '91301'
+- baseline_id: 5f85b634cefb048ca463
+  name: CIS Microsoft 365 Foundations Benchmark L1 v3.1
+  items:
+  - cis_id: 1.1.1
+    title: Enable MFA for all users
+    section: Identity > Multi-Factor Authentication
+    expected_value: Enabled
+    severity: CRITICAL
+    control_ids:
+    - IA.L2-3.5.3
+    match_keywords:
+    - multi-factor
+    - mfa
+    - conditional access
+    match_plugin_families: null
+    match_plugin_ids: null
+  - cis_id: 1.1.2
+    title: Security defaults or Conditional Access configured
+    section: Identity > Conditional Access
+    expected_value: Configured
+    severity: CRITICAL
+    control_ids:
+    - IA.L2-3.5.3
+    - AC.L2-3.1.1
+    match_keywords:
+    - security defaults
+    - conditional access
+    match_plugin_families: null
+    match_plugin_ids: null
+  - cis_id: 1.1.3
+    title: Block legacy authentication protocols
+    section: Identity > Authentication
+    expected_value: Enabled
+    severity: HIGH
+    control_ids:
+    - AC.L2-3.1.1
+    - IA.L2-3.5.3
+    match_keywords:
+    - legacy auth
+    - legacy protocol
+    - basic auth
+    match_plugin_families: null
+    match_plugin_ids: null
+  - cis_id: 1.2.1
+    title: Privileged accounts are cloud-only
+    section: Identity > Privileged Accounts
+    expected_value: Configured
+    severity: HIGH
+    control_ids:
+    - AC.L2-3.1.5
+    - AC.L2-3.1.6
+    match_keywords:
+    - privileged account
+    - admin account
+    - cloud-only
+    match_plugin_families: null
+    match_plugin_ids: null
+  - cis_id: 1.3.1
+    title: Self-service password reset configured
+    section: Identity > Password Management
+    expected_value: Configured
+    severity: MEDIUM
+    control_ids:
+    - IA.L2-3.5.8
+    match_keywords:
+    - self-service password
+    - sspr
+    match_plugin_families: null
+    match_plugin_ids: null
+  - cis_id: 2.1.1
+    title: Audit log search enabled
+    section: Auditing > Unified Audit Log
+    expected_value: Enabled
+    severity: HIGH
+    control_ids:
+    - AU.L2-3.3.1
+    - AU.L2-3.3.2
+    match_keywords:
+    - audit log
+    - unified audit
+    match_plugin_families: null
+    match_plugin_ids: null
+  - cis_id: 2.1.2
+    title: Audit log retention ≥ 1 year
+    section: Auditing > Retention
+    expected_value: 1 year minimum
+    severity: HIGH
+    control_ids:
+    - AU.L2-3.3.1
+    match_keywords:
+    - audit retention
+    - log retention
+    match_plugin_families: null
+    match_plugin_ids: null
+  - cis_id: 3.1.1
+    title: External sharing restricted
+    section: Data Protection > SharePoint Sharing
+    expected_value: Limited
+    severity: HIGH
+    control_ids:
+    - AC.L2-3.1.3
+    - AC.L2-3.1.22
+    match_keywords:
+    - external sharing
+    - sharepoint sharing
+    match_plugin_families: null
+    match_plugin_ids: null
+  - cis_id: 3.2.1
+    title: SharePoint guest access controlled
+    section: Data Protection > Guest Access
+    expected_value: Restricted
+    severity: MEDIUM
+    control_ids:
+    - AC.L2-3.1.3
+    - AC.L2-3.1.22
+    match_keywords:
+    - guest access
+    - external user
+    match_plugin_families: null
+    match_plugin_ids: null
+  - cis_id: 4.1.1
+    title: DLP policies configured for CUI
+    section: Data Protection > DLP
+    expected_value: Configured
+    severity: HIGH
+    control_ids:
+    - MP.L2-3.8.1
+    - MP.L2-3.8.2
+    match_keywords:
+    - data loss prevention
+    - dlp
+    - sensitivity label
+    match_plugin_families: null
+    match_plugin_ids: null
+  - cis_id: 4.2.1
+    title: Sensitivity labels for CUI
+    section: Data Protection > Sensitivity Labels
+    expected_value: Configured
+    severity: HIGH
+    control_ids:
+    - MP.L2-3.8.1
+    match_keywords:
+    - sensitivity label
+    - classification
+    match_plugin_families: null
+    match_plugin_ids: null
+  - cis_id: 5.1.1
+    title: Mobile device management configured
+    section: Device Management > MDM
+    expected_value: Configured
+    severity: HIGH
+    control_ids:
+    - AC.L2-3.1.18
+    - MP.L2-3.8.1
+    match_keywords:
+    - mobile device
+    - mdm
+    - intune
+    match_plugin_families: null
+    match_plugin_ids: null
+  - cis_id: 5.2.1
+    title: Device compliance policies configured
+    section: Device Management > Compliance
+    expected_value: Configured
+    severity: MEDIUM
+    control_ids:
+    - CM.L2-3.4.1
+    - CM.L2-3.4.2
+    match_keywords:
+    - device compliance
+    - compliance policy
+    match_plugin_families: null
+    match_plugin_ids: null
+  - cis_id: 6.1.1
+    title: Anti-malware protection for Exchange Online
+    section: Email > Anti-Malware
+    expected_value: Enabled
+    severity: HIGH
+    control_ids:
+    - SI.L2-3.14.2
+    - SI.L2-3.14.5
+    match_keywords:
+    - anti-malware
+    - malware filter
+    - exchange protection
+    match_plugin_families: null
+    match_plugin_ids: null
+  - cis_id: 6.2.1
+    title: Safe Attachments policy enabled
+    section: Email > Safe Attachments
+    expected_value: Enabled
+    severity: HIGH
+    control_ids:
+    - SI.L2-3.14.2
+    match_keywords:
+    - safe attachments
+    - atp
+    match_plugin_families: null
+    match_plugin_ids: null
+  - cis_id: 6.3.1
+    title: Safe Links policy enabled
+    section: Email > Safe Links
+    expected_value: Enabled
+    severity: MEDIUM
+    control_ids:
+    - SI.L2-3.14.2
+    match_keywords:
+    - safe links
+    - url protection
+    match_plugin_families: null
+    match_plugin_ids: null
+  - cis_id: 7.1.1
+    title: Teams external access restricted
+    section: Teams > External Access
+    expected_value: Restricted
+    severity: MEDIUM
+    control_ids:
+    - AC.L2-3.1.3
+    - AC.L2-3.1.20
+    match_keywords:
+    - teams external
+    - external access
+    - federation
+    match_plugin_families: null
+    match_plugin_ids: null
+  - cis_id: 7.2.1
+    title: Teams guest access controlled
+    section: Teams > Guest Access
+    expected_value: Controlled
+    severity: MEDIUM
+    control_ids:
+    - AC.L2-3.1.3
+    match_keywords:
+    - teams guest
+    - guest access teams
+    match_plugin_families: null
+    match_plugin_ids: null
+  - cis_id: 8.1.1
+    title: Azure AD sign-in risk policy configured
+    section: Identity Protection > Sign-in Risk
+    expected_value: Configured
+    severity: HIGH
+    control_ids:
+    - SI.L2-3.14.6
+    - SI.L2-3.14.7
+    match_keywords:
+    - sign-in risk
+    - risk policy
+    - identity protection
+    match_plugin_families: null
+    match_plugin_ids: null
+  - cis_id: 8.2.1
+    title: Azure AD user risk policy configured
+    section: Identity Protection > User Risk
+    expected_value: Configured
+    severity: HIGH
+    control_ids:
+    - SI.L2-3.14.6
+    - SI.L2-3.14.7
+    match_keywords:
+    - user risk
+    - compromised account
+    match_plugin_families: null
+    match_plugin_ids: null

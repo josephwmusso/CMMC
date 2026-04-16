@@ -1,0 +1,2971 @@
+- id: m0_company_name
+  module: 0
+  module_name: Foundation
+  section: Company Information
+  prompt: What is your company's legal name?
+  type: text
+  allowed_values: null
+  required: true
+  controls: []
+  allows_free_text: false
+  free_text_prompt: null
+  depends_on: null
+  weight: null
+  help_text: The name as it appears on your government contracts.
+  notes: null
+- id: m0_cage_code
+  module: 0
+  module_name: Foundation
+  section: Company Information
+  prompt: What is your CAGE code?
+  type: text
+  allowed_values: null
+  required: false
+  controls: []
+  allows_free_text: false
+  free_text_prompt: null
+  depends_on: null
+  weight: null
+  help_text: A 5-character identifier assigned by DLA. You can look it up at sam.gov.
+  notes: null
+- id: m0_employee_count
+  module: 0
+  module_name: Foundation
+  section: Company Information
+  prompt: How many employees does your company have?
+  type: number
+  allowed_values: null
+  required: true
+  controls: []
+  allows_free_text: false
+  free_text_prompt: null
+  depends_on: null
+  weight: null
+  help_text: Include full-time, part-time, and contractors who access your systems.
+  notes: null
+- id: m0_locations
+  module: 0
+  module_name: Foundation
+  section: Company Information
+  prompt: How many physical locations does your company operate from?
+  type: number
+  allowed_values: null
+  required: true
+  controls: []
+  allows_free_text: false
+  free_text_prompt: null
+  depends_on: null
+  weight: null
+  help_text: Include offices, labs, manufacturing facilities, and any location where CUI is handled.
+  notes: null
+- id: m0_primary_location
+  module: 0
+  module_name: Foundation
+  section: Company Information
+  prompt: Where is your primary office located?
+  type: text
+  allowed_values: null
+  required: true
+  controls: []
+  allows_free_text: false
+  free_text_prompt: null
+  depends_on: null
+  weight: null
+  help_text: City and state (e.g., 'Columbia, MD').
+  notes: null
+- id: m0_dfars_clause
+  module: 0
+  module_name: Foundation
+  section: Contract & CUI Scoping
+  prompt: Do your contracts include the DFARS 252.204-7012 clause?
+  type: yes_no_unsure
+  allowed_values: null
+  required: true
+  controls: []
+  allows_free_text: false
+  free_text_prompt: null
+  depends_on: null
+  weight: null
+  help_text: This clause requires you to protect Controlled Unclassified Information (CUI). Check your contract or ask your
+    contracting officer.
+  notes: null
+- id: m0_cui_types
+  module: 0
+  module_name: Foundation
+  section: Contract & CUI Scoping
+  prompt: What types of CUI does your company handle?
+  type: multiple_choice
+  allowed_values:
+  - Technical data (drawings, specs, test results)
+  - ITAR-controlled data
+  - Controlled Technical Information (CTI)
+  - Export-controlled data
+  - Source selection information
+  - Budget/financial data
+  - Personally identifiable information (PII)
+  - I'm not sure what types of CUI we handle
+  required: true
+  controls: []
+  allows_free_text: false
+  free_text_prompt: null
+  depends_on: null
+  weight: null
+  help_text: Select all that apply. CUI is sensitive government information that isn't classified.
+  notes: null
+- id: m0_cui_flow
+  module: 0
+  module_name: Foundation
+  section: Contract & CUI Scoping
+  prompt: How does CUI typically enter and move through your organization?
+  type: multiple_choice
+  allowed_values:
+  - We receive CUI only via email
+  - CUI is stored on shared network drives
+  - CUI lives in our ERP or database system
+  - CUI is in cloud storage (SharePoint, OneDrive, etc.)
+  - CUI is on individual laptops/desktops
+  - CUI is in a specialized application
+  required: true
+  controls: []
+  allows_free_text: false
+  free_text_prompt: null
+  depends_on: null
+  weight: null
+  help_text: This determines which systems are 'in scope' for CMMC.
+  notes: null
+- id: m0_remote_workers
+  module: 0
+  module_name: Foundation
+  section: Environment Scoping
+  prompt: Do any of your employees work remotely or access company systems from outside the office?
+  type: yes_no_unsure
+  allowed_values: null
+  required: true
+  controls:
+  - AC.L2-3.1.12
+  - AC.L2-3.1.14
+  - AC.L2-3.1.15
+  allows_free_text: false
+  free_text_prompt: null
+  depends_on: null
+  weight: null
+  help_text: This includes VPN connections, remote desktop, or accessing cloud apps from home.
+  notes: null
+- id: m0_wireless
+  module: 0
+  module_name: Foundation
+  section: Environment Scoping
+  prompt: Does your office have a wireless (Wi-Fi) network?
+  type: yes_no_unsure
+  allowed_values: null
+  required: true
+  controls:
+  - AC.L2-3.1.16
+  - AC.L2-3.1.17
+  allows_free_text: false
+  free_text_prompt: null
+  depends_on: null
+  weight: null
+  help_text: Include guest networks and any wireless access points in your facility.
+  notes: null
+- id: m0_email_platform
+  module: 0
+  module_name: Foundation
+  section: Technology Stack
+  prompt: What email system does your company use?
+  type: multiple_choice
+  allowed_values:
+  - Microsoft 365 GCC High
+  - Microsoft 365 GCC
+  - Microsoft 365 (commercial/business)
+  - Google Workspace
+  - On-premises Exchange
+  - Other email provider
+  - I'm not sure
+  required: true
+  controls:
+  - SC.L2-3.13.1
+  - SC.L2-3.13.11
+  - SC.L2-3.13.8
+  allows_free_text: false
+  free_text_prompt: null
+  depends_on: null
+  weight: null
+  help_text: This is one of the most important questions for CMMC scoping.
+  notes: null
+- id: m0_identity_provider
+  module: 0
+  module_name: Foundation
+  section: Technology Stack
+  prompt: How do your employees log into their computers and applications?
+  type: multiple_choice
+  allowed_values:
+  - Microsoft Entra ID (Azure AD) with MFA
+  - Microsoft Entra ID (Azure AD) without MFA
+  - On-premises Active Directory with MFA
+  - On-premises Active Directory without MFA
+  - Okta
+  - Google Identity
+  - No centralized login system
+  - I'm not sure
+  required: true
+  controls:
+  - AC.L2-3.1.1
+  - AC.L2-3.1.2
+  - IA.L2-3.5.1
+  - IA.L2-3.5.2
+  - IA.L2-3.5.3
+  allows_free_text: true
+  free_text_prompt: Describe your identity and access management setup (e.g., providers, MFA method, federation)
+  depends_on: null
+  weight: null
+  help_text: This is your identity/access management system.
+  notes: null
+- id: m0_edr
+  module: 0
+  module_name: Foundation
+  section: Technology Stack
+  prompt: What endpoint protection (antivirus/EDR) do you use on your computers?
+  type: multiple_choice
+  allowed_values:
+  - CrowdStrike Falcon
+  - Microsoft Defender for Endpoint
+  - SentinelOne
+  - Carbon Black
+  - Symantec/Broadcom
+  - Traditional antivirus only (e.g., Norton, McAfee)
+  - None / I'm not sure
+  required: true
+  controls:
+  - SI.L2-3.14.1
+  - SI.L2-3.14.2
+  - SI.L2-3.14.4
+  - SI.L2-3.14.5
+  allows_free_text: true
+  free_text_prompt: Describe your endpoint detection and response tools
+  depends_on: null
+  weight: null
+  help_text: EDR = Endpoint Detection and Response. This is your anti-malware solution.
+  notes: null
+- id: m0_firewall
+  module: 0
+  module_name: Foundation
+  section: Technology Stack
+  prompt: What firewall protects your network?
+  type: multiple_choice
+  allowed_values:
+  - Palo Alto Networks
+  - Fortinet FortiGate
+  - Cisco (ASA, Firepower, Meraki)
+  - SonicWall
+  - pfSense / OPNsense
+  - ISP-provided router only
+  - I'm not sure
+  required: true
+  controls:
+  - SC.L2-3.13.1
+  - SC.L2-3.13.5
+  - SC.L2-3.13.6
+  allows_free_text: true
+  free_text_prompt: Describe your network firewall and perimeter security setup
+  depends_on: null
+  weight: null
+  help_text: This is the device at the edge of your network that controls traffic.
+  notes: null
+- id: m0_siem
+  module: 0
+  module_name: Foundation
+  section: Technology Stack
+  prompt: Do you have a system that collects and monitors security logs?
+  type: multiple_choice
+  allowed_values:
+  - Microsoft Sentinel
+  - Splunk
+  - Elastic SIEM
+  - Arctic Wolf / Blumira / other managed
+  - We collect logs but don't have a SIEM
+  - No log collection
+  - I'm not sure
+  required: true
+  controls:
+  - AU.L2-3.3.1
+  - AU.L2-3.3.2
+  - AU.L2-3.3.5
+  - SI.L2-3.14.6
+  - SI.L2-3.14.7
+  allows_free_text: true
+  free_text_prompt: Describe your security monitoring and log management setup
+  depends_on: null
+  weight: null
+  help_text: This is called a SIEM (Security Information and Event Management). It's where your audit logs go.
+  notes: null
+- id: m0_training_tool
+  module: 0
+  module_name: Foundation
+  section: Technology Stack
+  prompt: What security awareness training platform does your organization use?
+  type: multiple_choice
+  allowed_values:
+  - KnowBe4
+  - Proofpoint Security Awareness
+  - Cofense PhishMe
+  - SANS Security Awareness
+  - Infosec IQ
+  - Ninjio
+  - Microsoft Security Awareness (built-in)
+  - Other
+  - None
+  required: true
+  controls:
+  - AT.L2-3.2.1
+  - AT.L2-3.2.2
+  - AT.L2-3.2.3
+  allows_free_text: true
+  free_text_prompt: Describe your security awareness training program and tools
+  depends_on: null
+  weight: null
+  help_text: Security awareness training is required under AT.L2-3.2.1 / 3.2.2. This platform delivers new-hire and annual
+    refreshers plus phishing drills.
+  notes: null
+- id: m0_existing_docs
+  module: 0
+  module_name: Foundation
+  section: Existing Compliance
+  prompt: Which of these documents does your company already have?
+  type: multiple_choice
+  allowed_values:
+  - System Security Plan (SSP)
+  - Plan of Action & Milestones (POA&M)
+  - Incident Response Plan
+  - Access Control Policy
+  - Security Awareness Training Program
+  - Configuration Management Plan
+  - Risk Assessment Report
+  - Network Diagram
+  - None of these
+  required: true
+  controls: []
+  allows_free_text: false
+  free_text_prompt: null
+  depends_on: null
+  weight: null
+  help_text: Select any that exist, even if they're outdated. We can work with what you have.
+  notes: null
+- id: m1_q01
+  module: 1
+  module_name: Access Control
+  section: account_management
+  prompt: How are user accounts created and approved for systems that store or process CUI?
+  type: single_choice
+  allowed_values:
+  - formal_process
+  - manager_email
+  - it_creates_as_needed
+  - self_service
+  required: true
+  controls:
+  - AC.L2-3.1.1
+  allows_free_text: false
+  free_text_prompt: null
+  depends_on: null
+  weight: null
+  help_text: NIST 800-171 requires that only authorized users, processes, and devices have access to CUI systems. Assessors
+    will look for documented account provisioning procedures and approval records.
+  notes: 'branching keys: [''self_service'']'
+- id: m1_q02
+  module: 1
+  module_name: Access Control
+  section: account_management
+  prompt: How often are user accounts reviewed to verify they are still needed?
+  type: single_choice
+  allowed_values:
+  - quarterly
+  - semiannual
+  - annual
+  - no_review
+  required: true
+  controls:
+  - AC.L2-3.1.1
+  allows_free_text: false
+  free_text_prompt: null
+  depends_on: null
+  weight: null
+  help_text: Regular access reviews ensure terminated or transferred employees no longer have access. Assessors expect documented
+    evidence of periodic reviews with sign-off.
+  notes: null
+- id: m1_q03
+  module: 1
+  module_name: Access Control
+  section: account_management
+  prompt: What happens to a user's account when they leave the company or change roles?
+  type: single_choice
+  allowed_values:
+  - same_day_disable
+  - within_week
+  - eventually
+  - no_process
+  required: true
+  controls:
+  - AC.L2-3.1.1
+  - AC.L2-3.1.2
+  allows_free_text: false
+  free_text_prompt: null
+  depends_on: null
+  weight: null
+  help_text: Timely account deprovisioning is one of the most commonly failed controls in CMMC assessments. Assessors will
+    ask to see offboarding records for recent departures.
+  notes: 'branching keys: [''no_process'']'
+- id: m1_q04
+  module: 1
+  module_name: Access Control
+  section: account_management
+  prompt: How do you control what each user can do on CUI systems (role-based access, permissions)?
+  type: single_choice
+  allowed_values:
+  - rbac_enforced
+  - ad_groups
+  - per_user_manual
+  - everyone_admin
+  required: true
+  controls:
+  - AC.L2-3.1.2
+  allows_free_text: false
+  free_text_prompt: null
+  depends_on: null
+  weight: null
+  help_text: Assessors verify that users can only perform transactions and functions they are specifically authorized for.
+    RBAC through your identity provider is the cleanest evidence.
+  notes: 'branching keys: [''everyone_admin'']'
+- id: m1_q05
+  module: 1
+  module_name: Access Control
+  section: account_management
+  prompt: Are duties separated so that no single person can perform all critical steps of a sensitive process (e.g., the person
+    who approves access is different from the person who provisions it)?
+  type: single_choice
+  allowed_values:
+  - yes_documented
+  - yes_informal
+  - partial
+  - no_separation
+  required: true
+  controls:
+  - AC.L2-3.1.4
+  allows_free_text: false
+  free_text_prompt: null
+  depends_on: null
+  weight: null
+  help_text: For a small company, perfect separation of duties is challenging. The key is documenting which duties are separated
+    and where compensating controls (like audit logging) are used. This is a 1-point control.
+  notes: null
+- id: m1_q06
+  module: 1
+  module_name: Access Control
+  section: account_management
+  prompt: How are privileged accounts (domain admin, root, system admin) managed?
+  type: multi_choice
+  allowed_values:
+  - named_admins
+  - pam_tool
+  - limited_admins
+  - shared_admin
+  required: true
+  controls:
+  - AC.L2-3.1.5
+  allows_free_text: false
+  free_text_prompt: null
+  depends_on: null
+  weight: null
+  help_text: Least privilege means privileged access is only granted when necessary and individually attributable. Assessors
+    will ask who has admin access and how it is tracked.
+  notes: 'branching keys: [''shared_admin'']'
+- id: m1_q07
+  module: 1
+  module_name: Access Control
+  section: account_management
+  prompt: Do administrators use separate non-privileged accounts for daily tasks like email, web browsing, and document editing?
+  type: single_choice
+  allowed_values:
+  - yes_separate
+  - yes_but_inconsistent
+  - no_same_account
+  required: true
+  controls:
+  - AC.L2-3.1.6
+  allows_free_text: false
+  free_text_prompt: null
+  depends_on: null
+  weight: null
+  help_text: Using admin accounts for email and web browsing dramatically increases attack surface. Assessors specifically
+    check whether admin accounts are used for non-security functions.
+  notes: null
+- id: m1_q08
+  module: 1
+  module_name: Access Control
+  section: account_management
+  prompt: Can standard (non-admin) users install software, change system settings, or disable security tools?
+  type: single_choice
+  allowed_values:
+  - no_prevented
+  - partially_restricted
+  - yes_local_admin
+  required: true
+  controls:
+  - AC.L2-3.1.7
+  allows_free_text: false
+  free_text_prompt: null
+  depends_on: null
+  weight: null
+  help_text: Standard users must not be able to execute privileged functions. When they attempt to, the system should deny
+    the action and log the attempt. Local admin rights on CUI endpoints is a common audit failure.
+  notes: 'branching keys: [''yes_local_admin'']'
+- id: m1_q09
+  module: 1
+  module_name: Access Control
+  section: login_session
+  prompt: What happens after multiple failed login attempts?
+  type: single_choice
+  allowed_values:
+  - lockout_configured
+  - increasing_delay
+  - alert_only
+  - nothing
+  required: true
+  controls:
+  - AC.L2-3.1.8
+  allows_free_text: false
+  free_text_prompt: null
+  depends_on: null
+  weight: null
+  help_text: 'Account lockout policies are directly testable by assessors. Common settings: 3-5 attempts, 15-30 minute lockout.
+    This applies to all CUI system authentication points.'
+  notes: null
+- id: m1_q10
+  module: 1
+  module_name: Access Control
+  section: login_session
+  prompt: Where is the account lockout policy enforced?
+  type: multi_choice
+  allowed_values:
+  - domain_gpo
+  - vpn_gateway
+  - local_workstation
+  - cloud_apps
+  required: true
+  controls:
+  - AC.L2-3.1.8
+  allows_free_text: false
+  free_text_prompt: null
+  depends_on: null
+  weight: null
+  help_text: Lockout policy must be enforced at every authentication point for CUI systems. Assessors may test multiple entry
+    points — don't forget VPN, cloud apps, and local logon.
+  notes: null
+- id: m1_q11
+  module: 1
+  module_name: Access Control
+  section: login_session
+  prompt: Do CUI systems display a login banner or notice before granting access?
+  type: single_choice
+  allowed_values:
+  - yes_banner
+  - generic_banner
+  - no_banner
+  required: true
+  controls:
+  - AC.L2-3.1.9
+  allows_free_text: false
+  free_text_prompt: null
+  depends_on: null
+  weight: null
+  help_text: The banner must notify users that the system processes CUI, that usage may be monitored, and that unauthorized
+    use is prohibited. This is a 1-point control but easy to implement and commonly checked.
+  notes: null
+- id: m1_q12
+  module: 1
+  module_name: Access Control
+  section: login_session
+  prompt: Do CUI workstations and systems lock after a period of inactivity?
+  type: single_choice
+  allowed_values:
+  - yes_15_or_less
+  - yes_longer
+  - user_discretion
+  - no_session_lock
+  required: true
+  controls:
+  - AC.L2-3.1.10
+  allows_free_text: false
+  free_text_prompt: null
+  depends_on: null
+  weight: null
+  help_text: Session lock must activate automatically after inactivity AND hide screen content (screensaver or lock screen).
+    15 minutes is the typical threshold. Enforced via GPO or MDM, not user configuration.
+  notes: null
+- id: m1_q13
+  module: 1
+  module_name: Access Control
+  section: login_session
+  prompt: Are user sessions automatically terminated after a defined condition (e.g., end of business day, extended inactivity,
+    or connection timeout)?
+  type: single_choice
+  allowed_values:
+  - yes_policy_enforced
+  - vpn_timeout_only
+  - no_termination
+  required: true
+  controls:
+  - AC.L2-3.1.11
+  allows_free_text: false
+  free_text_prompt: null
+  depends_on: null
+  weight: null
+  help_text: This is different from session lock (3.1.10). Session termination actually ends the session, requiring re-authentication.
+    Think VPN timeouts, RDP disconnects, and idle web session expiry.
+  notes: null
+- id: m1_q14
+  module: 1
+  module_name: Access Control
+  section: remote_access
+  prompt: How do remote workers connect to internal systems that store or process CUI?
+  type: single_choice
+  allowed_values:
+  - vpn_always_on
+  - vpn_manual
+  - vpn_no_mfa
+  - rdp_direct
+  - no_remote
+  required: true
+  controls:
+  - AC.L2-3.1.12
+  - AC.L2-3.1.14
+  allows_free_text: false
+  free_text_prompt: null
+  depends_on: null
+  weight: null
+  help_text: NIST 800-171 requires all remote access sessions to be monitored, controlled, encrypted, and routed through managed
+    access control points. A VPN concentrator with MFA is the standard approach.
+  notes: 'branching keys: [''vpn_no_mfa'', ''rdp_direct'', ''no_remote'']'
+- id: m1_q15
+  module: 1
+  module_name: Access Control
+  section: remote_access
+  prompt: How is remote access activity monitored?
+  type: multi_choice
+  allowed_values:
+  - vpn_logs_siem
+  - vpn_logs_reviewed
+  - connection_alerts
+  - no_monitoring
+  required: true
+  controls:
+  - AC.L2-3.1.12
+  allows_free_text: false
+  free_text_prompt: null
+  depends_on: null
+  weight: null
+  help_text: Monitoring means more than just having logs exist. Assessors want to see that remote access events are reviewed
+    and that anomalies would be detected.
+  notes: null
+- id: m1_q16
+  module: 1
+  module_name: Access Control
+  section: remote_access
+  prompt: What encryption is used for remote access sessions?
+  type: single_choice
+  allowed_values:
+  - fips_validated
+  - strong_crypto
+  - unknown
+  - weak_or_none
+  required: true
+  controls:
+  - AC.L2-3.1.13
+  allows_free_text: false
+  free_text_prompt: null
+  depends_on: null
+  weight: null
+  help_text: Remote access sessions must use cryptographic mechanisms to protect confidentiality. FIPS-validated crypto is
+    ideal for CMMC but strong encryption (TLS 1.2+, AES-256) meets the minimum bar. Assessors may verify VPN configuration
+    directly.
+  notes: null
+- id: m1_q17
+  module: 1
+  module_name: Access Control
+  section: remote_access
+  prompt: How many remote access entry points exist (VPN concentrators, remote desktop gateways, web portals)?
+  type: single_choice
+  allowed_values:
+  - single_point
+  - few_managed
+  - multiple_unmanaged
+  - unknown
+  required: true
+  controls:
+  - AC.L2-3.1.14
+  allows_free_text: false
+  free_text_prompt: null
+  depends_on: null
+  weight: null
+  help_text: All remote access must be routed through a limited number of managed access control points. Shadow IT remote
+    access tools (TeamViewer, AnyDesk) that bypass the VPN are a common finding.
+  notes: null
+- id: m1_q18
+  module: 1
+  module_name: Access Control
+  section: remote_access
+  prompt: Can administrators perform privileged actions (server administration, firewall changes, domain admin tasks) remotely?
+  type: single_choice
+  allowed_values:
+  - yes_authorized_documented
+  - yes_vpn_only
+  - yes_unrestricted
+  - no_onsite_only
+  required: true
+  controls:
+  - AC.L2-3.1.15
+  allows_free_text: false
+  free_text_prompt: null
+  depends_on: null
+  weight: null
+  help_text: Remote execution of privileged commands and access to security-relevant information must be explicitly authorized.
+    The authorization should document who, what systems, and what actions are permitted.
+  notes: null
+- id: m1_q19
+  module: 1
+  module_name: Access Control
+  section: wireless_mobile
+  prompt: Does your office environment have wireless (Wi-Fi) networks?
+  type: single_choice
+  allowed_values:
+  - yes_managed
+  - yes_wpa2_psk
+  - yes_open_or_weak
+  - no_wireless
+  required: true
+  controls:
+  - AC.L2-3.1.16
+  - AC.L2-3.1.17
+  allows_free_text: false
+  free_text_prompt: null
+  depends_on: null
+  weight: null
+  help_text: Wireless access must be authorized before allowing connections (3.1.16) and protected using authentication and
+    encryption (3.1.17). WPA2-Enterprise with RADIUS/802.1X is the gold standard.
+  notes: 'branching keys: [''no_wireless'', ''yes_open_or_weak'']'
+- id: m1_q20
+  module: 1
+  module_name: Access Control
+  section: wireless_mobile
+  prompt: Is the wireless network segmented from the CUI network?
+  type: single_choice
+  allowed_values:
+  - yes_segmented
+  - yes_guest_separate
+  - no_flat_network
+  required: true
+  controls:
+  - AC.L2-3.1.16
+  allows_free_text: false
+  free_text_prompt: null
+  depends_on: null
+  weight: null
+  help_text: Even with strong wireless encryption, network segmentation limits what wireless clients can reach. If CUI systems
+    are on the same flat network as Wi-Fi, a compromised wireless device has direct access.
+  notes: null
+- id: m1_q21
+  module: 1
+  module_name: Access Control
+  section: wireless_mobile
+  prompt: How do you detect and handle unauthorized wireless access points (rogue APs)?
+  type: single_choice
+  allowed_values:
+  - wids_active
+  - periodic_scan
+  - no_detection
+  required: true
+  controls:
+  - AC.L2-3.1.16
+  - AC.L2-3.1.17
+  allows_free_text: false
+  free_text_prompt: null
+  depends_on: null
+  weight: null
+  help_text: Unauthorized access points can bypass network security. Most enterprise wireless controllers include rogue AP
+    detection. For smaller environments, periodic scanning with a tool like NetSpot or Kismet demonstrates due diligence.
+  notes: null
+- id: m1_q22
+  module: 1
+  module_name: Access Control
+  section: wireless_mobile
+  prompt: Are employees permitted to use mobile devices (phones, tablets) to access CUI or CUI systems?
+  type: single_choice
+  allowed_values:
+  - yes_managed_mdm
+  - yes_byod_managed
+  - yes_unmanaged
+  - no_mobile
+  required: true
+  controls:
+  - AC.L2-3.1.18
+  allows_free_text: false
+  free_text_prompt: null
+  depends_on: null
+  weight: null
+  help_text: 'Mobile device connections to CUI systems must be controlled. This typically means MDM enrollment with enforced
+    policies: PIN/biometric, encryption, remote wipe capability.'
+  notes: 'branching keys: [''no_mobile'', ''yes_unmanaged'']'
+- id: m1_q23
+  module: 1
+  module_name: Access Control
+  section: wireless_mobile
+  prompt: Is CUI encrypted on mobile devices?
+  type: single_choice
+  allowed_values:
+  - yes_device_encryption
+  - yes_container_only
+  - no_encryption
+  required: true
+  controls:
+  - AC.L2-3.1.19
+  allows_free_text: false
+  free_text_prompt: null
+  depends_on: null
+  weight: null
+  help_text: CUI stored on or accessible from mobile devices must be encrypted. Modern iOS and Android devices encrypt by
+    default when a passcode is set, but this must be enforced via policy, not left to user choice.
+  notes: null
+- id: m1_q24
+  module: 1
+  module_name: Access Control
+  section: external_cui_flow
+  prompt: How do you control where CUI can flow within and outside your network?
+  type: multi_choice
+  allowed_values:
+  - dlp_policies
+  - sensitivity_labels
+  - network_segmentation
+  - firewall_rules
+  - no_controls
+  required: true
+  controls:
+  - AC.L2-3.1.3
+  allows_free_text: false
+  free_text_prompt: null
+  depends_on: null
+  weight: null
+  help_text: CUI flow control means ensuring CUI only moves through approved channels. The combination of network segmentation,
+    DLP, and sensitivity labels provides layered protection. Assessors will ask how you prevent CUI from being emailed to
+    personal accounts or copied to unapproved storage.
+  notes: 'branching keys: [''no_controls'']'
+- id: m1_q25
+  module: 1
+  module_name: Access Control
+  section: external_cui_flow
+  prompt: Can users send CUI to personal email accounts, personal cloud storage (Dropbox, Google Drive), or USB drives?
+  type: single_choice
+  allowed_values:
+  - blocked_all
+  - some_blocked
+  - policy_only
+  - not_restricted
+  required: true
+  controls:
+  - AC.L2-3.1.3
+  allows_free_text: false
+  free_text_prompt: null
+  depends_on: null
+  weight: null
+  help_text: 'Policy alone is not sufficient — assessors look for technical enforcement. Common controls: M365 DLP blocking
+    external sharing, USB port disablement via GPO/MDM, web content filtering blocking personal cloud storage.'
+  notes: null
+- id: m1_q26
+  module: 1
+  module_name: Access Control
+  section: external_cui_flow
+  prompt: How do you control connections between your CUI environment and external systems (customer portals, subcontractor
+    networks, SaaS applications)?
+  type: single_choice
+  allowed_values:
+  - approved_list
+  - firewall_controlled
+  - unrestricted
+  required: true
+  controls:
+  - AC.L2-3.1.20
+  allows_free_text: false
+  free_text_prompt: null
+  depends_on: null
+  weight: null
+  help_text: External information systems include any system not under your direct control. Assessors check that you verify
+    external systems meet security requirements before allowing connections, especially if CUI is transmitted.
+  notes: null
+- id: m1_q27
+  module: 1
+  module_name: Access Control
+  section: external_cui_flow
+  prompt: Are employees allowed to use company-owned portable storage (USB drives, external hard drives) on non-company systems?
+  type: single_choice
+  allowed_values:
+  - prohibited_enforced
+  - encrypted_allowed
+  - no_policy
+  required: true
+  controls:
+  - AC.L2-3.1.21
+  allows_free_text: false
+  free_text_prompt: null
+  depends_on: null
+  weight: null
+  help_text: This control limits the use of organization-controlled portable storage on external systems. If an employee plugs
+    a company USB drive into a home computer, any CUI on that drive is now on an uncontrolled system.
+  notes: null
+- id: m1_q28
+  module: 1
+  module_name: Access Control
+  section: external_cui_flow
+  prompt: Do you have any publicly accessible systems (public website, public-facing portals, marketing servers) that are
+    part of or connected to your CUI environment?
+  type: single_choice
+  allowed_values:
+  - no_public_systems
+  - yes_separated
+  - yes_connected
+  required: true
+  controls:
+  - AC.L2-3.1.22
+  allows_free_text: false
+  free_text_prompt: null
+  depends_on: null
+  weight: null
+  help_text: CUI must not be posted or processed on publicly accessible systems. If public-facing systems exist, they must
+    be isolated from the CUI environment. Assessors will verify network architecture diagrams and firewall rules.
+  notes: 'branching keys: [''yes_connected'']'
+- id: m2_at_3.2.1_status
+  module: 2
+  module_name: Awareness & Training + Audit & Accountability
+  section: Awareness & Training
+  prompt: What is your current implementation state for AT.L2-3.2.1 — Role-Based Risk Awareness?
+  type: single_choice
+  allowed_values:
+  - Fully implemented
+  - Partially implemented
+  - Planned
+  - Not implemented
+  - Not applicable
+  required: true
+  controls:
+  - AT.L2-3.2.1
+  allows_free_text: false
+  free_text_prompt: null
+  depends_on: null
+  weight: 3
+  help_text: Make users, admins, and managers aware of the security risks of their activities. For Apex Defense (45 employees
+    on Entra ID + M365 GCC High), KnowBe4 delivers the new-hire security awareness course and annual refreshers; enrollment
+    is driven by Entra ID group membership so onboarding auto-enrolls and offboarding auto-revokes.
+  notes: null
+- id: m2_at_3.2.2_status
+  module: 2
+  module_name: Awareness & Training + Audit & Accountability
+  section: Awareness & Training
+  prompt: What is your current implementation state for AT.L2-3.2.2 — Role-Based Training?
+  type: single_choice
+  allowed_values:
+  - Fully implemented
+  - Partially implemented
+  - Planned
+  - Not implemented
+  - Not applicable
+  required: true
+  controls:
+  - AT.L2-3.2.2
+  allows_free_text: false
+  free_text_prompt: null
+  depends_on: null
+  weight: 3
+  help_text: 'Role-specific training: admins get elevated-access training, developers get secure coding, executives get targeted
+    phishing drills. KnowBe4 supports custom learning paths per role group in Entra ID; training completion is attested in
+    the LMS and evidenced as a PDF certificate stored in the SharePoint compliance library.'
+  notes: null
+- id: m2_at_3.2.3_status
+  module: 2
+  module_name: Awareness & Training + Audit & Accountability
+  section: Awareness & Training
+  prompt: What is your current implementation state for AT.L2-3.2.3 — Insider Threat Awareness?
+  type: single_choice
+  allowed_values:
+  - Fully implemented
+  - Partially implemented
+  - Planned
+  - Not implemented
+  - Not applicable
+  required: true
+  controls:
+  - AT.L2-3.2.3
+  allows_free_text: false
+  free_text_prompt: null
+  depends_on: null
+  weight: 1
+  help_text: Annual briefing on insider-threat indicators and the reporting channel. KnowBe4 has a dedicated insider-threat
+    module; completion is tracked via Entra group membership and recorded in the HR system as an annual compliance item.
+  notes: null
+- id: m2_au_3.3.1_status
+  module: 2
+  module_name: Awareness & Training + Audit & Accountability
+  section: Audit & Accountability
+  prompt: What is your current implementation state for AU.L2-3.3.1 — System Auditing?
+  type: single_choice
+  allowed_values:
+  - Fully implemented
+  - Partially implemented
+  - Planned
+  - Not implemented
+  - Not applicable
+  required: true
+  controls:
+  - AU.L2-3.3.1
+  allows_free_text: false
+  free_text_prompt: null
+  depends_on: null
+  weight: 5
+  help_text: '⚠️ High-weight control (5 SPRS points). This is among the most impactful controls for your score.
+
+
+    Create, protect, and retain audit records covering logins, privilege changes, CUI access, and security-relevant events.
+    For Apex: Microsoft Sentinel is the central SIEM, ingesting Entra ID sign-in logs, M365 Unified Audit Log, CrowdStrike
+    Falcon event streams, and Palo Alto PA-450 syslog. 1-year hot retention plus 2-year cold.'
+  notes: null
+- id: m2_au_3.3.2_status
+  module: 2
+  module_name: Awareness & Training + Audit & Accountability
+  section: Audit & Accountability
+  prompt: What is your current implementation state for AU.L2-3.3.2 — User Accountability?
+  type: single_choice
+  allowed_values:
+  - Fully implemented
+  - Partially implemented
+  - Planned
+  - Not implemented
+  - Not applicable
+  required: true
+  controls:
+  - AU.L2-3.3.2
+  allows_free_text: false
+  free_text_prompt: null
+  depends_on: null
+  weight: 3
+  help_text: 'Every action must be traceable to a named individual — no shared accounts. Entra ID is the single source of
+    truth: each employee has a unique UPN, each admin has a separate privileged account, and CrowdStrike Falcon per-device
+    agents attribute endpoint actions to the signed-in user.'
+  notes: null
+- id: m2_au_3.3.3_status
+  module: 2
+  module_name: Awareness & Training + Audit & Accountability
+  section: Audit & Accountability
+  prompt: What is your current implementation state for AU.L2-3.3.3 — Event Review?
+  type: single_choice
+  allowed_values:
+  - Fully implemented
+  - Partially implemented
+  - Planned
+  - Not implemented
+  - Not applicable
+  required: true
+  controls:
+  - AU.L2-3.3.3
+  allows_free_text: false
+  free_text_prompt: null
+  depends_on: null
+  weight: 1
+  help_text: Review and update the list of audited events at defined intervals. Quarterly Sentinel analytic-rule review plus
+    an annual refresh of the organization's list of auditable events documented in the SSP.
+  notes: null
+- id: m2_au_3.3.4_status
+  module: 2
+  module_name: Awareness & Training + Audit & Accountability
+  section: Audit & Accountability
+  prompt: What is your current implementation state for AU.L2-3.3.4 — Audit Failure Alerting?
+  type: single_choice
+  allowed_values:
+  - Fully implemented
+  - Partially implemented
+  - Planned
+  - Not implemented
+  - Not applicable
+  required: true
+  controls:
+  - AU.L2-3.3.4
+  allows_free_text: false
+  free_text_prompt: null
+  depends_on: null
+  weight: 1
+  help_text: Alert immediately if audit logging fails. Sentinel data-connector health alerts fire when ingestion from Entra
+    ID, M365, or CrowdStrike stops; CrowdStrike console surfaces agent check-in failures as Critical events routed to the
+    on-call channel.
+  notes: null
+- id: m2_au_3.3.5_status
+  module: 2
+  module_name: Awareness & Training + Audit & Accountability
+  section: Audit & Accountability
+  prompt: What is your current implementation state for AU.L2-3.3.5 — Audit Correlation?
+  type: single_choice
+  allowed_values:
+  - Fully implemented
+  - Partially implemented
+  - Planned
+  - Not implemented
+  - Not applicable
+  required: true
+  controls:
+  - AU.L2-3.3.5
+  allows_free_text: false
+  free_text_prompt: null
+  depends_on: null
+  weight: 1
+  help_text: Correlate audit records across system components to support investigation. Sentinel KQL joins firewall flows,
+    Entra sign-ins, and CrowdStrike detections into a single timeline; workbooks present correlated views for common incident
+    patterns.
+  notes: null
+- id: m2_au_3.3.6_status
+  module: 2
+  module_name: Awareness & Training + Audit & Accountability
+  section: Audit & Accountability
+  prompt: What is your current implementation state for AU.L2-3.3.6 — Reduction and Reporting?
+  type: single_choice
+  allowed_values:
+  - Fully implemented
+  - Partially implemented
+  - Planned
+  - Not implemented
+  - Not applicable
+  required: true
+  controls:
+  - AU.L2-3.3.6
+  allows_free_text: false
+  free_text_prompt: null
+  depends_on: null
+  weight: 1
+  help_text: Provide audit record reduction and report generation. Sentinel workbooks + scheduled KQL reports satisfy this;
+    CISO receives a weekly summary of auth anomalies and security events.
+  notes: null
+- id: m2_au_3.3.7_status
+  module: 2
+  module_name: Awareness & Training + Audit & Accountability
+  section: Audit & Accountability
+  prompt: What is your current implementation state for AU.L2-3.3.7 — Time Stamps?
+  type: single_choice
+  allowed_values:
+  - Fully implemented
+  - Partially implemented
+  - Planned
+  - Not implemented
+  - Not applicable
+  required: true
+  controls:
+  - AU.L2-3.3.7
+  allows_free_text: false
+  free_text_prompt: null
+  depends_on: null
+  weight: 1
+  help_text: System clocks synced to an authoritative time source so audit timestamps are trustworthy. Domain-joined Windows
+    endpoints sync via the Windows Time Service to an Entra-managed NTP hierarchy; Palo Alto PA-450 NTP points at time.nist.gov.
+  notes: null
+- id: m2_au_3.3.8_status
+  module: 2
+  module_name: Awareness & Training + Audit & Accountability
+  section: Audit & Accountability
+  prompt: What is your current implementation state for AU.L2-3.3.8 — Audit Record Protection?
+  type: single_choice
+  allowed_values:
+  - Fully implemented
+  - Partially implemented
+  - Planned
+  - Not implemented
+  - Not applicable
+  required: true
+  controls:
+  - AU.L2-3.3.8
+  allows_free_text: false
+  free_text_prompt: null
+  depends_on: null
+  weight: 1
+  help_text: Protect audit information and tools from unauthorized access, modification, and deletion. Sentinel workspace
+    uses Entra RBAC with PIM-gated Contributor role; retention policies are locked at the workspace level so entries are immutable.
+  notes: null
+- id: m2_au_3.3.9_status
+  module: 2
+  module_name: Awareness & Training + Audit & Accountability
+  section: Audit & Accountability
+  prompt: What is your current implementation state for AU.L2-3.3.9 — Audit Management?
+  type: single_choice
+  allowed_values:
+  - Fully implemented
+  - Partially implemented
+  - Planned
+  - Not implemented
+  - Not applicable
+  required: true
+  controls:
+  - AU.L2-3.3.9
+  allows_free_text: false
+  free_text_prompt: null
+  depends_on: null
+  weight: 1
+  help_text: Limit audit-log management to a small set of privileged users. Entra PIM requires time-boxed activation + MFA
+    for Sentinel management roles; Conditional Access restricts those activations to managed devices on the admin jump-box
+    subnet.
+  notes: null
+- id: m3_cm_3.4.1_status
+  module: 3
+  module_name: Configuration Management + Identification & Authentication
+  section: Configuration Management
+  prompt: What is your current implementation state for CM.L2-3.4.1 — Baseline Configuration?
+  type: single_choice
+  allowed_values:
+  - Fully implemented
+  - Partially implemented
+  - Planned
+  - Not implemented
+  - Not applicable
+  required: true
+  controls:
+  - CM.L2-3.4.1
+  allows_free_text: false
+  free_text_prompt: null
+  depends_on: null
+  weight: 5
+  help_text: '⚠️ High-weight control (5 SPRS points). This is among the most impactful controls for your score.
+
+
+    Maintain baseline configs and inventories of hardware, software, and firmware. Apex uses Intune compliance policies as
+    the Windows 11 baseline and Defender Vulnerability Management for asset + software inventory; Palo Alto config is tracked
+    in Panorama-equivalent version control.'
+  notes: null
+- id: m3_cm_3.4.2_status
+  module: 3
+  module_name: Configuration Management + Identification & Authentication
+  section: Configuration Management
+  prompt: What is your current implementation state for CM.L2-3.4.2 — Security Configuration Enforcement?
+  type: single_choice
+  allowed_values:
+  - Fully implemented
+  - Partially implemented
+  - Planned
+  - Not implemented
+  - Not applicable
+  required: true
+  controls:
+  - CM.L2-3.4.2
+  allows_free_text: false
+  free_text_prompt: null
+  depends_on: null
+  weight: 5
+  help_text: '⚠️ High-weight control (5 SPRS points). This is among the most impactful controls for your score.
+
+
+    Enforce security configuration settings on IT products. Intune Security Baselines (Windows 11 + Edge) are deployed via
+    Entra ID device groups; CrowdStrike prevention policies enforce endpoint hardening; Palo Alto config templates prevent
+    drift.'
+  notes: null
+- id: m3_cm_3.4.3_status
+  module: 3
+  module_name: Configuration Management + Identification & Authentication
+  section: Configuration Management
+  prompt: What is your current implementation state for CM.L2-3.4.3 — System Change Management?
+  type: single_choice
+  allowed_values:
+  - Fully implemented
+  - Partially implemented
+  - Planned
+  - Not implemented
+  - Not applicable
+  required: true
+  controls:
+  - CM.L2-3.4.3
+  allows_free_text: false
+  free_text_prompt: null
+  depends_on: null
+  weight: 1
+  help_text: Track, review, approve or disapprove, and log changes to systems. A ticket tool (e.g., Jira/ServiceNow) owns
+    change records; IaC changes require Azure DevOps PR approval from a second engineer before merge.
+  notes: null
+- id: m3_cm_3.4.4_status
+  module: 3
+  module_name: Configuration Management + Identification & Authentication
+  section: Configuration Management
+  prompt: What is your current implementation state for CM.L2-3.4.4 — Security Impact Analysis?
+  type: single_choice
+  allowed_values:
+  - Fully implemented
+  - Partially implemented
+  - Planned
+  - Not implemented
+  - Not applicable
+  required: true
+  controls:
+  - CM.L2-3.4.4
+  allows_free_text: false
+  free_text_prompt: null
+  depends_on: null
+  weight: 1
+  help_text: Analyze the security impact of changes before implementation. Change tickets have a mandatory security-impact
+    field reviewed by the ISSO during the approval step.
+  notes: null
+- id: m3_cm_3.4.5_status
+  module: 3
+  module_name: Configuration Management + Identification & Authentication
+  section: Configuration Management
+  prompt: What is your current implementation state for CM.L2-3.4.5 — Access Restrictions for Change?
+  type: single_choice
+  allowed_values:
+  - Fully implemented
+  - Partially implemented
+  - Planned
+  - Not implemented
+  - Not applicable
+  required: true
+  controls:
+  - CM.L2-3.4.5
+  allows_free_text: false
+  free_text_prompt: null
+  depends_on: null
+  weight: 3
+  help_text: Define who can perform changes on systems, physical or logical. Entra PIM gates privileged role activation; Azure
+    DevOps branch protection restricts production merges to the platform team group.
+  notes: null
+- id: m3_cm_3.4.6_status
+  module: 3
+  module_name: Configuration Management + Identification & Authentication
+  section: Configuration Management
+  prompt: What is your current implementation state for CM.L2-3.4.6 — Least Functionality?
+  type: single_choice
+  allowed_values:
+  - Fully implemented
+  - Partially implemented
+  - Planned
+  - Not implemented
+  - Not applicable
+  required: true
+  controls:
+  - CM.L2-3.4.6
+  allows_free_text: false
+  free_text_prompt: null
+  depends_on: null
+  weight: 1
+  help_text: Employ the principle of least functionality — only essential capabilities. Intune policies disable unused Windows
+    features; Palo Alto App-ID rules only allow applications required for business.
+  notes: null
+- id: m3_cm_3.4.7_status
+  module: 3
+  module_name: Configuration Management + Identification & Authentication
+  section: Configuration Management
+  prompt: What is your current implementation state for CM.L2-3.4.7 — Nonessential Functionality?
+  type: single_choice
+  allowed_values:
+  - Fully implemented
+  - Partially implemented
+  - Planned
+  - Not implemented
+  - Not applicable
+  required: true
+  controls:
+  - CM.L2-3.4.7
+  allows_free_text: false
+  free_text_prompt: null
+  depends_on: null
+  weight: 1
+  help_text: Restrict, disable, or prevent use of nonessential programs, ports, and services. AppLocker rules via Intune block
+    known-bad categories; Palo Alto PAN-OS filters non-business applications by category.
+  notes: null
+- id: m3_cm_3.4.8_status
+  module: 3
+  module_name: Configuration Management + Identification & Authentication
+  section: Configuration Management
+  prompt: What is your current implementation state for CM.L2-3.4.8 — Application Execution Policy?
+  type: single_choice
+  allowed_values:
+  - Fully implemented
+  - Partially implemented
+  - Planned
+  - Not implemented
+  - Not applicable
+  required: true
+  controls:
+  - CM.L2-3.4.8
+  allows_free_text: false
+  free_text_prompt: null
+  depends_on: null
+  weight: 1
+  help_text: Apply deny-by-exception (blacklist) or permit-by-exception (whitelist) for software. Intune ASR rules plus CrowdStrike
+    custom IOA blocks enforce denylists; allowlist is maintained for critical servers.
+  notes: null
+- id: m3_cm_3.4.9_status
+  module: 3
+  module_name: Configuration Management + Identification & Authentication
+  section: Configuration Management
+  prompt: What is your current implementation state for CM.L2-3.4.9 — User-Installed Software?
+  type: single_choice
+  allowed_values:
+  - Fully implemented
+  - Partially implemented
+  - Planned
+  - Not implemented
+  - Not applicable
+  required: true
+  controls:
+  - CM.L2-3.4.9
+  allows_free_text: false
+  free_text_prompt: null
+  depends_on: null
+  weight: 1
+  help_text: Control and monitor user-installed software. Intune Company Portal serves the approved-app catalog; AppLocker
+    blocks installers outside %ProgramFiles%; CrowdStrike maintains an installed-application inventory per endpoint.
+  notes: null
+- id: m3_ia_3.5.1_status
+  module: 3
+  module_name: Configuration Management + Identification & Authentication
+  section: Identification & Authentication
+  prompt: What is your current implementation state for IA.L2-3.5.1 — Identification?
+  type: single_choice
+  allowed_values:
+  - Fully implemented
+  - Partially implemented
+  - Planned
+  - Not implemented
+  - Not applicable
+  required: true
+  controls:
+  - IA.L2-3.5.1
+  allows_free_text: false
+  free_text_prompt: null
+  depends_on: null
+  weight: 5
+  help_text: '⚠️ High-weight control (5 SPRS points). This is among the most impactful controls for your score.
+
+
+    Identify users, processes acting on behalf of users, and devices. Entra ID is the identity plane with unique UPNs; Intune
+    enrollment gives every managed device a unique Entra identity.'
+  notes: null
+- id: m3_ia_3.5.2_status
+  module: 3
+  module_name: Configuration Management + Identification & Authentication
+  section: Identification & Authentication
+  prompt: What is your current implementation state for IA.L2-3.5.2 — Authentication?
+  type: single_choice
+  allowed_values:
+  - Fully implemented
+  - Partially implemented
+  - Planned
+  - Not implemented
+  - Not applicable
+  required: true
+  controls:
+  - IA.L2-3.5.2
+  allows_free_text: false
+  free_text_prompt: null
+  depends_on: null
+  weight: 5
+  help_text: '⚠️ High-weight control (5 SPRS points). This is among the most impactful controls for your score.
+
+
+    Authenticate users, processes, and devices as a prerequisite to access. Entra ID with password hash sync + Authenticator
+    app (TOTP + push), certificate-based auth for Intune-joined devices.'
+  notes: null
+- id: m3_ia_3.5.3_status
+  module: 3
+  module_name: Configuration Management + Identification & Authentication
+  section: Identification & Authentication
+  prompt: What is your current implementation state for IA.L2-3.5.3 — Multifactor Authentication?
+  type: single_choice
+  allowed_values:
+  - Fully implemented
+  - Partially implemented
+  - Planned
+  - Not implemented
+  - Not applicable
+  required: true
+  controls:
+  - IA.L2-3.5.3
+  allows_free_text: false
+  free_text_prompt: null
+  depends_on: null
+  weight: 3
+  help_text: MFA for local and network access to privileged accounts, and for network access to non-privileged accounts. Apex
+    uses Entra Conditional Access requiring MFA for all cloud apps; Palo Alto GlobalProtect uses SAML to Entra so VPN inherits
+    MFA.
+  notes: null
+- id: m3_ia_3.5.4_status
+  module: 3
+  module_name: Configuration Management + Identification & Authentication
+  section: Identification & Authentication
+  prompt: What is your current implementation state for IA.L2-3.5.4 — Replay-Resistant Authentication?
+  type: single_choice
+  allowed_values:
+  - Fully implemented
+  - Partially implemented
+  - Planned
+  - Not implemented
+  - Not applicable
+  required: true
+  controls:
+  - IA.L2-3.5.4
+  allows_free_text: false
+  free_text_prompt: null
+  depends_on: null
+  weight: 1
+  help_text: Replay-resistant authentication for network access to privileged and non-privileged accounts. Entra ID uses time-bound
+    TOTP / push + Kerberos-with-AES where AD is in play; NTLMv1 is disabled.
+  notes: null
+- id: m3_ia_3.5.5_status
+  module: 3
+  module_name: Configuration Management + Identification & Authentication
+  section: Identification & Authentication
+  prompt: What is your current implementation state for IA.L2-3.5.5 — Identifier Reuse?
+  type: single_choice
+  allowed_values:
+  - Fully implemented
+  - Partially implemented
+  - Planned
+  - Not implemented
+  - Not applicable
+  required: true
+  controls:
+  - IA.L2-3.5.5
+  allows_free_text: false
+  free_text_prompt: null
+  depends_on: null
+  weight: 1
+  help_text: Prevent reuse of identifiers for a defined period. Entra ID UPNs are HR-driven and retired accounts are soft-deleted;
+    reassignment requires an ISSO override.
+  notes: null
+- id: m3_ia_3.5.6_status
+  module: 3
+  module_name: Configuration Management + Identification & Authentication
+  section: Identification & Authentication
+  prompt: What is your current implementation state for IA.L2-3.5.6 — Identifier Management?
+  type: single_choice
+  allowed_values:
+  - Fully implemented
+  - Partially implemented
+  - Planned
+  - Not implemented
+  - Not applicable
+  required: true
+  controls:
+  - IA.L2-3.5.6
+  allows_free_text: false
+  free_text_prompt: null
+  depends_on: null
+  weight: 1
+  help_text: Disable identifiers after a defined period of inactivity. Entra ID lifecycle workflow disables accounts after
+    90 days inactive; documented offboarding playbook disables on Day 0 of separation.
+  notes: null
+- id: m3_ia_3.5.7_status
+  module: 3
+  module_name: Configuration Management + Identification & Authentication
+  section: Identification & Authentication
+  prompt: What is your current implementation state for IA.L2-3.5.7 — Password Complexity?
+  type: single_choice
+  allowed_values:
+  - Fully implemented
+  - Partially implemented
+  - Planned
+  - Not implemented
+  - Not applicable
+  required: true
+  controls:
+  - IA.L2-3.5.7
+  allows_free_text: false
+  free_text_prompt: null
+  depends_on: null
+  weight: 1
+  help_text: Enforce a minimum password complexity and change of characters when new passwords are created. Entra password
+    protection + MS banned-password list; Entra ID Protection flags risky sign-ins and forces reset.
+  notes: null
+- id: m3_ia_3.5.8_status
+  module: 3
+  module_name: Configuration Management + Identification & Authentication
+  section: Identification & Authentication
+  prompt: What is your current implementation state for IA.L2-3.5.8 — Password Reuse?
+  type: single_choice
+  allowed_values:
+  - Fully implemented
+  - Partially implemented
+  - Planned
+  - Not implemented
+  - Not applicable
+  required: true
+  controls:
+  - IA.L2-3.5.8
+  allows_free_text: false
+  free_text_prompt: null
+  depends_on: null
+  weight: 1
+  help_text: Prohibit password reuse for a defined number of generations. On-prem AD (if present) enforces 24 generations;
+    Entra steers users toward passwordless (FIDO2) so reuse is mostly eliminated.
+  notes: null
+- id: m3_ia_3.5.9_status
+  module: 3
+  module_name: Configuration Management + Identification & Authentication
+  section: Identification & Authentication
+  prompt: What is your current implementation state for IA.L2-3.5.9 — Temporary Passwords?
+  type: single_choice
+  allowed_values:
+  - Fully implemented
+  - Partially implemented
+  - Planned
+  - Not implemented
+  - Not applicable
+  required: true
+  controls:
+  - IA.L2-3.5.9
+  allows_free_text: false
+  free_text_prompt: null
+  depends_on: null
+  weight: 1
+  help_text: Allow temporary passwords for system logons that must be changed immediately to a permanent password. Entra SSPR
+    workflow forces password change on first use; temp access passes expire within 1 hour.
+  notes: null
+- id: m3_ia_3.5.10_status
+  module: 3
+  module_name: Configuration Management + Identification & Authentication
+  section: Identification & Authentication
+  prompt: What is your current implementation state for IA.L2-3.5.10 — Cryptographic Password Storage?
+  type: single_choice
+  allowed_values:
+  - Fully implemented
+  - Partially implemented
+  - Planned
+  - Not implemented
+  - Not applicable
+  required: true
+  controls:
+  - IA.L2-3.5.10
+  allows_free_text: false
+  free_text_prompt: null
+  depends_on: null
+  weight: 1
+  help_text: Store and transmit only cryptographically-protected passwords. Entra ID stores hashed/salted credentials; TLS
+    1.2+ for all M365 endpoints; application secrets live in Azure Key Vault, never in code.
+  notes: null
+- id: m3_ia_3.5.11_status
+  module: 3
+  module_name: Configuration Management + Identification & Authentication
+  section: Identification & Authentication
+  prompt: What is your current implementation state for IA.L2-3.5.11 — Obscure Feedback?
+  type: single_choice
+  allowed_values:
+  - Fully implemented
+  - Partially implemented
+  - Planned
+  - Not implemented
+  - Not applicable
+  required: true
+  controls:
+  - IA.L2-3.5.11
+  allows_free_text: false
+  free_text_prompt: null
+  depends_on: null
+  weight: 1
+  help_text: Obscure feedback of authentication information. Windows Hello / Entra login prompts mask password entry by default;
+    no custom auth UI is used.
+  notes: null
+- id: m3_ia_3.5.3_mfa_scope
+  module: 3
+  module_name: Configuration Management + Identification & Authentication
+  section: Follow-up
+  prompt: Where is MFA enforced in your environment?
+  type: single_choice
+  allowed_values:
+  - All users and access methods
+  - Remote access and privileged accounts only
+  - Remote access only
+  - Not implemented
+  required: false
+  controls:
+  - IA.L2-3.5.3
+  allows_free_text: false
+  free_text_prompt: null
+  depends_on:
+    question_id: m3_ia_3.5.3_status
+    value: Fully implemented
+  weight: 5
+  help_text: 'MFA scope affects SPRS scoring: full enforcement = MET (0 deduction), remote+privileged only = partial (-3),
+    none = NOT MET (-5).'
+  notes: null
+- id: m4_ir_3.6.1_status
+  module: 4
+  module_name: Incident Response + Maintenance
+  section: Incident Response
+  prompt: What is your current implementation state for IR.L2-3.6.1 — Incident Handling?
+  type: single_choice
+  allowed_values:
+  - Fully implemented
+  - Partially implemented
+  - Planned
+  - Not implemented
+  - Not applicable
+  required: true
+  controls:
+  - IR.L2-3.6.1
+  allows_free_text: false
+  free_text_prompt: null
+  depends_on: null
+  weight: 3
+  help_text: Operational incident-handling capability covering preparation, detection, analysis, containment, recovery, and
+    user response. Apex uses a documented IR plan; Sentinel generates detections; CrowdStrike Real Time Response is used for
+    containment; a dedicated Teams channel is the comms hub during incidents.
+  notes: null
+- id: m4_ir_3.6.2_status
+  module: 4
+  module_name: Incident Response + Maintenance
+  section: Incident Response
+  prompt: What is your current implementation state for IR.L2-3.6.2 — Incident Reporting?
+  type: single_choice
+  allowed_values:
+  - Fully implemented
+  - Partially implemented
+  - Planned
+  - Not implemented
+  - Not applicable
+  required: true
+  controls:
+  - IR.L2-3.6.2
+  allows_free_text: false
+  free_text_prompt: null
+  depends_on: null
+  weight: 3
+  help_text: Track, document, and report incidents to designated officials and authorities. Internal tickets drive the playbook;
+    DFARS 7012 reports go to DoD DC3 via the DIB Cyber Security reporting portal within 72 hours of a reportable cyber incident.
+  notes: null
+- id: m4_ir_3.6.3_status
+  module: 4
+  module_name: Incident Response + Maintenance
+  section: Incident Response
+  prompt: What is your current implementation state for IR.L2-3.6.3 — Incident Response Testing?
+  type: single_choice
+  allowed_values:
+  - Fully implemented
+  - Partially implemented
+  - Planned
+  - Not implemented
+  - Not applicable
+  required: true
+  controls:
+  - IR.L2-3.6.3
+  allows_free_text: false
+  free_text_prompt: null
+  depends_on: null
+  weight: 1
+  help_text: Test the organization's incident response capability. Annual tabletop exercise led by the ISSO with execs and
+    IT; CrowdStrike Falcon OverWatch or a Sentinel breach-and-attack-simulation pack provides the technical drill.
+  notes: null
+- id: m4_ma_3.7.1_status
+  module: 4
+  module_name: Incident Response + Maintenance
+  section: Maintenance
+  prompt: What is your current implementation state for MA.L2-3.7.1 — Perform Maintenance?
+  type: single_choice
+  allowed_values:
+  - Fully implemented
+  - Partially implemented
+  - Planned
+  - Not implemented
+  - Not applicable
+  required: true
+  controls:
+  - MA.L2-3.7.1
+  allows_free_text: false
+  free_text_prompt: null
+  depends_on: null
+  weight: 3
+  help_text: Perform maintenance on organizational systems. Windows patching via Intune Update Rings (critical, broad); Palo
+    Alto PAN-OS updates during scheduled maintenance windows; Veeam software updates after validation in test.
+  notes: null
+- id: m4_ma_3.7.2_status
+  module: 4
+  module_name: Incident Response + Maintenance
+  section: Maintenance
+  prompt: What is your current implementation state for MA.L2-3.7.2 — System Maintenance Control?
+  type: single_choice
+  allowed_values:
+  - Fully implemented
+  - Partially implemented
+  - Planned
+  - Not implemented
+  - Not applicable
+  required: true
+  controls:
+  - MA.L2-3.7.2
+  allows_free_text: false
+  free_text_prompt: null
+  depends_on: null
+  weight: 1
+  help_text: Control tools, techniques, mechanisms, and personnel used for system maintenance. Approved-tool list lives in
+    the CM plan; maintenance personnel must hold an Entra ID account and be Intune-enrolled before touching CUI systems.
+  notes: null
+- id: m4_ma_3.7.3_status
+  module: 4
+  module_name: Incident Response + Maintenance
+  section: Maintenance
+  prompt: What is your current implementation state for MA.L2-3.7.3 — Equipment Sanitization?
+  type: single_choice
+  allowed_values:
+  - Fully implemented
+  - Partially implemented
+  - Planned
+  - Not implemented
+  - Not applicable
+  required: true
+  controls:
+  - MA.L2-3.7.3
+  allows_free_text: false
+  free_text_prompt: null
+  depends_on: null
+  weight: 1
+  help_text: Ensure equipment removed for off-site maintenance is sanitized of CUI. NIST 800-88 purge procedure for drives;
+    a certificate of destruction is archived per asset in the asset management system.
+  notes: null
+- id: m4_ma_3.7.4_status
+  module: 4
+  module_name: Incident Response + Maintenance
+  section: Maintenance
+  prompt: What is your current implementation state for MA.L2-3.7.4 — Check Media for Malicious Code?
+  type: single_choice
+  allowed_values:
+  - Fully implemented
+  - Partially implemented
+  - Planned
+  - Not implemented
+  - Not applicable
+  required: true
+  controls:
+  - MA.L2-3.7.4
+  allows_free_text: false
+  free_text_prompt: null
+  depends_on: null
+  weight: 1
+  help_text: Check media containing diagnostic and test programs for malicious code before use. Dedicated CrowdStrike-protected
+    kiosk scans vendor USBs before they can be plugged into production systems; Intune device-control blocks non-approved
+    USBs by default.
+  notes: null
+- id: m4_ma_3.7.5_status
+  module: 4
+  module_name: Incident Response + Maintenance
+  section: Maintenance
+  prompt: What is your current implementation state for MA.L2-3.7.5 — Nonlocal Maintenance?
+  type: single_choice
+  allowed_values:
+  - Fully implemented
+  - Partially implemented
+  - Planned
+  - Not implemented
+  - Not applicable
+  required: true
+  controls:
+  - MA.L2-3.7.5
+  allows_free_text: false
+  free_text_prompt: null
+  depends_on: null
+  weight: 1
+  help_text: Require MFA to establish nonlocal maintenance sessions and terminate them when complete. Vendors connect via
+    Palo Alto GlobalProtect (SAML + Entra MFA); sessions auto-terminate on idle and at ticket close.
+  notes: null
+- id: m4_ma_3.7.6_status
+  module: 4
+  module_name: Incident Response + Maintenance
+  section: Maintenance
+  prompt: What is your current implementation state for MA.L2-3.7.6 — Maintenance Personnel?
+  type: single_choice
+  allowed_values:
+  - Fully implemented
+  - Partially implemented
+  - Planned
+  - Not implemented
+  - Not applicable
+  required: true
+  controls:
+  - MA.L2-3.7.6
+  allows_free_text: false
+  free_text_prompt: null
+  depends_on: null
+  weight: 1
+  help_text: Supervise maintenance activities performed by personnel without required access. Escort policy documented; CCTV
+    covers the server closet; temp Entra guest accounts are time-boxed and disabled on task completion.
+  notes: null
+- id: m5_mp_3.8.1_status
+  module: 5
+  module_name: Media, Physical & Personnel Security
+  section: Media Protection
+  prompt: What is your current implementation state for MP.L2-3.8.1 — Media Protection?
+  type: single_choice
+  allowed_values:
+  - Fully implemented
+  - Partially implemented
+  - Planned
+  - Not implemented
+  - Not applicable
+  required: true
+  controls:
+  - MP.L2-3.8.1
+  allows_free_text: false
+  free_text_prompt: null
+  depends_on: null
+  weight: 3
+  help_text: Protect CUI on both paper and digital media. Locked cabinets for paper CUI; BitLocker full-disk encryption enforced
+    on every laptop through Intune compliance policies; tamper-evident seals on transport cases.
+  notes: null
+- id: m5_mp_3.8.2_status
+  module: 5
+  module_name: Media, Physical & Personnel Security
+  section: Media Protection
+  prompt: What is your current implementation state for MP.L2-3.8.2 — Media Access?
+  type: single_choice
+  allowed_values:
+  - Fully implemented
+  - Partially implemented
+  - Planned
+  - Not implemented
+  - Not applicable
+  required: true
+  controls:
+  - MP.L2-3.8.2
+  allows_free_text: false
+  free_text_prompt: null
+  depends_on: null
+  weight: 3
+  help_text: Limit access to CUI media to authorized users. Entra security groups gate access to CUI SharePoint sites; building
+    badge logs track server-room entry; printed CUI is kept in locked file cabinets controlled by the ISSO.
+  notes: null
+- id: m5_mp_3.8.3_status
+  module: 5
+  module_name: Media, Physical & Personnel Security
+  section: Media Protection
+  prompt: What is your current implementation state for MP.L2-3.8.3 — Media Sanitization?
+  type: single_choice
+  allowed_values:
+  - Fully implemented
+  - Partially implemented
+  - Planned
+  - Not implemented
+  - Not applicable
+  required: true
+  controls:
+  - MP.L2-3.8.3
+  allows_free_text: false
+  free_text_prompt: null
+  depends_on: null
+  weight: 1
+  help_text: Sanitize or destroy media containing CUI before disposal or reuse. NIST 800-88 purge for drives; paper CUI goes
+    to a cross-cut shredder; certificates of destruction archived by the ISSO.
+  notes: null
+- id: m5_mp_3.8.4_status
+  module: 5
+  module_name: Media, Physical & Personnel Security
+  section: Media Protection
+  prompt: What is your current implementation state for MP.L2-3.8.4 — Media Markings?
+  type: single_choice
+  allowed_values:
+  - Fully implemented
+  - Partially implemented
+  - Planned
+  - Not implemented
+  - Not applicable
+  required: true
+  controls:
+  - MP.L2-3.8.4
+  allows_free_text: false
+  free_text_prompt: null
+  depends_on: null
+  weight: 1
+  help_text: Mark media containing CUI with applicable markings and distribution limits. M365 Purview sensitivity labels auto-apply
+    to documents tagged as CUI; printed documents carry CUI cover sheets per DoDI 5200.48.
+  notes: null
+- id: m5_mp_3.8.5_status
+  module: 5
+  module_name: Media, Physical & Personnel Security
+  section: Media Protection
+  prompt: What is your current implementation state for MP.L2-3.8.5 — Media Accountability?
+  type: single_choice
+  allowed_values:
+  - Fully implemented
+  - Partially implemented
+  - Planned
+  - Not implemented
+  - Not applicable
+  required: true
+  controls:
+  - MP.L2-3.8.5
+  allows_free_text: false
+  free_text_prompt: null
+  depends_on: null
+  weight: 1
+  help_text: Control access to media outside of controlled areas. Encrypted USB sign-out log; RMA tracker for returning drives;
+    courier service only for off-site CUI transport.
+  notes: null
+- id: m5_mp_3.8.6_status
+  module: 5
+  module_name: Media, Physical & Personnel Security
+  section: Media Protection
+  prompt: What is your current implementation state for MP.L2-3.8.6 — Portable Storage Encryption?
+  type: single_choice
+  allowed_values:
+  - Fully implemented
+  - Partially implemented
+  - Planned
+  - Not implemented
+  - Not applicable
+  required: true
+  controls:
+  - MP.L2-3.8.6
+  allows_free_text: false
+  free_text_prompt: null
+  depends_on: null
+  weight: 1
+  help_text: Implement cryptographic mechanisms to protect CUI on portable storage. BitLocker To Go enforced via Intune; non-encrypted
+    USB writes blocked by GPO/Intune device-control policies.
+  notes: null
+- id: m5_mp_3.8.7_status
+  module: 5
+  module_name: Media, Physical & Personnel Security
+  section: Media Protection
+  prompt: What is your current implementation state for MP.L2-3.8.7 — Removable Media Use?
+  type: single_choice
+  allowed_values:
+  - Fully implemented
+  - Partially implemented
+  - Planned
+  - Not implemented
+  - Not applicable
+  required: true
+  controls:
+  - MP.L2-3.8.7
+  allows_free_text: false
+  free_text_prompt: null
+  depends_on: null
+  weight: 1
+  help_text: Control the use of removable media on system components. Intune device-control policies whitelist approved USB
+    VIDs/PIDs; CrowdStrike device-control module logs connect/disconnect events.
+  notes: null
+- id: m5_mp_3.8.8_status
+  module: 5
+  module_name: Media, Physical & Personnel Security
+  section: Media Protection
+  prompt: What is your current implementation state for MP.L2-3.8.8 — Prohibit Ownerless Media?
+  type: single_choice
+  allowed_values:
+  - Fully implemented
+  - Partially implemented
+  - Planned
+  - Not implemented
+  - Not applicable
+  required: true
+  controls:
+  - MP.L2-3.8.8
+  allows_free_text: false
+  free_text_prompt: null
+  depends_on: null
+  weight: 1
+  help_text: Prohibit the use of portable storage devices when no identifiable owner exists. Company policy requires an asset-tagged
+    device; personal USBs are blocked via Intune device-control.
+  notes: null
+- id: m5_mp_3.8.9_status
+  module: 5
+  module_name: Media, Physical & Personnel Security
+  section: Media Protection
+  prompt: What is your current implementation state for MP.L2-3.8.9 — Protect Backup CUI?
+  type: single_choice
+  allowed_values:
+  - Fully implemented
+  - Partially implemented
+  - Planned
+  - Not implemented
+  - Not applicable
+  required: true
+  controls:
+  - MP.L2-3.8.9
+  allows_free_text: false
+  free_text_prompt: null
+  depends_on: null
+  weight: 1
+  help_text: Protect the confidentiality of backup CUI at storage locations. Veeam backups are encrypted (AES-256) with keys
+    in Azure Key Vault; immutable/air-gapped copies stored offsite in Azure with Entra RBAC.
+  notes: null
+- id: m5_pe_3.10.1_status
+  module: 5
+  module_name: Media, Physical & Personnel Security
+  section: Physical Protection
+  prompt: What is your current implementation state for PE.L2-3.10.1 — Limit Physical Access?
+  type: single_choice
+  allowed_values:
+  - Fully implemented
+  - Partially implemented
+  - Planned
+  - Not implemented
+  - Not applicable
+  required: true
+  controls:
+  - PE.L2-3.10.1
+  allows_free_text: false
+  free_text_prompt: null
+  depends_on: null
+  weight: 3
+  help_text: Limit physical access to systems, equipment, and operating environments to authorized individuals. Badge-access
+    building with visitor log; server closet behind a secondary lock whose key is held by the ISSO.
+  notes: null
+- id: m5_pe_3.10.2_status
+  module: 5
+  module_name: Media, Physical & Personnel Security
+  section: Physical Protection
+  prompt: What is your current implementation state for PE.L2-3.10.2 — Monitor Facility?
+  type: single_choice
+  allowed_values:
+  - Fully implemented
+  - Partially implemented
+  - Planned
+  - Not implemented
+  - Not applicable
+  required: true
+  controls:
+  - PE.L2-3.10.2
+  allows_free_text: false
+  free_text_prompt: null
+  depends_on: null
+  weight: 1
+  help_text: Protect and monitor the physical facility and support infrastructure. CCTV with 30-day retention covers ingress/egress
+    and server room; monitored alarm system with 24/7 response via the landlord's contracted provider.
+  notes: null
+- id: m5_pe_3.10.3_status
+  module: 5
+  module_name: Media, Physical & Personnel Security
+  section: Physical Protection
+  prompt: What is your current implementation state for PE.L2-3.10.3 — Escort Visitors?
+  type: single_choice
+  allowed_values:
+  - Fully implemented
+  - Partially implemented
+  - Planned
+  - Not implemented
+  - Not applicable
+  required: true
+  controls:
+  - PE.L2-3.10.3
+  allows_free_text: false
+  free_text_prompt: null
+  depends_on: null
+  weight: 1
+  help_text: Escort visitors and monitor their activity. Sign-in sheet at reception; temp visitor badge; documented escort
+    policy requiring an Apex employee present at all times for visitors in CUI-processing areas.
+  notes: null
+- id: m5_pe_3.10.4_status
+  module: 5
+  module_name: Media, Physical & Personnel Security
+  section: Physical Protection
+  prompt: What is your current implementation state for PE.L2-3.10.4 — Physical Access Records?
+  type: single_choice
+  allowed_values:
+  - Fully implemented
+  - Partially implemented
+  - Planned
+  - Not implemented
+  - Not applicable
+  required: true
+  controls:
+  - PE.L2-3.10.4
+  allows_free_text: false
+  free_text_prompt: null
+  depends_on: null
+  weight: 1
+  help_text: Maintain audit logs of physical access. Badge-system event log archived 12 months minimum; visitor sign-in sheets
+    scanned into SharePoint weekly.
+  notes: null
+- id: m5_pe_3.10.5_status
+  module: 5
+  module_name: Media, Physical & Personnel Security
+  section: Physical Protection
+  prompt: What is your current implementation state for PE.L2-3.10.5 — Control Physical Access Devices?
+  type: single_choice
+  allowed_values:
+  - Fully implemented
+  - Partially implemented
+  - Planned
+  - Not implemented
+  - Not applicable
+  required: true
+  controls:
+  - PE.L2-3.10.5
+  allows_free_text: false
+  free_text_prompt: null
+  depends_on: null
+  weight: 1
+  help_text: Control and manage physical access devices (badges, keys, combinations). Badge issuance log; quarterly badge
+    audit; lost-badge revocation within 1 business day.
+  notes: null
+- id: m5_pe_3.10.6_status
+  module: 5
+  module_name: Media, Physical & Personnel Security
+  section: Physical Protection
+  prompt: What is your current implementation state for PE.L2-3.10.6 — Alternate Work Sites?
+  type: single_choice
+  allowed_values:
+  - Fully implemented
+  - Partially implemented
+  - Planned
+  - Not implemented
+  - Not applicable
+  required: true
+  controls:
+  - PE.L2-3.10.6
+  allows_free_text: false
+  free_text_prompt: null
+  depends_on: null
+  weight: 1
+  help_text: Enforce safeguarding measures for CUI at alternate work sites. Remote worker policy requires locked room, clean-desk
+    discipline, BitLockered laptop, and quarterly self-attestation.
+  notes: null
+- id: m5_ps_3.9.1_status
+  module: 5
+  module_name: Media, Physical & Personnel Security
+  section: Personnel Security
+  prompt: What is your current implementation state for PS.L2-3.9.1 — Screen Individuals?
+  type: single_choice
+  allowed_values:
+  - Fully implemented
+  - Partially implemented
+  - Planned
+  - Not implemented
+  - Not applicable
+  required: true
+  controls:
+  - PS.L2-3.9.1
+  allows_free_text: false
+  free_text_prompt: null
+  depends_on: null
+  weight: 3
+  help_text: Screen individuals before authorizing access to CUI systems. Pre-employment background check owned by HR; NDA
+    signed at onboarding; citizenship verification for ITAR-covered work before Entra ID account activation.
+  notes: null
+- id: m5_ps_3.9.2_status
+  module: 5
+  module_name: Media, Physical & Personnel Security
+  section: Personnel Security
+  prompt: What is your current implementation state for PS.L2-3.9.2 — Personnel Termination?
+  type: single_choice
+  allowed_values:
+  - Fully implemented
+  - Partially implemented
+  - Planned
+  - Not implemented
+  - Not applicable
+  required: true
+  controls:
+  - PS.L2-3.9.2
+  allows_free_text: false
+  free_text_prompt: null
+  depends_on: null
+  weight: 3
+  help_text: Ensure CUI systems are protected during and after personnel actions. Offboarding runbook disables the Entra account,
+    retrieves the device, and revokes the building badge within 24 hours of separation; badges and assets logged as returned.
+  notes: null
+- id: m6_ra_3.11.1_status
+  module: 6
+  module_name: Risk & Security Assessment
+  section: Risk Assessment
+  prompt: What is your current implementation state for RA.L2-3.11.1 — Risk Assessments?
+  type: single_choice
+  allowed_values:
+  - Fully implemented
+  - Partially implemented
+  - Planned
+  - Not implemented
+  - Not applicable
+  required: true
+  controls:
+  - RA.L2-3.11.1
+  allows_free_text: false
+  free_text_prompt: null
+  depends_on: null
+  weight: 3
+  help_text: Periodically assess risk to operations, assets, and individuals from CUI processing systems. Apex performs an
+    annual formal risk assessment; Defender Vulnerability Management and Sentinel risk scoring feed findings into the RA report.
+  notes: null
+- id: m6_ra_3.11.2_status
+  module: 6
+  module_name: Risk & Security Assessment
+  section: Risk Assessment
+  prompt: What is your current implementation state for RA.L2-3.11.2 — Vulnerability Scan?
+  type: single_choice
+  allowed_values:
+  - Fully implemented
+  - Partially implemented
+  - Planned
+  - Not implemented
+  - Not applicable
+  required: true
+  controls:
+  - RA.L2-3.11.2
+  allows_free_text: false
+  free_text_prompt: null
+  depends_on: null
+  weight: 1
+  help_text: Scan for vulnerabilities in systems and applications periodically and when new vulnerabilities are identified.
+    Defender Vulnerability Management runs continuous internal scans; external authenticated scans via Tenable or Qualys monthly.
+  notes: null
+- id: m6_ra_3.11.3_status
+  module: 6
+  module_name: Risk & Security Assessment
+  section: Risk Assessment
+  prompt: What is your current implementation state for RA.L2-3.11.3 — Vulnerability Remediation?
+  type: single_choice
+  allowed_values:
+  - Fully implemented
+  - Partially implemented
+  - Planned
+  - Not implemented
+  - Not applicable
+  required: true
+  controls:
+  - RA.L2-3.11.3
+  allows_free_text: false
+  free_text_prompt: null
+  depends_on: null
+  weight: 1
+  help_text: Remediate vulnerabilities in accordance with risk assessments. Patch SLA — critical ≤7 days, high ≤30 days, medium
+    ≤90 — tracked in the ticket system; Intune deployment rings enforce rollout; exception process requires ISSO approval.
+  notes: null
+- id: m6_ca_3.12.1_status
+  module: 6
+  module_name: Risk & Security Assessment
+  section: Security Assessment
+  prompt: What is your current implementation state for CA.L2-3.12.1 — Security Control Assessment?
+  type: single_choice
+  allowed_values:
+  - Fully implemented
+  - Partially implemented
+  - Planned
+  - Not implemented
+  - Not applicable
+  required: true
+  controls:
+  - CA.L2-3.12.1
+  allows_free_text: false
+  free_text_prompt: null
+  depends_on: null
+  weight: 3
+  help_text: Periodically assess the security controls in the system to determine effectiveness. Annual internal review maps
+    evidence to each control; Intranest generates the compliance binder aligned to the SSP, and the ISSO signs off on control
+    status.
+  notes: null
+- id: m6_ca_3.12.2_status
+  module: 6
+  module_name: Risk & Security Assessment
+  section: Security Assessment
+  prompt: What is your current implementation state for CA.L2-3.12.2 — Plan of Action & Milestones?
+  type: single_choice
+  allowed_values:
+  - Fully implemented
+  - Partially implemented
+  - Planned
+  - Not implemented
+  - Not applicable
+  required: true
+  controls:
+  - CA.L2-3.12.2
+  allows_free_text: false
+  free_text_prompt: null
+  depends_on: null
+  weight: 1
+  help_text: Develop and implement plans of action designed to correct deficiencies and reduce or eliminate vulnerabilities.
+    Intranest auto-generates POA&M items from gap findings; the ISSO owns closure and a quarterly review cadence updates milestones.
+  notes: null
+- id: m6_ca_3.12.3_status
+  module: 6
+  module_name: Risk & Security Assessment
+  section: Security Assessment
+  prompt: What is your current implementation state for CA.L2-3.12.3 — Security Control Monitoring?
+  type: single_choice
+  allowed_values:
+  - Fully implemented
+  - Partially implemented
+  - Planned
+  - Not implemented
+  - Not applicable
+  required: true
+  controls:
+  - CA.L2-3.12.3
+  allows_free_text: false
+  free_text_prompt: null
+  depends_on: null
+  weight: 1
+  help_text: Monitor security controls on an ongoing basis to ensure continued effectiveness. Sentinel control-effectiveness
+    dashboards and a monthly ops review convert live telemetry into a continuous monitoring report for the ISSO and leadership.
+  notes: null
+- id: m6_ca_3.12.4_status
+  module: 6
+  module_name: Risk & Security Assessment
+  section: Security Assessment
+  prompt: What is your current implementation state for CA.L2-3.12.4 — System Security Plan?
+  type: single_choice
+  allowed_values:
+  - Fully implemented
+  - Partially implemented
+  - Planned
+  - Not implemented
+  - Not applicable
+  required: true
+  controls:
+  - CA.L2-3.12.4
+  allows_free_text: false
+  free_text_prompt: null
+  depends_on: null
+  weight: 3
+  help_text: '⚠️ CA.L2-3.12.4 CANNOT be placed on a Plan of Action & Milestones (POA&M). You must have a current SSP at the
+    time of assessment. Intranest generates your SSP automatically.
+
+
+    Develop, document, and periodically update the SSP describing system boundaries, environments of operation, implemented
+    security requirements, and relationships to other systems. Intranest produces this document from your intake answers and
+    regenerates it after each annual review or significant change.'
+  notes: null
+- id: m7_sc_3.13.1_status
+  module: 7
+  module_name: System & Communications Protection
+  section: System & Communications Protection
+  prompt: What is your current implementation state for SC.L2-3.13.1 — Boundary Protection?
+  type: single_choice
+  allowed_values:
+  - Fully implemented
+  - Partially implemented
+  - Planned
+  - Not implemented
+  - Not applicable
+  required: true
+  controls:
+  - SC.L2-3.13.1
+  allows_free_text: false
+  free_text_prompt: null
+  depends_on: null
+  weight: 5
+  help_text: '⚠️ High-weight control (5 SPRS points). This is among the most impactful controls for your score.
+
+
+    Monitor, control, and protect communications at external and key internal boundaries. Apex''s Palo Alto PA-450 NGFW enforces
+    the external perimeter and inter-VLAN boundaries between the CUI, user, and DMZ zones; Sentinel ingests firewall logs
+    for correlation.'
+  notes: null
+- id: m7_sc_3.13.2_status
+  module: 7
+  module_name: System & Communications Protection
+  section: System & Communications Protection
+  prompt: What is your current implementation state for SC.L2-3.13.2 — Security Engineering Principles?
+  type: single_choice
+  allowed_values:
+  - Fully implemented
+  - Partially implemented
+  - Planned
+  - Not implemented
+  - Not applicable
+  required: true
+  controls:
+  - SC.L2-3.13.2
+  allows_free_text: false
+  free_text_prompt: null
+  depends_on: null
+  weight: 3
+  help_text: Employ architectural designs, software development techniques, and systems engineering principles that promote
+    information security. Zero-trust reference architecture (Entra ID + Intune + Conditional Access) is the default; new systems
+    require an ISSO-reviewed design.
+  notes: null
+- id: m7_sc_3.13.3_status
+  module: 7
+  module_name: System & Communications Protection
+  section: System & Communications Protection
+  prompt: What is your current implementation state for SC.L2-3.13.3 — Separate User Functionality?
+  type: single_choice
+  allowed_values:
+  - Fully implemented
+  - Partially implemented
+  - Planned
+  - Not implemented
+  - Not applicable
+  required: true
+  controls:
+  - SC.L2-3.13.3
+  allows_free_text: false
+  free_text_prompt: null
+  depends_on: null
+  weight: 1
+  help_text: Separate user functionality from system management functionality. Admins use dedicated privileged accounts (Entra
+    PIM) and a jump-box VM for server administration — no admin tasks from the daily-driver laptop.
+  notes: null
+- id: m7_sc_3.13.4_status
+  module: 7
+  module_name: System & Communications Protection
+  section: System & Communications Protection
+  prompt: What is your current implementation state for SC.L2-3.13.4 — Shared Resource Isolation?
+  type: single_choice
+  allowed_values:
+  - Fully implemented
+  - Partially implemented
+  - Planned
+  - Not implemented
+  - Not applicable
+  required: true
+  controls:
+  - SC.L2-3.13.4
+  allows_free_text: false
+  free_text_prompt: null
+  depends_on: null
+  weight: 1
+  help_text: Prevent unauthorized and unintended information transfer via shared system resources. Intune clears storage on
+    device reassignment; CUI-processing workstations live on a dedicated VLAN with firewall isolation.
+  notes: null
+- id: m7_sc_3.13.5_status
+  module: 7
+  module_name: System & Communications Protection
+  section: System & Communications Protection
+  prompt: What is your current implementation state for SC.L2-3.13.5 — Public-Access Segregation?
+  type: single_choice
+  allowed_values:
+  - Fully implemented
+  - Partially implemented
+  - Planned
+  - Not implemented
+  - Not applicable
+  required: true
+  controls:
+  - SC.L2-3.13.5
+  allows_free_text: false
+  free_text_prompt: null
+  depends_on: null
+  weight: 1
+  help_text: Implement subnetworks for publicly accessible system components that are physically or logically separated from
+    internal networks. Palo Alto PA-450 DMZ zone hosts the public-facing services with no routes into the CUI network.
+  notes: null
+- id: m7_sc_3.13.6_status
+  module: 7
+  module_name: System & Communications Protection
+  section: System & Communications Protection
+  prompt: What is your current implementation state for SC.L2-3.13.6 — Deny Traffic by Default?
+  type: single_choice
+  allowed_values:
+  - Fully implemented
+  - Partially implemented
+  - Planned
+  - Not implemented
+  - Not applicable
+  required: true
+  controls:
+  - SC.L2-3.13.6
+  allows_free_text: false
+  free_text_prompt: null
+  depends_on: null
+  weight: 1
+  help_text: Deny network communications traffic by default and allow by exception. Palo Alto PA-450 zero-trust policy at
+    perimeter and between zones uses explicit allow rules on top of a default-deny posture.
+  notes: null
+- id: m7_sc_3.13.7_status
+  module: 7
+  module_name: System & Communications Protection
+  section: System & Communications Protection
+  prompt: What is your current implementation state for SC.L2-3.13.7 — Prevent Split Tunneling?
+  type: single_choice
+  allowed_values:
+  - Fully implemented
+  - Partially implemented
+  - Planned
+  - Not implemented
+  - Not applicable
+  required: true
+  controls:
+  - SC.L2-3.13.7
+  allows_free_text: false
+  free_text_prompt: null
+  depends_on: null
+  weight: 1
+  help_text: Prevent remote devices from simultaneously establishing a non-remote connection and communicating via some other
+    connection. GlobalProtect VPN is configured as always-on with split-tunneling disabled — all traffic is tunneled.
+  notes: null
+- id: m7_sc_3.13.8_status
+  module: 7
+  module_name: System & Communications Protection
+  section: System & Communications Protection
+  prompt: What is your current implementation state for SC.L2-3.13.8 — Cryptographic Transmission Protection?
+  type: single_choice
+  allowed_values:
+  - Fully implemented
+  - Partially implemented
+  - Planned
+  - Not implemented
+  - Not applicable
+  required: true
+  controls:
+  - SC.L2-3.13.8
+  allows_free_text: false
+  free_text_prompt: null
+  depends_on: null
+  weight: 1
+  help_text: Implement cryptographic mechanisms to prevent unauthorized disclosure of CUI during transmission unless otherwise
+    protected by alternative physical safeguards. TLS 1.2+ for all M365 services (GCC High FIPS); FIPS-validated IPsec for
+    VPN; SMB signing enforced on file shares.
+  notes: null
+- id: m7_sc_3.13.9_status
+  module: 7
+  module_name: System & Communications Protection
+  section: System & Communications Protection
+  prompt: What is your current implementation state for SC.L2-3.13.9 — Terminate Network Connections?
+  type: single_choice
+  allowed_values:
+  - Fully implemented
+  - Partially implemented
+  - Planned
+  - Not implemented
+  - Not applicable
+  required: true
+  controls:
+  - SC.L2-3.13.9
+  allows_free_text: false
+  free_text_prompt: null
+  depends_on: null
+  weight: 1
+  help_text: Terminate network connections associated with communication sessions at the end of the session or after a defined
+    period of inactivity. Entra Conditional Access sign-in frequency policy; GlobalProtect VPN idle timeout 30 minutes.
+  notes: null
+- id: m7_sc_3.13.10_status
+  module: 7
+  module_name: System & Communications Protection
+  section: System & Communications Protection
+  prompt: What is your current implementation state for SC.L2-3.13.10 — Cryptographic Key Management?
+  type: single_choice
+  allowed_values:
+  - Fully implemented
+  - Partially implemented
+  - Planned
+  - Not implemented
+  - Not applicable
+  required: true
+  controls:
+  - SC.L2-3.13.10
+  allows_free_text: false
+  free_text_prompt: null
+  depends_on: null
+  weight: 1
+  help_text: Establish and manage cryptographic keys for cryptography employed in the system. Azure Key Vault (HSM-backed)
+    holds application and Veeam encryption keys; BitLocker recovery keys are escrowed in Entra ID.
+  notes: null
+- id: m7_sc_3.13.11_status
+  module: 7
+  module_name: System & Communications Protection
+  section: System & Communications Protection
+  prompt: What is your current implementation state for SC.L2-3.13.11 — CUI Encryption (FIPS)?
+  type: single_choice
+  allowed_values:
+  - Fully implemented
+  - Partially implemented
+  - Planned
+  - Not implemented
+  - Not applicable
+  required: true
+  controls:
+  - SC.L2-3.13.11
+  allows_free_text: false
+  free_text_prompt: null
+  depends_on: null
+  weight: 5
+  help_text: '⚠️ High-weight control (5 SPRS points). This is among the most impactful controls for your score.
+
+
+    Employ FIPS-validated cryptography when used to protect the confidentiality of CUI. BitLocker in FIPS mode on all laptops;
+    Palo Alto PA-450 in FIPS-CC mode; M365 GCC High runs FIPS 140-2 cryptographic modules by default.'
+  notes: null
+- id: m7_sc_3.13.12_status
+  module: 7
+  module_name: System & Communications Protection
+  section: System & Communications Protection
+  prompt: What is your current implementation state for SC.L2-3.13.12 — Collaborative Computing?
+  type: single_choice
+  allowed_values:
+  - Fully implemented
+  - Partially implemented
+  - Planned
+  - Not implemented
+  - Not applicable
+  required: true
+  controls:
+  - SC.L2-3.13.12
+  allows_free_text: false
+  free_text_prompt: null
+  depends_on: null
+  weight: 1
+  help_text: Prohibit remote activation of collaborative computing devices and provide indication of use to users. Intune
+    baseline disables microphones and cameras at the OS level unless the user grants an explicit per-app permission.
+  notes: null
+- id: m7_sc_3.13.13_status
+  module: 7
+  module_name: System & Communications Protection
+  section: System & Communications Protection
+  prompt: What is your current implementation state for SC.L2-3.13.13 — Mobile Code Control?
+  type: single_choice
+  allowed_values:
+  - Fully implemented
+  - Partially implemented
+  - Planned
+  - Not implemented
+  - Not applicable
+  required: true
+  controls:
+  - SC.L2-3.13.13
+  allows_free_text: false
+  free_text_prompt: null
+  depends_on: null
+  weight: 1
+  help_text: Control and monitor the use of mobile code. Intune browser policies block unsigned ActiveX/Java; Microsoft Edge
+    security mode is set to Strict; legacy browsers are not permitted on CUI endpoints.
+  notes: null
+- id: m7_sc_3.13.14_status
+  module: 7
+  module_name: System & Communications Protection
+  section: System & Communications Protection
+  prompt: What is your current implementation state for SC.L2-3.13.14 — VoIP Control?
+  type: single_choice
+  allowed_values:
+  - Fully implemented
+  - Partially implemented
+  - Planned
+  - Not implemented
+  - Not applicable
+  required: true
+  controls:
+  - SC.L2-3.13.14
+  allows_free_text: false
+  free_text_prompt: null
+  depends_on: null
+  weight: 1
+  help_text: Control and monitor the use of Voice over Internet Protocol (VoIP) technologies. Microsoft Teams carries all
+    VoIP with Entra ID authentication and optional E2EE for sensitive calls; SIP to external numbers is blocked at the firewall.
+  notes: null
+- id: m7_sc_3.13.15_status
+  module: 7
+  module_name: System & Communications Protection
+  section: System & Communications Protection
+  prompt: What is your current implementation state for SC.L2-3.13.15 — Communications Authenticity?
+  type: single_choice
+  allowed_values:
+  - Fully implemented
+  - Partially implemented
+  - Planned
+  - Not implemented
+  - Not applicable
+  required: true
+  controls:
+  - SC.L2-3.13.15
+  allows_free_text: false
+  free_text_prompt: null
+  depends_on: null
+  weight: 1
+  help_text: Protect the authenticity of communications sessions. TLS certificates from trusted CAs with certificate pinning
+    where supported; DKIM, DMARC, and SPF for email authenticity (M365 Exchange Online).
+  notes: null
+- id: m7_sc_3.13.16_status
+  module: 7
+  module_name: System & Communications Protection
+  section: System & Communications Protection
+  prompt: What is your current implementation state for SC.L2-3.13.16 — Protect CUI at Rest?
+  type: single_choice
+  allowed_values:
+  - Fully implemented
+  - Partially implemented
+  - Planned
+  - Not implemented
+  - Not applicable
+  required: true
+  controls:
+  - SC.L2-3.13.16
+  allows_free_text: false
+  free_text_prompt: null
+  depends_on: null
+  weight: 1
+  help_text: Protect the confidentiality of CUI at rest. BitLocker full-disk on laptops; M365 Purview DLP prevents CUI leakage;
+    SharePoint is encrypted at rest in GCC High with FIPS-validated modules.
+  notes: null
+- id: m7_sc_3.13.11_fips_scope
+  module: 7
+  module_name: System & Communications Protection
+  section: Follow-up
+  prompt: What encryption is used to protect CUI at rest and in transit?
+  type: single_choice
+  allowed_values:
+  - FIPS 140-2/3 validated modules
+  - Standard encryption (not FIPS-validated)
+  - Partial encryption coverage
+  - No encryption
+  required: false
+  controls:
+  - SC.L2-3.13.11
+  allows_free_text: false
+  free_text_prompt: null
+  depends_on:
+    question_id: m7_sc_3.13.11_status
+    value: Fully implemented
+  weight: 5
+  help_text: FIPS 140-2/3 validated encryption is required. Non-FIPS encryption results in partial scoring (-3). No encryption
+    = -5.
+  notes: null
+- id: m8_si_3.14.1_status
+  module: 8
+  module_name: System & Information Integrity
+  section: System & Information Integrity
+  prompt: What is your current implementation state for SI.L2-3.14.1 — Flaw Remediation?
+  type: single_choice
+  allowed_values:
+  - Fully implemented
+  - Partially implemented
+  - Planned
+  - Not implemented
+  - Not applicable
+  required: true
+  controls:
+  - SI.L2-3.14.1
+  allows_free_text: false
+  free_text_prompt: null
+  depends_on: null
+  weight: 5
+  help_text: '⚠️ High-weight control (5 SPRS points). This is among the most impactful controls for your score.
+
+
+    Identify, report, and correct information and system flaws in a timely manner. Defender Vulnerability Management surfaces
+    CVEs; Intune Update Rings drive patching with critical ≤7 days, high ≤30 days; Sentinel tracks open-patch KPIs.'
+  notes: null
+- id: m8_si_3.14.2_status
+  module: 8
+  module_name: System & Information Integrity
+  section: System & Information Integrity
+  prompt: What is your current implementation state for SI.L2-3.14.2 — Malicious Code Protection?
+  type: single_choice
+  allowed_values:
+  - Fully implemented
+  - Partially implemented
+  - Planned
+  - Not implemented
+  - Not applicable
+  required: true
+  controls:
+  - SI.L2-3.14.2
+  allows_free_text: false
+  free_text_prompt: null
+  depends_on: null
+  weight: 3
+  help_text: Provide protection from malicious code at designated locations within the system. CrowdStrike Falcon on all endpoints
+    and servers; Microsoft Defender for Endpoint supplements on M365; Palo Alto PA-450 threat prevention module at the perimeter.
+  notes: null
+- id: m8_si_3.14.3_status
+  module: 8
+  module_name: System & Information Integrity
+  section: System & Information Integrity
+  prompt: What is your current implementation state for SI.L2-3.14.3 — Security Alerts and Advisories?
+  type: single_choice
+  allowed_values:
+  - Fully implemented
+  - Partially implemented
+  - Planned
+  - Not implemented
+  - Not applicable
+  required: true
+  controls:
+  - SI.L2-3.14.3
+  allows_free_text: false
+  free_text_prompt: null
+  depends_on: null
+  weight: 3
+  help_text: Monitor system security alerts and advisories and take action in response. Subscribed to CISA Known Exploited
+    Vulnerabilities and the MS Security Update Guide; alerts route to a dedicated Teams channel and the ISSO runs a weekly
+    triage review.
+  notes: null
+- id: m8_si_3.14.4_status
+  module: 8
+  module_name: System & Information Integrity
+  section: System & Information Integrity
+  prompt: What is your current implementation state for SI.L2-3.14.4 — Update Malicious Code Protection?
+  type: single_choice
+  allowed_values:
+  - Fully implemented
+  - Partially implemented
+  - Planned
+  - Not implemented
+  - Not applicable
+  required: true
+  controls:
+  - SI.L2-3.14.4
+  allows_free_text: false
+  free_text_prompt: null
+  depends_on: null
+  weight: 1
+  help_text: Update malicious code protection mechanisms when new releases are available. CrowdStrike auto-updates sensor
+    version and signatures; Defender for Endpoint auto-updates via Intune; no manual touch required.
+  notes: null
+- id: m8_si_3.14.5_status
+  module: 8
+  module_name: System & Information Integrity
+  section: System & Information Integrity
+  prompt: What is your current implementation state for SI.L2-3.14.5 — Perform Malicious Code Scans?
+  type: single_choice
+  allowed_values:
+  - Fully implemented
+  - Partially implemented
+  - Planned
+  - Not implemented
+  - Not applicable
+  required: true
+  controls:
+  - SI.L2-3.14.5
+  allows_free_text: false
+  free_text_prompt: null
+  depends_on: null
+  weight: 1
+  help_text: Perform periodic scans of the system and real-time scans of files from external sources. CrowdStrike enables
+    continuous prevention plus a scheduled monthly full scan; Defender real-time on-access scanning covers downloaded files.
+  notes: null
+- id: m8_si_3.14.6_status
+  module: 8
+  module_name: System & Information Integrity
+  section: System & Information Integrity
+  prompt: What is your current implementation state for SI.L2-3.14.6 — Monitor System Security?
+  type: single_choice
+  allowed_values:
+  - Fully implemented
+  - Partially implemented
+  - Planned
+  - Not implemented
+  - Not applicable
+  required: true
+  controls:
+  - SI.L2-3.14.6
+  allows_free_text: false
+  free_text_prompt: null
+  depends_on: null
+  weight: 1
+  help_text: Monitor the system to detect attacks and indicators of potential attacks. Sentinel analytic rules cover user-behavior
+    anomalies, impossible travel, and suspicious sign-ins; CrowdStrike OverWatch MDR provides 24/7 managed detection.
+  notes: null
+- id: m8_si_3.14.7_status
+  module: 8
+  module_name: System & Information Integrity
+  section: System & Information Integrity
+  prompt: What is your current implementation state for SI.L2-3.14.7 — Identify Unauthorized Use?
+  type: single_choice
+  allowed_values:
+  - Fully implemented
+  - Partially implemented
+  - Planned
+  - Not implemented
+  - Not applicable
+  required: true
+  controls:
+  - SI.L2-3.14.7
+  allows_free_text: false
+  free_text_prompt: null
+  depends_on: null
+  weight: 1
+  help_text: Identify unauthorized use of the system. Sentinel rules flag anomalous access patterns and off-hours activity;
+    M365 Purview DLP alerts on CUI exfiltration attempts via email or cloud storage.
+  notes: null

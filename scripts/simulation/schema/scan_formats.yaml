@@ -1,0 +1,77 @@
+# Scan parser format specifications
+# These define the expected input shapes for the two scan importers.
+
+nessus:
+  file_extension: .nessus
+  format: XML
+  severity_scale:
+    0: INFO
+    1: LOW
+    2: MEDIUM
+    3: HIGH
+    4: CRITICAL
+  required_xml_structure:
+    root: NessusClientData_v2
+    report: Report (child of root)
+    hosts: ReportHost (children of Report)
+    findings: ReportItem (children of ReportHost)
+  report_item_attributes:
+    - severity    # int 0-4
+    - port        # int
+    - protocol    # tcp/udp/icmp
+    - pluginID    # string, e.g. "96982"
+    - pluginName  # string
+    - pluginFamily # string, e.g. "Windows", "General"
+  report_item_child_elements:
+    - cve             # multiple allowed, text content
+    - cvss_base_score # float
+    - cvss3_base_score # float
+    - synopsis        # text
+    - description     # text
+    - solution        # text
+    - risk_factor     # "None", "Low", "Medium", "High", "Critical"
+  host_properties_tags:
+    - host-ip       # IP address
+    - hostname      # FQDN
+    - HOST_START    # scan start time, format: "Wed Apr 10 14:30:00 2026"
+  notes:
+    - Findings with severity=0 are counted but not stored in scan_findings
+    - Each scan produces a DRAFT SCAN_REPORT evidence artifact
+    - Controls mapped via FAMILY_CONTROL_MAP + KEYWORD_CONTROL_MAP
+    - RA.L2-3.11.2 is universal (every scan maps to it)
+
+ciscat:
+  file_extension: .json
+  format: JSON
+  rule_id_format: "xccdf_org.cisecurity.benchmarks_rule_X.Y.Z"
+  bare_id_also_accepted: true  # "1.1.1" works too
+  result_values:
+    - pass           # compliant
+    - fail           # non-compliant -> creates deviation
+    - error          # assessment error -> creates deviation
+    - unknown        # indeterminate -> creates deviation
+    - notchecked     # skipped, no deviation
+    - informational  # informational, no deviation
+  required_json_structure:
+    benchmark:
+      title: string        # e.g. "CIS Microsoft Windows 11 Enterprise Benchmark"
+      version: string      # e.g. "3.0.0"
+      profile: string|null # e.g. "Level 1 (L1) - Corporate/Enterprise Environment"
+    rules: array of objects
+    summary: object (optional)
+    timestamp: ISO8601 string (optional)
+    target_host: string (optional)
+  rule_object_fields:
+    - rule_id         # xccdf format or bare
+    - title           # human-readable
+    - result          # pass/fail/error/unknown/notchecked/informational
+    - actual_value    # string, what was found
+    - expected_value  # string, what should be
+    - severity        # critical/high/medium/low/info (optional)
+    - description     # text (optional)
+  notes:
+    - CIS-CAT imports create baseline_deviations, NOT scan_findings
+    - scan_finding_id is NULL on CIS-CAT deviations
+    - scan_imports.scan_type = 'CISCAT'
+    - Baseline auto-adopted if not already adopted by the org
+    - Matching is by cis_id against baseline_items.cis_id
