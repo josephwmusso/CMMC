@@ -309,13 +309,27 @@ def verify_narrative(
             ))
 
     # --- Check 5: Specific fabricated dates ---
+    # Well-known publication dates that should never be flagged
+    _KNOWN_PUB_DATES = {
+        "February 2020", "June 2018", "May 2024", "November 2025",
+        "December 2024",  # CMMC final rule publication
+    }
     for match in SPECIFIC_DATE_PATTERN.finditer(narrative):
         date_str = match.group()
         if date_str in evidence_text_corpus:
             continue
+        # Skip well-known NIST/CMMC publication dates
+        if any(kd in date_str or date_str in kd for kd in _KNOWN_PUB_DATES):
+            continue
+        # Fuzzy year-month grounding: extract year from the date and check
+        # if the year appears in evidence context (most legitimate dates
+        # reference the same timeframe as evidence artifacts)
+        year_match = re.search(r'(\d{4})', date_str)
+        if year_match and year_match.group(1) in evidence_text_corpus:
+            continue
         context = narrative[max(0, match.start()-40):match.end()+40]
         findings.append(HallucinationFinding(
-            finding_type="specific_date",
+            finding_type="ungrounded_date",
             value=date_str,
             context=f"...{context}...",
             severity="warning"

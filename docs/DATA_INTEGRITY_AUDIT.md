@@ -37,8 +37,8 @@ Commit trail: 048259a (harness baseline) → 3d30a6e (DEMO_ORG_PROFILE fix) → 
 - 1.8: Resolved — module help texts genericized (removed all Apex tool references)
 - 3.2: Resolved — org_profile.py uses "organization" not "defense subcontractor"
 - 5.1: Resolved — register without invite returns 400 (no silent Apex fallback)
-- 2.4: OPEN — SPECIFIC_DATE_PATTERN flags all dates
-- 4.3: OPEN — reset_demo_data.py not transactional
+- 2.4: Resolved — date detector uses grounding (year in evidence corpus + known publication dates)
+- 4.3: Resolved — was already transactional (engine.begin() at L347); added --dry-run + --yes flags
 - 5.2: OPEN — audit_log has no org_id column
 
 ### LOW — 2 of 4 Resolved

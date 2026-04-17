@@ -318,6 +318,16 @@ def main() -> None:
         action="store_true",
         help="Skip resetting users.onboarding_complete for admin.",
     )
+    parser.add_argument(
+        "--dry-run",
+        action="store_true",
+        help="Show what would be deleted without actually deleting.",
+    )
+    parser.add_argument(
+        "--yes", "-y",
+        action="store_true",
+        help="Skip confirmation prompt.",
+    )
     args = parser.parse_args()
 
     engine = _build_engine(args.database_url)
@@ -333,6 +343,9 @@ def main() -> None:
     print(_c(Fore.CYAN, f"  Reset demo data for: {org_name} ({args.org_id})"))
     print(_c(Fore.CYAN, "=" * 60))
 
+    if args.dry_run:
+        print(_c(Fore.YELLOW, "\n  DRY RUN — no data will be deleted.\n"))
+
     if args.production:
         typed = input(
             f"\nThis will wipe ALL operational data for '{org_name}'. "
@@ -341,6 +354,15 @@ def main() -> None:
         if typed != org_name:
             print(_c(Fore.RED, "Name did not match. Aborting."))
             sys.exit(1)
+    elif not args.yes and not args.dry_run:
+        confirm = input(f"\nDelete data for '{org_name}'? [y/N] ").strip().lower()
+        if confirm != "y":
+            print("Aborted.")
+            sys.exit(0)
+
+    if args.dry_run:
+        print(_c(Fore.YELLOW, "  Dry run complete — no changes made."))
+        sys.exit(0)
 
     # Single transaction for all phases — rollback on any error.
     try:
