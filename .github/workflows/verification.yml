@@ -1,0 +1,81 @@
+name: Verification Harness
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+    branches: [main]
+
+jobs:
+  verify:
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+
+    services:
+      postgres:
+        image: postgres:16
+        env:
+          POSTGRES_DB: cmmc
+          POSTGRES_USER: cmmc
+          POSTGRES_PASSWORD: localdev
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd pg_isready
+          --health-interval 10s
+          --health-timeout 5s
+          --health-retries 5
+
+    env:
+      DATABASE_URL: postgresql://cmmc:localdev@localhost:5432/cmmc
+      ALLOW_ANONYMOUS: "true"
+      QDRANT_HOST: ""
+      TEMPORAL_HOST: ""
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Set up Python 3.11
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+
+      - name: Cache pip
+        uses: actions/cache@v4
+        with:
+          path: ~/.cache/pip
+          key: ${{ runner.os }}-pip-${{ hashFiles('requirements.txt') }}
+          restore-keys: ${{ runner.os }}-pip-
+
+      - name: Install dependencies
+        run: |
+          pip install -r requirements.txt
+          pip install spacy
+          python -m spacy download en_core_web_sm
+
+      - name: Initialize database
+        run: python scripts/ci_init_db.py
+
+      - name: Start backend
+        run: |
+          python -m uvicorn src.api.main:app --host 0.0.0.0 --port 8001 &
+          sleep 5
+          curl -sf http://localhost:8001/health
+
+      - name: Run deterministic harness
+        run: |
+          python -m scripts.simulation.run \
+            --fixture meridian_aerospace \
+            --backend-url http://localhost:8001 \
+            --stages setup,intake,evidence,scans,assert \
+            --json-report reports/harness.json
+
+      - name: Upload results
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: verification-results
+          path: |
+            reports/harness.json
+            scripts/simulation/runs/
