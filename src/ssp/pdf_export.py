@@ -41,7 +41,7 @@ FAMILY_ORDER = [
 class SSPPDF(FPDF):
     """Custom PDF with header/footer for the SSP document."""
 
-    def __init__(self, org_name="Apex Defense Solutions"):
+    def __init__(self, org_name="Organization"):
         super().__init__()
         self.org_name = org_name
         self.set_auto_page_break(auto=True, margin=20)
@@ -104,7 +104,7 @@ def generate_ssp_pdf(org_id: str) -> str:
             text("SELECT name FROM organizations WHERE id = :oid"),
             {"oid": org_id},
         ).fetchone()
-        org_name = org_row[0] if org_row else "Apex Defense Solutions"
+        org_name = org_row[0] if org_row else "Organization"
 
         # Fetch all SSP sections with control metadata
         sections = conn.execute(text("""

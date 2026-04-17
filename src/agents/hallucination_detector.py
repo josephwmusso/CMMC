@@ -279,6 +279,10 @@ def verify_narrative(
             continue
         if version in evidence_text_corpus:
             continue
+        # NIST control ID suffixes (3.1.1, 3.5.3, 3.13.11) are legitimate
+        pre = narrative[max(0, match.start()-5):match.start()]
+        if "L2-" in pre or "800-" in pre or "171" in pre:
+            continue
         context = narrative[max(0, match.start()-40):match.end()+40]
         findings.append(HallucinationFinding(
             finding_type="version",

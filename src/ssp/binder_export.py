@@ -43,7 +43,7 @@ FAMILY_NAMES = {
 }
 
 
-def generate_binder(org_id=ORG_ID, org_name="Apex Defense Solutions"):
+def generate_binder(org_id=ORG_ID, org_name="Organization"):
     """Generate a complete CMMC assessment binder as a ZIP file."""
 
     ts = datetime.now().strftime("%Y%m%d_%H%M%S")

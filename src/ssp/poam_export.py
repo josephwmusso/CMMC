@@ -46,7 +46,7 @@ def _fetch_poam_data(org_id):
             text("SELECT name FROM organizations WHERE id = :oid"),
             {"oid": org_id},
         ).fetchone()
-        org_name = org_row[0] if org_row else "Apex Defense Solutions"
+        org_name = org_row[0] if org_row else "Organization"
 
         rows = conn.execute(text("""
             SELECT p.id, p.control_id, p.weakness_description, p.remediation_plan,

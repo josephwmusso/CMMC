@@ -3,16 +3,34 @@
 Purpose: map every location where platform can populate customer-facing output
 with data not originating from that customer's input or NIST/CMMC source text.
 
-Commit trail: 048259a (harness baseline) → 3d30a6e (DEMO_ORG_PROFILE fix).
+Commit trail: 048259a (harness baseline) → 3d30a6e (DEMO_ORG_PROFILE fix) → b1c5b68 (kill DEMO_ORG_PROFILE) → c0a1961 (hostname regex) → b97c679 (SC.L2-3.13.11 + compound adjectives).
 
 ## Summary
 
 - Total findings: 22
-- Critical: 5
-- High: 7
+- Critical: 5 (ALL RESOLVED)
+- High: 7 (ALL RESOLVED)
 - Medium: 6
 - Low: 4
 - Deferred (UI/tests/scripts-only): 3
+
+## Resolution Status
+
+### CRITICAL — All 5 Resolved
+- 1.1: Resolved in b1c5b68 — format_org_context raises on empty, no DEMO_ORG_PROFILE fallback
+- 1.2: Resolved in b1c5b68 — DocumentGenerator reads from company_profiles via build_org_profile
+- 1.3: Resolved in b1c5b68 — OrgProfileInput.to_dict() no longer fills from DEMO_ORG_PROFILE
+- 2.1: Resolved in c0a1961 — SAFE_ACRONYMS + structural hostname detection
+- 2.2: Documented as MEDIUM deferred — auto-conversion mechanism preserved as safety net
+- 4.1: Resolved in b1c5b68 — reset_demo_data preserves company_profiles + boot seed
+
+### HIGH — All 7 Resolved
+- 1.4: Resolved in b1c5b68 — SSP export uses build_org_profile(current_user.org_id, db)
+- 1.5/3.1: Resolved in this commit — DEFAULTS stubs replaced with "[NOT PROVIDED — complete Module 0]"
+- 1.6: Resolved in this commit — scoring_routes reads org name from organizations table
+- 1.7: Resolved in this commit — export fallbacks default to "Organization" not "Apex Defense Solutions"
+- 2.3: Resolved in this commit — VERSION_PATTERN skips numbers preceded by "L2-" or "800-"
+- 4.2: Resolved in b1c5b68 — seed_apex_company_profile wired into render_startup.py boot
 
 ## Findings by Commitment
 

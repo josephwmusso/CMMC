@@ -23,6 +23,11 @@ logger = logging.getLogger(__name__)
 router = APIRouter(prefix="/api/scoring", tags=["scoring"])
 
 
+def _get_org_name(org_id: str, db) -> str:
+    row = db.execute(text("SELECT name FROM organizations WHERE id = :o"), {"o": org_id}).fetchone()
+    return row[0] if row else "Organization"
+
+
 def _safe_sprs(org_id: str):
     """Try normal SPRS calculator, fall back to raw SQL."""
     try:
@@ -168,7 +173,7 @@ def _fallback_overview(org_id: str, db: Session):
                 "critical_gaps": [d for d in details if d["points"] >= 5 and d["status_label"] != "MET"],
                 "families": family_map,
                 "details": details,
-                "org_name": "Apex Defense Solutions",
+                "org_name": _get_org_name(org_id, db),
                 "total": total_controls,
             },
             "gaps": {
