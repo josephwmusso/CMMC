@@ -27,11 +27,24 @@ Commit trail: 048259a (harness baseline) → 3d30a6e (DEMO_ORG_PROFILE fix) → 
 
 ### HIGH — All 7 Resolved
 - 1.4: Resolved in b1c5b68 — SSP export uses build_org_profile(current_user.org_id, db)
-- 1.5/3.1: Resolved in this commit — DEFAULTS stubs replaced with "[NOT PROVIDED — complete Module 0]"
-- 1.6: Resolved in this commit — scoring_routes reads org name from organizations table
-- 1.7: Resolved in this commit — export fallbacks default to "Organization" not "Apex Defense Solutions"
-- 2.3: Resolved in this commit — VERSION_PATTERN skips numbers preceded by "L2-" or "800-"
+- 1.5/3.1: Resolved — DEFAULTS stubs replaced with "[NOT PROVIDED — complete Module 0]"
+- 1.6: Resolved — scoring_routes reads org name from organizations table
+- 1.7: Resolved — export fallbacks default to "Organization" not "Apex Defense Solutions"
+- 2.3: Resolved — VERSION_PATTERN skips numbers preceded by "L2-" or "800-"
 - 4.2: Resolved in b1c5b68 — seed_apex_company_profile wired into render_startup.py boot
+
+### MEDIUM — 3 of 6 Resolved
+- 1.8: Resolved — module help texts genericized (removed all Apex tool references)
+- 3.2: Resolved — org_profile.py uses "organization" not "defense subcontractor"
+- 5.1: Resolved — register without invite returns 400 (no silent Apex fallback)
+- 2.4: OPEN — SPECIFIC_DATE_PATTERN flags all dates
+- 4.3: OPEN — reset_demo_data.py not transactional
+- 5.2: OPEN — audit_log has no org_id column
+
+### LOW — 2 of 4 Resolved
+- 1.9: Resolved — DEV_USER documented as dev-only, email changed to dev@intranest.local
+- 3.3: Resolved — org_profile.py uses DFARS clause reference from company_profiles
+- 5.3: OPEN — frontend AppContext hardcodes "Apex Defense Solutions" (D:\CMMC_mm fix pending)
 
 ## Findings by Commitment
 

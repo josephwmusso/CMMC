@@ -19,7 +19,7 @@ QUESTIONS = [
     status_q(M, "CM", "3.4.1", "CM.L2-3.4.1", "Baseline Configuration",
         SECTION_CM, 5,
         "Maintain baseline configs and inventories of hardware, software, and firmware. "
-        "Apex uses Intune compliance policies as the Windows 11 baseline and Defender "
+        "A typical implementation uses configuration policies as the baseline and endpoint "
         "Vulnerability Management for asset + software inventory; Palo Alto config is "
         "tracked in Panorama-equivalent version control.",
         high_weight_flag=True,
@@ -91,7 +91,7 @@ QUESTIONS = [
     status_q(M, "IA", "3.5.3", "IA.L2-3.5.3", "Multifactor Authentication",
         SECTION_IA, 3,
         "MFA for local and network access to privileged accounts, and for network access to "
-        "non-privileged accounts. Apex uses Entra Conditional Access requiring MFA for all "
+        "non-privileged accounts. A typical implementation uses conditional access requiring MFA for all "
         "cloud apps; Palo Alto GlobalProtect uses SAML to Entra so VPN inherits MFA.",
     ),
     status_q(M, "IA", "3.5.4", "IA.L2-3.5.4", "Replay-Resistant Authentication",

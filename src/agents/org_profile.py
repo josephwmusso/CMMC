@@ -62,11 +62,11 @@ def build_org_profile(org_id: str, db: Session) -> dict:
         "org_id":         org_id,
         "name":           name,
         "company_name":   name,
-        "description":    f"{emp}-employee contractor in {location}" if location else f"{emp}-employee contractor",
+        "description":    f"{emp}-employee organization in {location}" if location else f"{emp}-employee organization",
         "employee_count": emp,
         "facilities":     f"Single facility in {location}" if location else "Single facility",
         "cui_types":      ", ".join(cui) if cui else "CUI",
-        "contracts":      "DoD subcontractor under DFARS 7012 clause" if has_dfars else "Government contractor",
+        "contracts":      "Contractor operating under DFARS 252.204-7012" if has_dfars else "Government contractor",
         "systems": {
             "identity":            row.identity_provider or "Not specified",
             "email_collaboration": row.email_platform or "Not specified",

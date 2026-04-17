@@ -86,7 +86,7 @@ QUESTIONS = [
     status_q(M, "PE", "3.10.3", "PE.L2-3.10.3", "Escort Visitors",
         SECTION_PE, 1,
         "Escort visitors and monitor their activity. Sign-in sheet at reception; temp "
-        "visitor badge; documented escort policy requiring an Apex employee present at all "
+        "visitor badge; documented escort policy requiring an employee present at all "
         "times for visitors in CUI-processing areas.",
     ),
     status_q(M, "PE", "3.10.4", "PE.L2-3.10.4", "Physical Access Records",

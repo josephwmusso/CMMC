@@ -90,11 +90,11 @@ def _set_job(job_id: str, **kwargs):
 # Request/Response models
 # ---------------------------------------------------------------------------
 class OrgProfileInput(BaseModel):
-    org_name: str = Field(default="Apex Defense Solutions")
-    system_name: str = Field(default="Apex Secure Enclave (ASE)")
+    org_name: str = Field(default="Organization")
+    system_name: str = Field(default="Information System")
     system_description: str = Field(default="")
-    employee_count: int = Field(default=45)
-    facility_type: str = Field(default="Single office with dedicated server room")
+    employee_count: int = Field(default=0)
+    facility_type: str = Field(default="")
     tools_description: str = Field(default="")
     network_description: str = Field(default="")
     org_id: str = Field(default="default-org")
@@ -499,7 +499,8 @@ def export_latest(db: Session = Depends(get_db), current_user: dict = Depends(ge
     except CompanyProfileMissing:
         raise HTTPException(400, "Organization must complete onboarding before exporting SSP.")
     timestamp = datetime.datetime.now().strftime("%Y%m%d_%H%M%S")
-    filename = f"SSP_Apex_Defense_Solutions_{timestamp}.docx"
+    org_slug = org_profile.get("name", "Organization").replace(" ", "_")[:30]
+    filename = f"SSP_{org_slug}_{timestamp}.docx"
     filepath = os.path.join(EXPORT_DIR, filename)
 
     try:

@@ -48,14 +48,14 @@ DEV_MODE = (
     JWT_SECRET_KEY == "dev-secret-change-in-production"
     or os.getenv("ALLOW_ANONYMOUS", "").lower() == "true"
 )
+# DEV ONLY: anonymous access uses demo org. ALLOW_ANONYMOUS must be false in production.
 DEV_USER = {
     "id": "dev-user",
-    "email": "david.kim@apex-defense.us",
-    "org_id": "9de53b587b23450b87af",
+    "email": "dev@intranest.local",
+    "org_id": "9de53b587b23450b87af",  # Apex demo org — dev/anonymous only
     "full_name": "Dev User",
     "is_admin": True,
     "role": ROLE_SUPERADMIN,
-    # Demo org already has full intake + docs — wizard shouldn't trigger.
     "onboarding_complete": True,
 }
 
@@ -297,14 +297,14 @@ def register(user_in: UserCreate, db: Session = Depends(get_db)):
             raise HTTPException(400, "Invite is tied to a different email address")
         assigned_org_id = inv_org
         assigned_role = (inv_role or ROLE_MEMBER).upper()
-    elif user_in.org_id:
-        if not allow_anon:
-            raise HTTPException(400, "Invite code required")
+    elif user_in.org_id and allow_anon:
+        # DEV ONLY: direct org_id assignment for anonymous/demo mode
         assigned_org_id = user_in.org_id
     else:
-        if not allow_anon:
-            raise HTTPException(400, "Invite code required")
-        assigned_org_id = "9de53b587b23450b87af"  # demo org fallback
+        raise HTTPException(
+            400,
+            "Registration requires an invitation. Contact your administrator.",
+        )
 
     user_id = f"USR-{uuid.uuid4().hex[:12].upper()}"
     hashed_pw = hash_password(user_in.password)

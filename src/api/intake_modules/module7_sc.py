@@ -17,7 +17,7 @@ QUESTIONS = [
     status_q(M, "SC", "3.13.1", "SC.L2-3.13.1", "Boundary Protection",
         SECTION_SC, 5,
         "Monitor, control, and protect communications at external and key internal "
-        "boundaries. Apex's Palo Alto PA-450 NGFW enforces the external perimeter and "
+        "boundaries. A next-gen firewall enforces the external perimeter and "
         "inter-VLAN boundaries between the CUI, user, and DMZ zones; Sentinel ingests "
         "firewall logs for correlation.",
         high_weight_flag=True,

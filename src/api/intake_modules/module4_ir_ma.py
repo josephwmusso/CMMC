@@ -18,7 +18,7 @@ QUESTIONS = [
     status_q(M, "IR", "3.6.1", "IR.L2-3.6.1", "Incident Handling",
         SECTION_IR, 3,
         "Operational incident-handling capability covering preparation, detection, analysis, "
-        "containment, recovery, and user response. Apex uses a documented IR plan; Sentinel "
+        "containment, recovery, and user response. A mature program uses a documented IR plan; SIEM "
         "generates detections; CrowdStrike Real Time Response is used for containment; a "
         "dedicated Teams channel is the comms hub during incidents.",
     ),

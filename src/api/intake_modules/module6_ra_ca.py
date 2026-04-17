@@ -21,7 +21,7 @@ QUESTIONS = [
     status_q(M, "RA", "3.11.1", "RA.L2-3.11.1", "Risk Assessments",
         SECTION_RA, 3,
         "Periodically assess risk to operations, assets, and individuals from CUI processing "
-        "systems. Apex performs an annual formal risk assessment; Defender Vulnerability "
+        "systems. Organizations should perform an annual formal risk assessment; vulnerability "
         "Management and Sentinel risk scoring feed findings into the RA report.",
     ),
     status_q(M, "RA", "3.11.2", "RA.L2-3.11.2", "Vulnerability Scan",

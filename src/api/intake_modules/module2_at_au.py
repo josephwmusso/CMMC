@@ -22,7 +22,7 @@ QUESTIONS = [
     status_q(M, "AT", "3.2.1", "AT.L2-3.2.1", "Role-Based Risk Awareness",
         SECTION_AT, 3,
         "Make users, admins, and managers aware of the security risks of their activities. "
-        "For Apex Defense (45 employees on Entra ID + M365 GCC High), KnowBe4 delivers the "
+        "For a typical contractor, the training platform delivers "
         "new-hire security awareness course and annual refreshers; enrollment is driven by "
         "Entra ID group membership so onboarding auto-enrolls and offboarding auto-revokes.",
         high_weight_flag=False,
@@ -45,7 +45,7 @@ QUESTIONS = [
     status_q(M, "AU", "3.3.1", "AU.L2-3.3.1", "System Auditing",
         SECTION_AU, 5,
         "Create, protect, and retain audit records covering logins, privilege changes, CUI "
-        "access, and security-relevant events. For Apex: Microsoft Sentinel is the central "
+        "access, and security-relevant events. A centralized SIEM is the "
         "SIEM, ingesting Entra ID sign-in logs, M365 Unified Audit Log, CrowdStrike Falcon "
         "event streams, and Palo Alto PA-450 syslog. 1-year hot retention plus 2-year cold.",
         high_weight_flag=True,
