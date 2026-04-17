@@ -255,12 +255,27 @@ class SSPGeneratorV2:
             org_profile=self.org_profile,
         )
 
-        # Step 7: If verification fails with critical findings, convert to gap report
+        # Step 7: Flag-and-preserve — if detector fires, keep original, show gap report
+        original_narrative = None
+        detector_findings_json = None
+
         if not verification.passed:
-            print(f"  WARNING: {control_id}: Hallucination detected - converting to gap report")
+            import logging as _logging
+            _logger = _logging.getLogger(__name__)
+            _logger.warning(
+                f"Detector flagged {control_id}: {len(verification.findings)} finding(s). "
+                f"Original narrative preserved. Review suggested."
+            )
             for finding in verification.findings:
                 if finding.severity == "critical":
-                    print(f"     [{finding.finding_type}] {finding.value}")
+                    _logger.warning(f"  [{finding.finding_type}] {finding.value}")
+
+            original_narrative = parsed.get("narrative", "")
+            detector_findings_json = [
+                {"type": f.finding_type, "value": f.value, "severity": f.severity,
+                 "context": f.context}
+                for f in verification.findings
+            ]
 
             parsed = self._convert_to_gap_report(
                 control_id=control_id,
@@ -277,6 +292,8 @@ class SSPGeneratorV2:
             "raw_response": raw_response,
             "evidence_count": len(evidence),
             "generation_mode": generation_mode,
+            "original_narrative": original_narrative,
+            "detector_findings": detector_findings_json,
         }
 
     def _parse_response(self, raw: str, control_id: str) -> dict:
@@ -370,12 +387,10 @@ class SSPGeneratorV2:
             "assessment_objectives_not_met": original_parsed.get("assessment_objectives_not_met", []),
         }
 
-    def persist_section(self, parsed: dict, version: int = 1) -> str:
-        """
-        Persist a generated section to the ssp_sections table.
-        Uses raw SQL with CAST(:x AS json).
-        Returns the section ID.
-        """
+    def persist_section(self, parsed: dict, version: int = 1,
+                        original_narrative: str = None,
+                        detector_findings: list = None) -> str:
+        """Persist a generated section with flag-and-preserve metadata."""
         control_id = parsed["control_id"]
         now = datetime.now(timezone.utc)
 
@@ -383,25 +398,34 @@ class SSPGeneratorV2:
         section_id = hashlib.sha256(seed.encode()).hexdigest()[:20]
 
         status = parsed["implementation_status"]
-
         evidence_refs = json.dumps(parsed.get("evidence_references", []))
         gaps = json.dumps(parsed.get("gaps", []))
+
+        review_status = "REVIEW_SUGGESTED" if original_narrative else "CLEAN"
+        det_json = json.dumps(detector_findings) if detector_findings else None
 
         query = text("""
             INSERT INTO ssp_sections
                 (id, org_id, control_id, implementation_status, narrative,
-                 evidence_refs, gaps, version, generated_by, created_at, updated_at)
+                 evidence_refs, gaps, version, generated_by, created_at, updated_at,
+                 review_status, original_narrative, detector_findings, flagged_at)
             VALUES
                 (:id, :org_id, :control_id, :status, :narrative,
                  CAST(:evidence_refs AS json), CAST(:gaps AS json),
-                 :version, :generated_by, :created_at, :updated_at)
+                 :version, :generated_by, :created_at, :updated_at,
+                 :review_status, :original_narrative,
+                 CAST(:det_findings AS jsonb), :flagged_at)
             ON CONFLICT (org_id, control_id, version) DO UPDATE SET
                 implementation_status = :status,
                 narrative = :narrative,
                 evidence_refs = CAST(:evidence_refs AS json),
                 gaps = CAST(:gaps AS json),
                 generated_by = :generated_by,
-                updated_at = :updated_at
+                updated_at = :updated_at,
+                review_status = :review_status,
+                original_narrative = :original_narrative,
+                detector_findings = CAST(:det_findings AS jsonb),
+                flagged_at = :flagged_at
         """)
 
         with get_session() as session:
@@ -417,6 +441,10 @@ class SSPGeneratorV2:
                 "generated_by": "ssp_generator_v2",
                 "created_at": now.isoformat(),
                 "updated_at": now.isoformat(),
+                "review_status": review_status,
+                "original_narrative": original_narrative,
+                "det_findings": det_json,
+                "flagged_at": now.isoformat() if original_narrative else None,
             })
             session.commit()
 

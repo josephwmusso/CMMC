@@ -50,6 +50,12 @@ def main():
         "ALTER TABLE invites ADD COLUMN IF NOT EXISTS target_org_name VARCHAR(200)",
         "ALTER TABLE invites ALTER COLUMN org_id DROP NOT NULL",
         "ALTER TABLE baseline_items ADD COLUMN IF NOT EXISTS match_plugin_ids TEXT[]",
+        "ALTER TABLE ssp_sections ADD COLUMN IF NOT EXISTS review_status VARCHAR(30) DEFAULT 'CLEAN'",
+        "ALTER TABLE ssp_sections ADD COLUMN IF NOT EXISTS detector_findings JSONB",
+        "ALTER TABLE ssp_sections ADD COLUMN IF NOT EXISTS original_narrative TEXT",
+        "ALTER TABLE ssp_sections ADD COLUMN IF NOT EXISTS flagged_at TIMESTAMPTZ",
+        "ALTER TABLE ssp_sections ADD COLUMN IF NOT EXISTS reviewed_at TIMESTAMPTZ",
+        "ALTER TABLE ssp_sections ADD COLUMN IF NOT EXISTS reviewed_by VARCHAR(20)",
     ]
     for sql in migration_sqls:
         try:

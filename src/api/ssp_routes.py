@@ -169,8 +169,12 @@ def generate_single_control(
     result_data = generator.generate_section(req.control_id)
     parsed = result_data["parsed"]
 
-    # Persist to DB
-    generator.persist_section(parsed)
+    # Persist to DB with flag-and-preserve metadata
+    generator.persist_section(
+        parsed,
+        original_narrative=result_data.get("original_narrative"),
+        detector_findings=result_data.get("detector_findings"),
+    )
 
     return ControlResult(
         control_id=parsed.get("control_id", req.control_id),
@@ -541,9 +545,12 @@ def get_narrative(control_id: str, db: Session = Depends(get_db), current_user: 
     from sqlalchemy import text as sa_text
 
     row = db.execute(sa_text("""
-        SELECT narrative, implementation_status
+        SELECT narrative, implementation_status, review_status,
+               original_narrative IS NOT NULL AS has_original,
+               detector_findings, flagged_at
         FROM ssp_sections
         WHERE control_id = :cid AND org_id = :oid
+        ORDER BY version DESC LIMIT 1
     """), {"cid": control_id, "oid": current_user["org_id"]}).fetchone()
 
     if not row:
@@ -553,7 +560,73 @@ def get_narrative(control_id: str, db: Session = Depends(get_db), current_user: 
         "control_id": control_id,
         "narrative": row[0],
         "implementation_status": row[1],
+        "review_status": row[2] or "CLEAN",
+        "has_original_narrative": bool(row[3]),
+        "detector_findings": row[4] if row[2] and row[2] != "CLEAN" else None,
+        "flagged_at": row[5].isoformat() if row[5] else None,
     }
+
+
+@router.get("/sections/{control_id}/original-narrative")
+def get_original_narrative(
+    control_id: str,
+    db: Session = Depends(get_db),
+    current_user: dict = Depends(get_current_user),
+):
+    """Retrieve the preserved original narrative before detector conversion."""
+    from sqlalchemy import text as sa_text
+    row = db.execute(sa_text("""
+        SELECT original_narrative, detector_findings
+        FROM ssp_sections
+        WHERE control_id = :cid AND org_id = :oid AND original_narrative IS NOT NULL
+        ORDER BY version DESC LIMIT 1
+    """), {"cid": control_id, "oid": current_user["org_id"]}).fetchone()
+    if not row:
+        raise HTTPException(404, "No preserved original narrative for this control")
+    return {
+        "control_id": control_id,
+        "original_narrative": row[0],
+        "detector_findings": row[1],
+    }
+
+
+@router.post("/sections/{control_id}/review")
+def review_section(
+    control_id: str,
+    body: dict,
+    db: Session = Depends(get_db),
+    current_user: dict = Depends(get_current_user),
+):
+    """Accept or reject a flagged SSP section."""
+    from sqlalchemy import text as sa_text
+
+    action = (body.get("action") or "").upper()
+    if action not in ("ACCEPT", "REJECT"):
+        raise HTTPException(400, "action must be ACCEPT or REJECT")
+
+    now = datetime.datetime.now(datetime.timezone.utc)
+
+    if action == "ACCEPT":
+        db.execute(sa_text("""
+            UPDATE ssp_sections SET review_status = 'REVIEWED_ACCEPTED',
+                reviewed_at = :now, reviewed_by = :by
+            WHERE control_id = :cid AND org_id = :oid
+        """), {"cid": control_id, "oid": current_user["org_id"],
+               "now": now, "by": current_user["id"]})
+    else:
+        # REJECT: restore original narrative
+        db.execute(sa_text("""
+            UPDATE ssp_sections SET
+                narrative = COALESCE(original_narrative, narrative),
+                original_narrative = NULL,
+                review_status = 'REVIEWED_REJECTED',
+                reviewed_at = :now, reviewed_by = :by
+            WHERE control_id = :cid AND org_id = :oid
+        """), {"cid": control_id, "oid": current_user["org_id"],
+               "now": now, "by": current_user["id"]})
+
+    db.commit()
+    return {"control_id": control_id, "review_status": f"REVIEWED_{action}D"}
 
 
 @router.get("/download/{filename}")

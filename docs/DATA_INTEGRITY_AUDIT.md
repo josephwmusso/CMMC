@@ -21,7 +21,8 @@ Commit trail: 048259a (harness baseline) → 3d30a6e (DEMO_ORG_PROFILE fix) → 
 - 1.2: Resolved in b1c5b68 — DocumentGenerator reads from company_profiles via build_org_profile
 - 1.3: Resolved in b1c5b68 — OrgProfileInput.to_dict() no longer fills from DEMO_ORG_PROFILE
 - 2.1: Resolved in c0a1961 — SAFE_ACRONYMS + structural hostname detection
-- 2.2: Documented as MEDIUM deferred — auto-conversion mechanism preserved as safety net
+- 2.2: Resolved — flag-and-preserve pattern: original narrative stored in original_narrative column,
+  gap report shown as default, review_status tracks human review, original retrievable via API
 - 4.1: Resolved in b1c5b68 — reset_demo_data preserves company_profiles + boot seed
 
 ### HIGH — All 7 Resolved

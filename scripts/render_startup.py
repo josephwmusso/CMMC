@@ -1146,6 +1146,22 @@ def main():
         conn.rollback()
         logger.warning(f"  company_profiles.training_solution migration skipped: {e}")
 
+    # ssp_sections flag-and-preserve columns for detector findings
+    for col_ddl in [
+        "ALTER TABLE ssp_sections ADD COLUMN IF NOT EXISTS review_status VARCHAR(30) DEFAULT 'CLEAN'",
+        "ALTER TABLE ssp_sections ADD COLUMN IF NOT EXISTS detector_findings JSONB",
+        "ALTER TABLE ssp_sections ADD COLUMN IF NOT EXISTS original_narrative TEXT",
+        "ALTER TABLE ssp_sections ADD COLUMN IF NOT EXISTS flagged_at TIMESTAMPTZ",
+        "ALTER TABLE ssp_sections ADD COLUMN IF NOT EXISTS reviewed_at TIMESTAMPTZ",
+        "ALTER TABLE ssp_sections ADD COLUMN IF NOT EXISTS reviewed_by VARCHAR(20)",
+    ]:
+        try:
+            cur.execute(col_ddl)
+            conn.commit()
+        except Exception:
+            conn.rollback()
+    logger.info("  ssp_sections flag-and-preserve columns: OK")
+
     # invites: new-customer invites have no org until redemption.
     for alter_sql in [
         "ALTER TABLE invites ADD COLUMN IF NOT EXISTS invite_type VARCHAR(30) DEFAULT 'USER_TO_ORG'",
