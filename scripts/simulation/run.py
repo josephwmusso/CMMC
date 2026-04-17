@@ -59,6 +59,7 @@ def main():
     parser.add_argument("--two-pass", action="store_true")
     parser.add_argument("--skip-detector", action="store_true")
     parser.add_argument("--detector-strict", action="store_true")
+    parser.add_argument("--json-report", default=None, help="Write LayerResult JSON to this path")
     args = parser.parse_args()
 
     fixture_dir = FIXTURE_BASE / args.fixture
@@ -108,11 +109,10 @@ def main():
             print(f"  org_id={org_id}")
         elif args.reuse_org_id:
             org_id = args.reuse_org_id
-            # Try to load prior run's credentials
             org_json = _find_org_json(args.reuse_org_id)
-            if org_json:
-                api.login(args.superadmin_email, args.superadmin_password)
-                # Override org_id context — SUPERADMIN can access any org
+            if org_json and org_json.get("email"):
+                # Login as the Meridian user so JWT carries the right org_id
+                api.login(org_json["email"], "Meridian2026!Simulation")
                 api.org_id = org_id
                 session_id = org_json.get("session_id", "")
             else:
@@ -207,6 +207,26 @@ def main():
                                     org_id, duration)
     print(f"\n{summary}")
     (run_dir / "summary.txt").write_text(summary, encoding="utf-8")
+
+    if args.json_report:
+        from scripts.verification.result_schema import AssertionResult as AR, LayerResult, save_json
+        assertions = [
+            AR(name=r.name, status="PASS" if r.passed else "FAIL",
+               message=r.detail or "")
+            for r in recorder.results
+        ]
+        layer = LayerResult(
+            layer_name="Pipeline Harness", layer_id="harness",
+            total=len(assertions),
+            passed=recorder.passed_count, failed=recorder.failed_count,
+            warned=len(recorder.warnings()), skipped=0,
+            duration_seconds=round(duration, 1),
+            assertions=assertions,
+            environment="render" if "render" in args.backend_url else "local",
+            timestamp=datetime.now(timezone.utc).isoformat(),
+            fixture_name=args.fixture,
+        )
+        save_json(layer, args.json_report)
 
     sys.exit(0 if recorder.all_passed else 1)
 

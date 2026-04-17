@@ -49,3 +49,6 @@ frontend/src_backup_*/
 .claude/
 
 docs/INFRASTRUCTURE.md
+reports/*.html
+reports/*.json
+reports/latest/

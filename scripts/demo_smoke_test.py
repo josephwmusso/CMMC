@@ -13,6 +13,7 @@ import requests
 def main():
     parser = argparse.ArgumentParser(description="Smoke test all major endpoint categories")
     parser.add_argument("--base-url", default="http://localhost:8001")
+    parser.add_argument("--json-report", default=None)
     args = parser.parse_args()
     base = args.base_url.rstrip("/")
     passed = 0
@@ -127,6 +128,20 @@ def main():
     check("Onboarding Status", "GET", "/api/onboarding/status", auth)
 
     _summary(base, passed, failed)
+
+    if args.json_report:
+        import sys, os; sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__)))); from scripts.verification.result_schema import AssertionResult as AR, LayerResult, save_json
+        assertions = [AR(name=r[0], status=r[1], message=f"HTTP {r[2]}") for r in results]
+        layer = LayerResult(
+            layer_name="Endpoint Smoke Test", layer_id="smoke",
+            total=passed + failed, passed=passed, failed=failed,
+            warned=0, skipped=0, duration_seconds=0,
+            assertions=assertions,
+            environment="render" if "render" in base else "local",
+            timestamp=datetime.now().isoformat(),
+        )
+        save_json(layer, args.json_report)
+
     sys.exit(0 if failed == 0 else 1)
 
 

@@ -12,6 +12,7 @@ import requests
 def main():
     parser = argparse.ArgumentParser(description="Pre-demo cleanup check")
     parser.add_argument("--base-url", default="http://localhost:8001")
+    parser.add_argument("--json-report", default=None)
     args = parser.parse_args()
     base = args.base_url.rstrip("/")
     issues = []
@@ -118,6 +119,28 @@ def main():
         for i in issues:
             print(f"    • {i}")
     print(f"{'═'*50}")
+
+    if args.json_report:
+        import sys, os; sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__)))); from scripts.verification.result_schema import AssertionResult as AR, LayerResult, save_json
+        assertions = [AR(name=f"check_{i+1}", status="PASS" if i >= checks - len(issues) + len(issues) else "FAIL",
+                         message="") for i in range(checks)]
+        # More accurate: track per-check
+        check_names = ["stale_users", "stale_orgs", "apex_profile", "stale_invites", "health"]
+        assertions = []
+        for i, cn in enumerate(check_names[:checks]):
+            is_issue = any(cn.replace("_", " ") in iss.lower() or (cn == "health" and "unhealthy" in iss.lower())
+                          for iss in issues)
+            assertions.append(AR(name=cn, status="FAIL" if is_issue else "PASS", message=""))
+        layer = LayerResult(
+            layer_name="Database State Check", layer_id="dbcheck",
+            total=checks, passed=checks - len(issues), failed=len(issues),
+            warned=0, skipped=0, duration_seconds=0,
+            assertions=assertions,
+            environment="render" if "render" in base else "local",
+            timestamp=datetime.now().isoformat(),
+        )
+        save_json(layer, args.json_report)
+
     sys.exit(0 if not issues else 1)
 
 
