@@ -26,6 +26,8 @@ from sqlalchemy.orm import Session
 
 from src.api.auth import get_current_user
 from src.db.session import get_db
+
+
 from src.scanners.nessus_parser import (
     UNIVERSAL_SCAN_CONTROLS,
     generate_scan_summary,
@@ -40,6 +42,13 @@ MAX_UPLOAD_SIZE = 50 * 1024 * 1024  # 50 MB cap
 
 def _gen_id(seed: str) -> str:
     return hashlib.sha256(seed.encode()).hexdigest()[:20]
+
+
+def _safe_user_fk(db: Session, user_id: Optional[str]) -> Optional[str]:
+    if not user_id:
+        return None
+    row = db.execute(text("SELECT 1 FROM users WHERE id = :id"), {"id": user_id}).fetchone()
+    return user_id if row else None
 
 
 def _audit(db: Session, *, actor: str, action: str, target_id: str, details: dict) -> None:
@@ -153,7 +162,7 @@ async def upload_scan(
             VALUES (:id, :org_id, :filename, 'FAILED', :err, :imported_by)
         """), {
             "id": scan_id, "org_id": org_id, "filename": file.filename,
-            "err": str(exc)[:500], "imported_by": user_id,
+            "err": str(exc)[:500], "imported_by": _safe_user_fk(db, user_id),
         })
         db.commit()
         raise HTTPException(status_code=400, detail=f"Failed to parse scan file: {str(exc)[:200]}")
@@ -219,7 +228,7 @@ async def upload_scan(
         "filename": file.filename,
         "version": result.scanner_version,
         "scan_date": result.scan_date,
-        "imported_by": user_id,
+        "imported_by": _safe_user_fk(db, user_id),
         "host_count": len(result.hosts),
         "finding_count": len(result.findings),
         "c": result.critical_count,

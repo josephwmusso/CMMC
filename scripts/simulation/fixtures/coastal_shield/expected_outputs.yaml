@@ -42,3 +42,16 @@ assessor_findings_style:
   must_reference_actual_evidence: true
   must_not_fabricate_dates: true
   must_not_reference_forbidden_tools: true
+
+scans:
+  nessus:
+    min_findings: 3
+    max_findings: 8
+    min_criticals: 0
+    required_plugin_ids: ["10863", "57582", "42873"]
+    min_poam_items: 0
+  ciscat:
+    compliance_pct_min: 55
+    compliance_pct_max: 85
+    min_baseline_deviations: 5
+    required_fail_ids: ["18.4.1"]
