@@ -1,0 +1,44 @@
+sprs_target:
+  expected_range: [-203, -50]
+  reasoning: >
+    28-person defense electronics company with mature stack (Entra ID +
+    CrowdStrike + PA-450 + Sentinel + KnowBe4). Most controls Fully
+    Implemented. Some gaps in CM change management documentation and
+    IR testing. Score should be significantly higher than Meridian.
+
+intake_contradictions_must_catch:
+  minimum_count: 0
+  required: []
+  likely_also: []
+  diagnostic_bonus: []
+  notes: >
+    Coastal Shield has a well-matched tool stack. Most intake-layer
+    contradiction rules should NOT fire because tools match claims.
+    Any that fire are diagnostic.
+
+resolution_conflicts_must_catch:
+  minimum_count: 0
+  required: []
+  preferred_also: []
+
+at_risk_top_10:
+  must_include: []
+  should_include: []
+
+claims_extraction:
+  minimum_claims_per_control_with_narrative: 2
+  claims_must_reference_only_fixture_tools: true
+
+method_coverage:
+  examine_present_for: [AC, AT, AU, IA, SI, SC, IR, MP, CA]
+  test_present_for: [SC, SI]
+  interview_present: false
+
+readiness_pct_target:
+  expected_range: [10, 60]
+
+assessor_findings_style:
+  tone: professional_C3PAO_voice
+  must_reference_actual_evidence: true
+  must_not_fabricate_dates: true
+  must_not_reference_forbidden_tools: true

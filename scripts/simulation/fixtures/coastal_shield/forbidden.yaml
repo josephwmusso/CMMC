@@ -1,0 +1,73 @@
+# Coastal Shield Technologies — Hallucination Detector Ground Truth
+# Any AI output containing these patterns is a fabrication for THIS org.
+
+forbidden_tools:
+  - Google Workspace
+  - Google Identity
+  - Google Drive
+  - Google Forms
+  - SonicWall
+  - Fortinet
+  - FortiGate
+  - Sophos
+  - Splunk
+  - Elastic SIEM
+  - Arctic Wolf
+  - Blumira
+  - Okta
+  - Duo
+  - JumpCloud
+  - SentinelOne
+  - Carbon Black
+  - Symantec
+  - Norton
+  - McAfee
+  - ESET
+  - Webroot
+  - Cisco
+  - Meraki
+  - pfSense
+  - OPNsense
+  - Proofpoint
+  - Cofense
+  - Ninjio
+  - SANS Security Awareness
+  - Infosec IQ
+  - Acronis
+  - Datto
+  - Commvault
+
+forbidden_ip_ranges:
+  allowed_cidr: "10.10.0.0/16"
+  flag_any_other_rfc1918: true
+  flag_any_public_ip: true
+
+allowed_hostnames:
+  - CS-DC01
+  - CS-FS01
+  - CS-SENT01
+  - CS-WS01
+  - CS-WS02
+
+allowed_evidence_titles:
+  - System Security Plan v2
+  - Access Control Policy v3
+  - MFA Configuration Export
+  - KnowBe4 Training Records
+  - Sentinel Audit Log Configuration
+  - CrowdStrike Deployment Report
+  - Network Architecture Diagram
+  - BitLocker Intune Compliance Report
+  - Incident Response Plan v1
+  - Veeam Backup Verification Report
+
+forbidden_facts:
+  employee_count_other_than: 28
+  location_other_than: "Virginia Beach, VA"
+  cage_code_other_than: "8J4K2"
+  company_name_other_than: "Coastal Shield Technologies, LLC"
+
+date_constraints:
+  earliest_allowed: "2024-01-01"
+  latest_allowed: "2026-04-18"
+  flag_future_dates: true

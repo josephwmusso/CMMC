@@ -1,0 +1,71 @@
+artifacts:
+  - id: EVD-CS-001
+    filename: "CS_System_Security_Plan_v2.pdf"
+    evidence_type: POLICY_DOCUMENT
+    source_system: manual
+    state: PUBLISHED
+    controls: [CA.L2-3.12.4, CA.L2-3.12.1]
+    content_summary: "See evidence/01_system_security_plan.md"
+  - id: EVD-CS-002
+    filename: "CS_Access_Control_Policy_v3.pdf"
+    evidence_type: POLICY_DOCUMENT
+    source_system: manual
+    state: PUBLISHED
+    controls: [AC.L2-3.1.1, AC.L2-3.1.2, AC.L2-3.1.3, AC.L2-3.1.5]
+    content_summary: "See evidence/02_access_control_policy.md"
+  - id: EVD-CS-003
+    filename: "Entra_ID_MFA_Configuration_Export.pdf"
+    evidence_type: CONFIG_EXPORT
+    source_system: entra_id
+    state: PUBLISHED
+    controls: [IA.L2-3.5.1, IA.L2-3.5.2, IA.L2-3.5.3]
+    content_summary: "See evidence/03_mfa_configuration.md"
+  - id: EVD-CS-004
+    filename: "KnowBe4_Training_Records_2026Q1.pdf"
+    evidence_type: TRAINING_RECORD
+    source_system: knowbe4
+    state: PUBLISHED
+    controls: [AT.L2-3.2.1, AT.L2-3.2.2, AT.L2-3.2.3]
+    content_summary: "See evidence/04_training_records.md"
+  - id: EVD-CS-005
+    filename: "Sentinel_Audit_Log_Configuration.pdf"
+    evidence_type: CONFIG_EXPORT
+    source_system: sentinel
+    state: PUBLISHED
+    controls: [AU.L2-3.3.1, AU.L2-3.3.2, AU.L2-3.3.5]
+    content_summary: "See evidence/05_audit_log_config.md"
+  - id: EVD-CS-006
+    filename: "CrowdStrike_Deployment_Report.pdf"
+    evidence_type: SCAN_REPORT
+    source_system: crowdstrike
+    state: PUBLISHED
+    controls: [SI.L2-3.14.1, SI.L2-3.14.2, SI.L2-3.14.4, SI.L2-3.14.5]
+    content_summary: "See evidence/06_crowdstrike_report.md"
+  - id: EVD-CS-007
+    filename: "PA450_Network_Diagram_v2.vsdx"
+    evidence_type: CONFIG_EXPORT
+    source_system: manual
+    state: PUBLISHED
+    controls: [SC.L2-3.13.1, SC.L2-3.13.5, CA.L2-3.12.4]
+    content_summary: "See evidence/07_network_diagram.md"
+  - id: EVD-CS-008
+    filename: "BitLocker_Intune_Compliance_Report.pdf"
+    evidence_type: CONFIG_EXPORT
+    source_system: intune
+    state: PUBLISHED
+    controls: [MP.L2-3.8.6, SC.L2-3.13.16]
+    content_summary: "See evidence/08_encryption_report.md"
+  - id: EVD-CS-009
+    filename: "CS_Incident_Response_Plan_v1.pdf"
+    evidence_type: POLICY_DOCUMENT
+    source_system: manual
+    state: PUBLISHED
+    controls: [IR.L2-3.6.1, IR.L2-3.6.2, IR.L2-3.6.3]
+    content_summary: "See evidence/09_incident_response_plan.md"
+  - id: EVD-CS-010
+    filename: "Veeam_Backup_Verification_Report.pdf"
+    evidence_type: AUDIT_LOG
+    source_system: veeam
+    state: PUBLISHED
+    controls: [MP.L2-3.8.9]
+    content_summary: "See evidence/10_backup_report.md"

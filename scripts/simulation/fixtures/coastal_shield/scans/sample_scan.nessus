@@ -1,0 +1,85 @@
+<?xml version="1.0" ?>
+<NessusClientData_v2>
+  <Policy><policyName>Coastal Shield Monthly Scan</policyName></Policy>
+  <Report name="Coastal Shield Technologies - Internal Scan">
+
+    <!-- HOST 1: CS-FS01 (File Server, TLS issue) -->
+    <ReportHost name="10.10.1.20">
+      <HostProperties>
+        <tag name="host-ip">10.10.1.20</tag>
+        <tag name="hostname">CS-FS01</tag>
+        <tag name="operating-system">Microsoft Windows Server 2022</tag>
+        <tag name="HOST_START">Mon Apr 14 08:00:00 2026</tag>
+      </HostProperties>
+
+      <!-- Plugin 10863: SSL Certificate expiring soon — MEDIUM -->
+      <ReportItem port="443" severity="2" pluginID="10863" pluginName="SSL Certificate Expiry" pluginFamily="General">
+        <synopsis>The SSL certificate on CS-FS01 expires within 30 days.</synopsis>
+        <description>The self-signed certificate on the file server's HTTPS management interface expires on 2026-05-10. While not yet expired, this should be renewed to maintain encrypted management access.</description>
+        <solution>Renew the SSL certificate before expiry date.</solution>
+        <risk_factor>Medium</risk_factor>
+        <cvss_base_score>4.0</cvss_base_score>
+        <cvss3_base_score>5.3</cvss3_base_score>
+      </ReportItem>
+
+      <!-- Plugin 57582: SSL Medium Cipher — MEDIUM (supports SC_02 contradiction) -->
+      <ReportItem port="443" severity="2" pluginID="57582" pluginName="SSL Medium Strength Cipher Suites Supported" pluginFamily="General">
+        <synopsis>The remote host supports medium strength SSL/TLS cipher suites.</synopsis>
+        <description>CS-FS01 supports TLS 1.0 and cipher suites that are not FIPS 140-2 validated. This contradicts the organization's claim of FIPS-validated encryption for all CUI transit. Specifically, the file server accepts connections using TLS_RSA_WITH_3DES_EDE_CBC_SHA which is not FIPS-approved.</description>
+        <solution>Disable TLS 1.0 and 1.1. Configure only FIPS 140-2 validated cipher suites (AES-128-GCM, AES-256-GCM).</solution>
+        <risk_factor>Medium</risk_factor>
+        <cvss_base_score>4.3</cvss_base_score>
+        <cvss3_base_score>5.3</cvss3_base_score>
+      </ReportItem>
+
+      <!-- Plugin 42873: SSL Weak Hash — LOW -->
+      <ReportItem port="443" severity="1" pluginID="42873" pluginName="SSL Certificate Signed Using Weak Hashing Algorithm" pluginFamily="General">
+        <synopsis>The certificate uses SHA-1 which is deprecated.</synopsis>
+        <description>The SSL certificate on CS-FS01 uses SHA-1 for signing. SHA-1 is considered weak and deprecated by NIST.</description>
+        <solution>Reissue the certificate using SHA-256 or stronger.</solution>
+        <risk_factor>Low</risk_factor>
+        <cvss_base_score>2.6</cvss_base_score>
+        <cvss3_base_score>3.7</cvss3_base_score>
+      </ReportItem>
+    </ReportHost>
+
+    <!-- HOST 2: CS-WS02 (Workstation, behind on patches) -->
+    <ReportHost name="10.10.2.101">
+      <HostProperties>
+        <tag name="host-ip">10.10.2.101</tag>
+        <tag name="hostname">CS-WS02</tag>
+        <tag name="operating-system">Microsoft Windows 11 Enterprise 23H2</tag>
+        <tag name="HOST_START">Mon Apr 14 08:05:00 2026</tag>
+      </HostProperties>
+
+      <!-- Plugin 20007: Missing Patches — MEDIUM -->
+      <ReportItem port="0" severity="2" pluginID="20007" pluginName="Microsoft Windows Update Missing Security Patches" pluginFamily="Windows">
+        <synopsis>The remote Windows host is missing 2 security updates.</synopsis>
+        <description>CS-WS02 is missing KB5035845 (March 2026) and KB5037765 (April 2026). The workstation was offline during the last patch cycle due to employee travel.</description>
+        <solution>Apply all missing Windows security updates via Intune compliance policy enforcement.</solution>
+        <risk_factor>Medium</risk_factor>
+        <cvss_base_score>6.8</cvss_base_score>
+        <cvss3_base_score>7.3</cvss3_base_score>
+      </ReportItem>
+    </ReportHost>
+
+    <!-- HOST 3: CS-DC01 (Domain Controller, healthy) -->
+    <ReportHost name="10.10.1.10">
+      <HostProperties>
+        <tag name="host-ip">10.10.1.10</tag>
+        <tag name="hostname">CS-DC01</tag>
+        <tag name="operating-system">Microsoft Windows Server 2022</tag>
+        <tag name="HOST_START">Mon Apr 14 08:10:00 2026</tag>
+      </HostProperties>
+
+      <!-- Plugin 11219: Nessus Service Detection — INFO -->
+      <ReportItem port="445" severity="0" pluginID="11219" pluginName="Nessus SYN scanner" pluginFamily="Port scanners">
+        <synopsis>Service detection on the domain controller.</synopsis>
+        <description>Port 445 (SMB) is open on CS-DC01. This is expected for a domain controller providing file sharing and Active Directory services.</description>
+        <solution>N/A - expected service.</solution>
+        <risk_factor>None</risk_factor>
+      </ReportItem>
+    </ReportHost>
+
+  </Report>
+</NessusClientData_v2>

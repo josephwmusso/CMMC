@@ -1,0 +1,22 @@
+contradictions:
+
+  - contradiction_id: IR_01
+    name: "IR plan exists but not tested in 12 months"
+    detection_layer: resolution_engine
+    affected_controls: [IR.L2-3.6.2]
+    expected_severity: HIGH
+    must_catch: false
+
+  - contradiction_id: SC_02
+    name: "Claims FIPS encryption but TLS 1.0 on CS-FS01"
+    detection_layer: resolution_engine
+    affected_controls: [SC.L2-3.13.11, SC.L2-3.13.8]
+    expected_severity: CRITICAL
+    must_catch: false
+
+  - contradiction_id: AU_01
+    name: "Claims weekly log review but no Sentinel analytics rules"
+    detection_layer: resolution_engine
+    affected_controls: [AU.L2-3.3.2]
+    expected_severity: HIGH
+    must_catch: false

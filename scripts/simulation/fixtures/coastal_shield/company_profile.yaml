@@ -1,0 +1,40 @@
+# Coastal Shield Technologies, LLC — Company Profile
+# Mature security stack — contrast to Meridian's barebones posture.
+
+company_name: "Coastal Shield Technologies, LLC"
+cage_code: "8J4K2"
+uei: "CSTL98765WXYZ"
+duns_number: null
+employee_count: 28
+facility_count: 1
+primary_location: "Virginia Beach, VA"
+system_name: "CS CUI Enclave"
+
+cui_types:
+  - "Technical data (drawings, specs, test results)"
+  - "Engineering drawings"
+cui_flow: "CUI is in cloud storage (SharePoint, OneDrive, etc.)"
+dfars_7012_clause: true
+
+has_remote_workers: true
+has_wireless: true
+
+identity_provider: "Microsoft Entra ID (Azure AD) with MFA"
+email_platform: "Microsoft 365 GCC High"
+edr_product: "CrowdStrike Falcon"
+firewall_product: "Palo Alto Networks"
+siem_product: "Microsoft Sentinel"
+backup_solution: "Veeam"
+training_tool: "KnowBe4"
+
+existing_ssp: true
+existing_poam: false
+prior_assessment: false
+
+_persona:
+  industry: defense_electronics
+  primary_work: "Defense electronics manufacturing — radar subsystems, sensor boards"
+  primes: ["L3Harris", "Raytheon"]
+  compliance_maturity: "mid-journey — invested in tools, documenting processes"
+  it_staff: "1 IT Manager + MSP on retainer (BlueVoyant)"
+  key_gap_areas: [incident_response_testing, change_management_documentation]
