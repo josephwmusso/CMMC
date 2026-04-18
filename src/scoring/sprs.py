@@ -239,6 +239,11 @@ class SPRSCalculator:
         result.conditional_score = max(result.max_score - result.total_deductions, result.floor)
         result.poam_eligible = result.score >= result.poam_threshold
 
+        # If every control is NOT_ASSESSED, the org has no intake/SSP data
+        if result.not_assessed_count == result.total_controls and result.total_controls > 0:
+            result.score = result.floor  # -203 floor, not a misleading partial score
+            result.conditional_score = result.floor
+
         return result
 
     def get_score_summary(self) -> dict:
@@ -252,6 +257,8 @@ class SPRSCalculator:
             "open_contradictions": len({cid for c in overridden for cid in c.contradiction_ids}),
         }
 
+        has_data = r.not_assessed_count < r.total_controls
+
         return {
             "score": r.score,
             "conditional_score": r.conditional_score,
@@ -264,6 +271,7 @@ class SPRSCalculator:
             "total_controls": r.total_controls,
             "total_deductions": r.total_deductions,
             "poam_eligible": r.poam_eligible,
+            "has_assessment_data": has_data,
             "contradiction_impact": contradiction_impact,
             "critical_gaps": [
                 {
