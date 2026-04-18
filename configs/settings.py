@@ -84,6 +84,12 @@ JWT_REFRESH_EXPIRE_DAYS = int(os.getenv("JWT_REFRESH_EXPIRE_DAYS", "7"))    # 7 
 # to the built-in demo user so the frontend works without a real login.
 ALLOW_ANONYMOUS = os.getenv("ALLOW_ANONYMOUS", "true").lower() == "true"
 
+# ---------------------------------------------------------------------------
+# Email notifications (Resend)
+# ---------------------------------------------------------------------------
+RESEND_API_KEY = os.getenv("RESEND_API_KEY", "")
+CONTACT_NOTIFY_EMAIL = os.getenv("CONTACT_NOTIFY_EMAIL", "josephwmusso@gmail.com")
+
 # Warn once at import time if a production-style deployment forgot to set
 # a real secret.
 if not ALLOW_ANONYMOUS and JWT_SECRET_KEY == "dev-secret-change-in-production":
