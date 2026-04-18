@@ -112,14 +112,22 @@ def create_new_customer_invite(
         )
 
     pending = db.execute(text("""
-        SELECT 1 FROM invites
+        SELECT code FROM invites
         WHERE LOWER(email) = :e
           AND invite_type = 'NEW_CUSTOMER'
           AND used_at IS NULL
           AND expires_at > NOW()
     """), {"e": email}).fetchone()
     if pending:
-        raise HTTPException(409, "A pending new-customer invite already exists for this email.")
+        from configs.settings import FRONTEND_BASE_URL
+        existing_url = f"{FRONTEND_BASE_URL}/signup/{pending[0]}"
+        raise HTTPException(
+            409,
+            detail={
+                "message": "A pending new-customer invite already exists for this email.",
+                "existing_invite_url": existing_url,
+            },
+        )
 
     invite_code = secrets.token_urlsafe(32)
     invite_id = hashlib.sha256(invite_code.encode()).hexdigest()[:20]

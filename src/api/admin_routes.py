@@ -435,20 +435,44 @@ def list_orgs(
 # Invite management — ADMIN or SUPERADMIN (within their org)
 # ============================================================================
 
-def _invite_out(row, include_url: bool = True) -> InviteOut:
+def _invite_out(row, include_url: bool = True) -> dict:
+    from configs.settings import FRONTEND_BASE_URL
     code = row[2]
-    return InviteOut(
-        id=row[0],
-        code=code,
-        email=row[3],
-        role=row[4],
-        created_by=row[5],
-        created_at=row[6],
-        expires_at=row[7],
-        used_at=row[8],
-        used_by=row[9],
-        invite_url=(f"{BASE_URL}/register?invite={code}" if include_url else None),
-    )
+    invite_type = row[10] if len(row) > 10 else "USER_TO_ORG"
+    target_org_name = row[11] if len(row) > 11 else None
+
+    # URL format depends on invite type
+    if invite_type == "NEW_CUSTOMER":
+        url = f"{FRONTEND_BASE_URL}/signup/{code}" if include_url else None
+    else:
+        url = f"{FRONTEND_BASE_URL}/register?invite={code}" if include_url else None
+
+    # Derive status
+    now = datetime.now(timezone.utc)
+    expires = row[7]
+    used = row[8]
+    if used:
+        status = "REDEEMED"
+    elif expires and expires <= now:
+        status = "EXPIRED"
+    else:
+        status = "PENDING"
+
+    return {
+        "id": row[0],
+        "code": code,
+        "email": row[3],
+        "role": row[4],
+        "invite_type": invite_type or "USER_TO_ORG",
+        "target_org_name": target_org_name,
+        "status": status,
+        "created_by": row[5],
+        "created_at": row[6].isoformat() if row[6] else None,
+        "expires_at": row[7].isoformat() if row[7] else None,
+        "used_at": row[8].isoformat() if row[8] else None,
+        "used_by": row[9],
+        "invite_url": url,
+    }
 
 
 @router.post("/invites", response_model=InviteOut, status_code=201)
@@ -480,23 +504,37 @@ def create_invite(
     db.commit()
 
     row = db.execute(text("""
-        SELECT id, org_id, code, email, role, created_by, created_at, expires_at, used_at, used_by
+        SELECT id, org_id, code, email, role, created_by, created_at, expires_at,
+               used_at, used_by, COALESCE(invite_type, 'USER_TO_ORG'), target_org_name
         FROM invites WHERE id = :id
     """), {"id": invite_id}).fetchone()
     return _invite_out(row)
 
 
-@router.get("/invites", response_model=list[InviteOut])
+@router.get("/invites")
 def list_invites(
     caller: dict = Depends(require_admin_dep),
     db: Session = Depends(get_db),
 ):
-    rows = db.execute(text("""
-        SELECT id, org_id, code, email, role, created_by, created_at, expires_at, used_at, used_by
-        FROM invites
-        WHERE org_id = :org_id
-        ORDER BY created_at DESC
-    """), {"org_id": caller["org_id"]}).fetchall()
+    if is_superadmin(caller):
+        # SUPERADMIN sees their org's USER_TO_ORG invites + ALL NEW_CUSTOMER invites
+        rows = db.execute(text("""
+            SELECT id, org_id, code, email, role, created_by, created_at, expires_at,
+                   used_at, used_by, COALESCE(invite_type, 'USER_TO_ORG'), target_org_name
+            FROM invites
+            WHERE org_id = :org_id
+               OR (invite_type = 'NEW_CUSTOMER' AND created_by = :uid)
+               OR invite_type = 'NEW_CUSTOMER'
+            ORDER BY created_at DESC
+        """), {"org_id": caller["org_id"], "uid": caller["id"]}).fetchall()
+    else:
+        rows = db.execute(text("""
+            SELECT id, org_id, code, email, role, created_by, created_at, expires_at,
+                   used_at, used_by, COALESCE(invite_type, 'USER_TO_ORG'), target_org_name
+            FROM invites
+            WHERE org_id = :org_id
+            ORDER BY created_at DESC
+        """), {"org_id": caller["org_id"]}).fetchall()
     return [_invite_out(r) for r in rows]
 
 
