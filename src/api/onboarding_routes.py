@@ -345,9 +345,13 @@ def complete_onboarding(
                 details={"selected": req.cui_types},
             )
 
-        # ── D. Flip the onboarding flag ──────────────────────────────────
+        # ── D. Flip the onboarding flags ─────────────────────────────────
+        # Wizard-completion path: complete=TRUE, skipped=FALSE (explicit even
+        # though FALSE is the column default — keeps the intent legible and
+        # ensures the value is fresh if a user previously skipped and then
+        # came back to fill the wizard).
         db.execute(
-            text("UPDATE users SET onboarding_complete = TRUE WHERE id = :id"),
+            text("UPDATE users SET onboarding_complete = TRUE, onboarding_skipped = FALSE WHERE id = :id"),
             {"id": user_id},
         )
 
@@ -406,9 +410,11 @@ def skip_onboarding(
     db: Session = Depends(get_db),
 ):
     """Flip onboarding_complete without saving any data. Used when the user
-    chooses to fill the wizard later."""
+    chooses to fill the wizard later. Also sets onboarding_skipped=TRUE so
+    product/marketing can later differentiate the skip cohort from
+    wizard-completers; ProtectedRoute does not consult this flag."""
     db.execute(
-        text("UPDATE users SET onboarding_complete = TRUE WHERE id = :id"),
+        text("UPDATE users SET onboarding_complete = TRUE, onboarding_skipped = TRUE WHERE id = :id"),
         {"id": current_user["id"]},
     )
     db.commit()

@@ -563,6 +563,7 @@ TABLES_DDL = [
             hashed_password     VARCHAR NOT NULL,
             is_admin            BOOLEAN NOT NULL DEFAULT FALSE,
             onboarding_complete BOOLEAN NOT NULL DEFAULT FALSE,
+            onboarding_skipped  BOOLEAN NOT NULL DEFAULT FALSE,
             created_at          TIMESTAMPTZ NOT NULL DEFAULT NOW(),
             last_login_at       TIMESTAMPTZ
         )
@@ -1132,6 +1133,22 @@ def main():
     except Exception as e:
         conn.rollback()
         logger.warning(f"  users.onboarding_complete migration skipped: {e}")
+
+    # users.onboarding_skipped — distinguishes "completed via wizard" from
+    # "completed via skip" so product/marketing can differentiate the two
+    # populations later. Default FALSE is correct for everyone existing —
+    # admin completed via the wizard previously; legacy users are
+    # grandfathered. NOT consulted by the routing guard.
+    try:
+        cur.execute("""
+            ALTER TABLE users
+            ADD COLUMN IF NOT EXISTS onboarding_skipped BOOLEAN NOT NULL DEFAULT FALSE
+        """)
+        conn.commit()
+        logger.info("  users.onboarding_skipped BOOLEAN: OK")
+    except Exception as e:
+        conn.rollback()
+        logger.warning(f"  users.onboarding_skipped migration skipped: {e}")
 
     # company_profiles.training_solution — schema gap from 1.6C so onboarding
     # can persist the training tool (there's no Module 0 question for it).

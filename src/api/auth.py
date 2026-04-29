@@ -57,6 +57,7 @@ DEV_USER = {
     "is_admin": True,
     "role": ROLE_SUPERADMIN,
     "onboarding_complete": True,
+    "onboarding_skipped": False,
 }
 
 
@@ -83,15 +84,18 @@ class UserOut(BaseModel):
 
 
 class MeResponse(UserOut):
-    """/me-specific superset: same shape as UserOut plus the onboarding flag
-    so the frontend can route first-login users to the wizard."""
+    """/me-specific superset: same shape as UserOut plus the onboarding flags
+    so the frontend can route first-login users to the wizard. The
+    `onboarding_skipped` flag distinguishes wizard completion from skip and
+    is informational only — guards consult `onboarding_complete`."""
     onboarding_complete: bool = False
+    onboarding_skipped: bool = False
 
 
 class Token(BaseModel):
     access_token: str
     token_type: str
-    user: UserOut
+    user: MeResponse  # MeResponse so login response carries onboarding flags
     refresh_token: Optional[str] = None
 
 
@@ -157,12 +161,12 @@ def _role_from_row(role_val, is_admin: bool) -> str:
 
 def get_user_by_email(db: Session, email: str) -> Optional[dict]:
     row = db.execute(
-        text("SELECT id, email, org_id, full_name, hashed_password, is_admin, role FROM users WHERE email = :email"),
+        text("SELECT id, email, org_id, full_name, hashed_password, is_admin, role, onboarding_complete, onboarding_skipped FROM users WHERE email = :email"),
         {"email": email},
     ).fetchone()
     if not row:
         return None
-    cols = ["id", "email", "org_id", "full_name", "hashed_password", "is_admin", "role"]
+    cols = ["id", "email", "org_id", "full_name", "hashed_password", "is_admin", "role", "onboarding_complete", "onboarding_skipped"]
     user = dict(zip(cols, row))
     # Normalize role; if the DB column doesn't exist yet (pre-migration),
     # the SELECT would have errored — so reaching here means role is present.
@@ -209,7 +213,7 @@ def get_current_user(token: Optional[str] = Depends(oauth2_scheme), db: Session 
 
     row = db.execute(
         text("""
-            SELECT id, email, org_id, full_name, is_admin, role, onboarding_complete
+            SELECT id, email, org_id, full_name, is_admin, role, onboarding_complete, onboarding_skipped
             FROM users WHERE id = :id
         """),
         {"id": user_id},
@@ -218,7 +222,7 @@ def get_current_user(token: Optional[str] = Depends(oauth2_scheme), db: Session 
         raise credentials_error
 
     user = dict(zip(
-        ["id", "email", "org_id", "full_name", "is_admin", "role", "onboarding_complete"],
+        ["id", "email", "org_id", "full_name", "is_admin", "role", "onboarding_complete", "onboarding_skipped"],
         row,
     ))
     # role is fresh from DB (revocation + promotion take effect next request,
@@ -388,13 +392,15 @@ def login(form_data: OAuth2PasswordRequestForm = Depends(), db: Session = Depend
         access_token=token,
         token_type="bearer",
         refresh_token=refresh,
-        user=UserOut(
+        user=MeResponse(
             id=user["id"],
             email=user["email"],
             org_id=user["org_id"],
             full_name=user["full_name"],
             is_admin=user["is_admin"],
             role=user["role"],
+            onboarding_complete=bool(user.get("onboarding_complete", False)),
+            onboarding_skipped=bool(user.get("onboarding_skipped", False)),
         ),
     )
 
@@ -516,9 +522,11 @@ def oauth_login(req: OAuthTokenRequest, db: Session = Depends(get_db)):
     refresh_token = create_refresh_token(user["id"])
     return Token(
         access_token=token, token_type="bearer", refresh_token=refresh_token,
-        user=UserOut(id=user["id"], email=user["email"], org_id=user["org_id"],
-                     full_name=user["full_name"], is_admin=user["is_admin"],
-                     role=user["role"]),
+        user=MeResponse(id=user["id"], email=user["email"], org_id=user["org_id"],
+                        full_name=user["full_name"], is_admin=user["is_admin"],
+                        role=user["role"],
+                        onboarding_complete=bool(user.get("onboarding_complete", False)),
+                        onboarding_skipped=bool(user.get("onboarding_skipped", False))),
     )
 
 
