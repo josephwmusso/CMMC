@@ -529,7 +529,7 @@ st.sidebar.markdown("""
         🛡️ CMMC Platform
     </div>
     <div style="font-size: 0.7rem; color: #8B949E; margin-top: 3px; letter-spacing: 0.05em; text-transform: uppercase;">
-        Compliance OS &nbsp;·&nbsp; v0.9.0
+        Compliance OS &nbsp;·&nbsp; v1.0.0
     </div>
 </div>
 """, unsafe_allow_html=True)
@@ -580,7 +580,7 @@ if page == "📊 Overview":
                 🛡️ CMMC Level 2 Compliance Dashboard
             </div>
             <div style="font-size: 0.82rem; color: #8B949E; margin-top: 4px; letter-spacing: 0.02em;">
-                Apex Defense Solutions &nbsp;·&nbsp; NIST 800-171 Rev 2 (110 Controls) &nbsp;·&nbsp; v0.9.0
+                Apex Defense Solutions &nbsp;·&nbsp; NIST 800-171 Rev 2 (110 Controls) &nbsp;·&nbsp; v1.0.0
             </div>
         </div>
         <div style="
@@ -1406,7 +1406,7 @@ elif page == "🔧 Demo Controls":
         "org_id": ORG_ID,
         "org_name": "Apex Defense Solutions",
         "controls_loaded": info[0]["cnt"] if info else 0,
-        "platform_version": "0.9.0",
+        "platform_version": "1.0.0",
         "llm_backend": "Claude API (development)",
         "production_inference": "vLLM (sovereign deployment)",
     })

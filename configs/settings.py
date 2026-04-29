@@ -12,6 +12,15 @@ from dotenv import load_dotenv
 load_dotenv()
 
 # ---------------------------------------------------------------------------
+# Platform version
+# ---------------------------------------------------------------------------
+# Single source of truth for the version string surfaced via /health,
+# /api/health, the FastAPI OpenAPI metadata, and customer-facing binder
+# exports. Frontend Settings page reads /health to display this same value.
+# Bump here on releases.
+APP_VERSION = os.getenv("APP_VERSION", "1.0.0")
+
+# ---------------------------------------------------------------------------
 # LLM Configuration
 # ---------------------------------------------------------------------------
 # During development: use Claude API

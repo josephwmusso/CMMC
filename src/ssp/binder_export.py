@@ -29,6 +29,7 @@ sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspa
 
 from sqlalchemy import text
 from src.db.session import get_session
+from configs.settings import APP_VERSION
 
 ORG_ID = "9de53b587b23450b87af"
 EVIDENCE_DIR = os.path.join("data", "evidence", ORG_ID)
@@ -259,7 +260,7 @@ def generate_binder(org_id=ORG_ID, org_name="Organization"):
         index_text = f"""CMMC LEVEL 2 ASSESSMENT BINDER
 Organization: {org_name}
 Generated: {datetime.now(timezone.utc).isoformat()}
-Platform: CMMC Compliance Platform v0.9.0
+Platform: CMMC Compliance Platform v{APP_VERSION}
 
 {'=' * 60}
 

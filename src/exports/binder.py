@@ -29,6 +29,8 @@ import zipfile
 from datetime import datetime, timezone
 from typing import Optional
 
+from configs.settings import APP_VERSION
+
 from sqlalchemy import text
 from sqlalchemy.orm import Session
 
@@ -353,7 +355,7 @@ def _generate_readme(org_name: str, org_id: str, control_count: int,
 **Organization:** {org_name}
 **Org ID:** {org_id}
 **Generated:** {created_at}
-**Platform:** Intranest v0.9.0
+**Platform:** Intranest v{APP_VERSION}
 
 ---
 

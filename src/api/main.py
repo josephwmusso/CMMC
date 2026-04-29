@@ -10,6 +10,8 @@ from fastapi import FastAPI, Request
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse
 
+from configs.settings import APP_VERSION
+
 logging.basicConfig(
     level=logging.INFO,
     format="%(asctime)s [%(levelname)s] %(name)s: %(message)s",
@@ -19,7 +21,7 @@ logger = logging.getLogger(__name__)
 app = FastAPI(
     title="CMMC Compliance Platform API",
     description="Sovereign CMMC compliance AI platform for defense contractors.",
-    version="0.9.0",
+    version=APP_VERSION,
 )
 
 app.add_middleware(
@@ -92,14 +94,14 @@ for router_import in [
 
 @app.get("/health")
 def health():
-    return {"status": "ok", "version": "0.9.0"}
+    return {"status": "ok", "version": APP_VERSION}
 
 
 @app.get("/api/health")
 def api_health():
     return {
         "status": "ok",
-        "version": "0.9.0",
+        "version": APP_VERSION,
         "services": {
             "postgres": True,
             "qdrant": os.environ.get("QDRANT_AVAILABLE", "false") == "true",
