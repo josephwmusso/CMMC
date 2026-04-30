@@ -97,7 +97,31 @@ ALLOW_ANONYMOUS = os.getenv("ALLOW_ANONYMOUS", "true").lower() == "true"
 # Email notifications (Resend)
 # ---------------------------------------------------------------------------
 RESEND_API_KEY = os.getenv("RESEND_API_KEY", "")
-CONTACT_NOTIFY_EMAIL = os.getenv("CONTACT_NOTIFY_EMAIL", "josephwmusso@gmail.com")
+
+# Resend sender. Domain intranest.ai verified Apr 29, 2026.
+EMAIL_FROM = os.getenv("EMAIL_FROM", "onboarding@intranest.ai")
+
+# Contact form recipients. Comma-separated env var allows adjusting
+# without a code push. Currently dual-routed to the intranest.ai
+# inbox plus Gmail for backup during the new-domain trust-building
+# period. Drop Gmail once intranest.ai inbox is proven reliable.
+CONTACT_FORM_RECIPIENTS = [
+    addr.strip() for addr in os.getenv(
+        "CONTACT_FORM_RECIPIENTS",
+        "joseph@intranest.ai,josephwmusso@gmail.com"
+    ).split(",") if addr.strip()
+]
+
+# Invite email recipients control. Sender stays EMAIL_FROM.
+# During trust-building, BCC admin on every invite send for
+# visibility into delivery. Drop via env var once invite flow
+# is proven reliable in production.
+INVITE_BCC = [
+    addr.strip() for addr in os.getenv(
+        "INVITE_BCC",
+        "joseph@intranest.ai"
+    ).split(",") if addr.strip()
+]
 
 # Warn once at import time if a production-style deployment forgot to set
 # a real secret.

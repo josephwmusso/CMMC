@@ -45,13 +45,13 @@ def submit_contact(req: ContactRequest, db: Session = Depends(get_db)):
     logger.info(f"New contact request: {req.email} ({req.company})")
 
     try:
-        from configs.settings import RESEND_API_KEY, CONTACT_NOTIFY_EMAIL
+        from configs.settings import RESEND_API_KEY, EMAIL_FROM, CONTACT_FORM_RECIPIENTS
         if RESEND_API_KEY:
             import resend
             resend.api_key = RESEND_API_KEY
             resend.Emails.send({
-                "from": "Intranest Notifications <onboarding@resend.dev>",
-                "to": [CONTACT_NOTIFY_EMAIL],
+                "from": f"Intranest Notifications <{EMAIL_FROM}>",
+                "to": CONTACT_FORM_RECIPIENTS,
                 "subject": f"New contact: {req.name}",
                 "html": f"""
                     <h2>New Intranest Contact Form Submission</h2>

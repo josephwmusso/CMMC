@@ -106,6 +106,7 @@ class OrgOut(BaseModel):
 class InviteCreateReq(BaseModel):
     email: Optional[str] = None
     role: Optional[str] = ROLE_MEMBER
+    full_name: Optional[str] = None  # used to personalize the invite email greeting
 
 
 class InviteOut(BaseModel):
@@ -119,6 +120,7 @@ class InviteOut(BaseModel):
     used_at: Optional[datetime] = None
     used_by: Optional[str] = None
     invite_url: Optional[str] = None
+    email_sent: bool = False  # True if Resend accepted the invite send
 
 
 # ============================================================================
@@ -436,16 +438,18 @@ def list_orgs(
 # ============================================================================
 
 def _invite_out(row, include_url: bool = True) -> dict:
-    from configs.settings import FRONTEND_BASE_URL
+    from src.email.links import build_user_invite_link, build_new_customer_invite_link
     code = row[2]
     invite_type = row[10] if len(row) > 10 else "USER_TO_ORG"
     target_org_name = row[11] if len(row) > 11 else None
 
     # URL format depends on invite type
-    if invite_type == "NEW_CUSTOMER":
-        url = f"{FRONTEND_BASE_URL}/signup/{code}" if include_url else None
+    if not include_url:
+        url = None
+    elif invite_type == "NEW_CUSTOMER":
+        url = build_new_customer_invite_link(code)
     else:
-        url = f"{FRONTEND_BASE_URL}/register?invite={code}" if include_url else None
+        url = build_user_invite_link(code)
 
     # Derive status
     now = datetime.now(timezone.utc)
@@ -508,7 +512,70 @@ def create_invite(
                used_at, used_by, COALESCE(invite_type, 'USER_TO_ORG'), target_org_name
         FROM invites WHERE id = :id
     """), {"id": invite_id}).fetchone()
-    return _invite_out(row)
+    payload = _invite_out(row)
+
+    # Send the invite email. Failures don't break the API call — the invite
+    # row is committed, and invite_url is in the response so the admin can
+    # fall back to manual link sharing.
+    payload["email_sent"] = _send_invite_email(
+        db=db,
+        invitee_email=req.email,
+        invitee_name=req.full_name,
+        inviter_org_id=org_id,
+        invite_link=payload.get("invite_url"),
+    )
+    return payload
+
+
+def _send_invite_email(
+    *,
+    db: Session,
+    invitee_email: Optional[str],
+    invitee_name: Optional[str],
+    inviter_org_id: str,
+    invite_link: Optional[str],
+) -> bool:
+    """Send an invite email via Resend. Returns True on success, False on
+    any failure (missing email, Resend down, network error, etc.). Never
+    raises — the caller has already committed the invite row to the DB."""
+    import logging
+    logger = logging.getLogger(__name__)
+
+    if not invitee_email or not invite_link:
+        return False
+
+    # Resolve org_name for the subject. One-line lookup; falls back to a
+    # bare subject if the lookup fails for any reason.
+    org_name: Optional[str] = None
+    try:
+        org_row = db.execute(
+            text("SELECT name FROM organizations WHERE id = :id"),
+            {"id": inviter_org_id},
+        ).fetchone()
+        if org_row and org_row[0]:
+            org_name = org_row[0]
+    except Exception as e:
+        logger.warning(f"Invite email: org_name lookup failed: {e}")
+
+    try:
+        from configs.settings import RESEND_API_KEY, EMAIL_FROM, INVITE_BCC
+        from src.email.invite_template import build_invite_email_html, build_invite_email_subject
+        if not RESEND_API_KEY:
+            logger.warning("Invite email skipped: RESEND_API_KEY not configured")
+            return False
+        import resend
+        resend.api_key = RESEND_API_KEY
+        resend.Emails.send({
+            "from": f"Intranest Notifications <{EMAIL_FROM}>",
+            "to": [invitee_email],
+            "bcc": INVITE_BCC,
+            "subject": build_invite_email_subject(org_name),
+            "html": build_invite_email_html(invitee_name, invite_link, org_name),
+        })
+        return True
+    except Exception as e:
+        logger.warning(f"Invite email send failed for {invitee_email}: {e}")
+        return False
 
 
 @router.get("/invites")

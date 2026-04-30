@@ -119,8 +119,8 @@ def create_new_customer_invite(
           AND expires_at > NOW()
     """), {"e": email}).fetchone()
     if pending:
-        from configs.settings import FRONTEND_BASE_URL
-        existing_url = f"{FRONTEND_BASE_URL}/signup/{pending[0]}"
+        from src.email.links import build_new_customer_invite_link
+        existing_url = build_new_customer_invite_link(pending[0])
         raise HTTPException(
             409,
             detail={
@@ -159,8 +159,18 @@ def create_new_customer_invite(
     )
     db.commit()
 
-    from configs.settings import FRONTEND_BASE_URL
-    invite_url = f"{FRONTEND_BASE_URL}/signup/{invite_code}"
+    from src.email.links import build_new_customer_invite_link
+    invite_url = build_new_customer_invite_link(invite_code)
+
+    # Send the invite email. Failures don't break the API call — the invite
+    # row is committed, and invite_url stays in the response so the admin
+    # can fall back to manual link sharing.
+    email_sent = _send_new_customer_invite_email(
+        invitee_email=email,
+        invitee_name=full_name,
+        org_name=org_name,
+        invite_link=invite_url,
+    )
 
     return {
         "invite_id":   invite_id,
@@ -169,7 +179,40 @@ def create_new_customer_invite(
         "email":       email,
         "org_name":    org_name,
         "expires_at":  expires.isoformat(),
+        "email_sent":  email_sent,
     }
+
+
+def _send_new_customer_invite_email(
+    *,
+    invitee_email: str,
+    invitee_name: str,
+    org_name: str,
+    invite_link: str,
+) -> bool:
+    """Resend the new-customer invite. Returns True on success, False on any
+    failure. Never raises — caller has already committed the invite row."""
+    import logging
+    logger = logging.getLogger(__name__)
+    try:
+        from configs.settings import RESEND_API_KEY, EMAIL_FROM, INVITE_BCC
+        from src.email.invite_template import build_invite_email_html, build_invite_email_subject
+        if not RESEND_API_KEY:
+            logger.warning("Invite email skipped: RESEND_API_KEY not configured")
+            return False
+        import resend
+        resend.api_key = RESEND_API_KEY
+        resend.Emails.send({
+            "from": f"Intranest Notifications <{EMAIL_FROM}>",
+            "to": [invitee_email],
+            "bcc": INVITE_BCC,
+            "subject": build_invite_email_subject(org_name),
+            "html": build_invite_email_html(invitee_name, invite_link, org_name),
+        })
+        return True
+    except Exception as e:
+        logger.warning(f"New-customer invite email send failed for {invitee_email}: {e}")
+        return False
 
 
 # ── Lookup invite (public) ──────────────────────────────────────────────
