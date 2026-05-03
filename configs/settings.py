@@ -101,6 +101,17 @@ RESEND_API_KEY = os.getenv("RESEND_API_KEY", "")
 # Resend sender. Domain intranest.ai verified Apr 29, 2026.
 EMAIL_FROM = os.getenv("EMAIL_FROM", "onboarding@intranest.ai")
 
+
+# ---------------------------------------------------------------------------
+# Connector Framework (Phase 5.1)
+# ---------------------------------------------------------------------------
+# Fernet-compatible symmetric key for encrypting connector credentials at rest.
+# Generate with: python -c "from cryptography.fernet import Fernet; print(Fernet.generate_key().decode())"
+# In dev, an empty value disables credential encryption (test-only path).
+# In prod (Phase 5.2 hardening), the connector layer will refuse to start
+# if this is unset.
+CONNECTOR_ENCRYPTION_KEY = os.getenv("CONNECTOR_ENCRYPTION_KEY", "")
+
 # Contact form recipients. Comma-separated env var allows adjusting
 # without a code push. Currently dual-routed to the intranest.ai
 # inbox plus Gmail for backup during the new-domain trust-building
