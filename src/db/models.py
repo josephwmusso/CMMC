@@ -761,6 +761,54 @@ class AuditLog(Base):
 
 
 # ---------------------------------------------------------------------------
+# Phase 5.1 — Connector Framework
+# ---------------------------------------------------------------------------
+class Connector(Base):
+    """One configured external integration per org (M365, Entra ID, etc).
+
+    Holds the encrypted credentials blob and a JSON config map. Status
+    flow: INACTIVE -> ACTIVE -> ERROR. Routes use raw SQL for inserts /
+    reads — this model is here for ORM introspection / future queries.
+    """
+    __tablename__ = "connectors"
+
+    id                    = Column(String(20), primary_key=True)
+    org_id                = Column(String(20), nullable=False, index=True)
+    type                  = Column(String(50), nullable=False)
+    name                  = Column(String(255), nullable=False)
+    status                = Column(String(20), nullable=False, default="INACTIVE")
+    credentials_encrypted = Column(Text, nullable=True)
+    config                = Column(JSON, nullable=True)
+    last_run_at           = Column(DateTime(timezone=True), nullable=True)
+    last_status           = Column(String(20), nullable=True)
+    created_at            = Column(DateTime(timezone=True), nullable=False,
+                                   default=datetime.utcnow)
+    updated_at            = Column(DateTime(timezone=True), nullable=False,
+                                   default=datetime.utcnow)
+    created_by            = Column(String(20), nullable=True)
+
+
+class ConnectorRun(Base):
+    """One execution of a connector. Created at trigger time, finalized
+    when the run finishes (or errors). Indexed for the per-connector and
+    per-org timelines the admin UI shows."""
+    __tablename__ = "connector_runs"
+
+    id                          = Column(String(20), primary_key=True)
+    connector_id                = Column(String(20), nullable=False, index=True)
+    org_id                      = Column(String(20), nullable=False, index=True)
+    triggered_by                = Column(String(50), nullable=False)
+    triggered_by_user_id        = Column(String(20), nullable=True)
+    started_at                  = Column(DateTime(timezone=True), nullable=False,
+                                         default=datetime.utcnow)
+    finished_at                 = Column(DateTime(timezone=True), nullable=True)
+    status                      = Column(String(20), nullable=False, default="RUNNING")
+    evidence_artifacts_created  = Column(Integer, nullable=False, default=0)
+    error_message               = Column(Text, nullable=True)
+    summary                     = Column(JSON, nullable=True)
+
+
+# ---------------------------------------------------------------------------
 # Evidence state machine + audit helpers
 # ---------------------------------------------------------------------------
 

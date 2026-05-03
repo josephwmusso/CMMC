@@ -774,6 +774,48 @@ TABLES_DDL = [
             used_by    VARCHAR
         )
     """),
+
+    # Phase 5.1 — Connector Framework
+    ("connectors", """
+        CREATE TABLE IF NOT EXISTS connectors (
+            id                    VARCHAR(20) PRIMARY KEY,
+            org_id                VARCHAR(20) NOT NULL,
+            type                  VARCHAR(50) NOT NULL,
+            name                  VARCHAR(255) NOT NULL,
+            status                VARCHAR(20) NOT NULL DEFAULT 'INACTIVE',
+            credentials_encrypted TEXT,
+            config                JSON,
+            last_run_at           TIMESTAMPTZ,
+            last_status           VARCHAR(20),
+            created_at            TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+            updated_at            TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+            created_by            VARCHAR(20)
+        );
+        CREATE INDEX IF NOT EXISTS connectors_org_type_idx
+            ON connectors(org_id, type);
+        CREATE UNIQUE INDEX IF NOT EXISTS connectors_org_type_name_uniq
+            ON connectors(org_id, type, name);
+    """),
+
+    ("connector_runs", """
+        CREATE TABLE IF NOT EXISTS connector_runs (
+            id                          VARCHAR(20) PRIMARY KEY,
+            connector_id                VARCHAR(20) NOT NULL,
+            org_id                      VARCHAR(20) NOT NULL,
+            triggered_by                VARCHAR(50) NOT NULL,
+            triggered_by_user_id        VARCHAR(20),
+            started_at                  TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+            finished_at                 TIMESTAMPTZ,
+            status                      VARCHAR(20) NOT NULL DEFAULT 'RUNNING',
+            evidence_artifacts_created  INT NOT NULL DEFAULT 0,
+            error_message               TEXT,
+            summary                     JSON
+        );
+        CREATE INDEX IF NOT EXISTS connector_runs_connector_started_idx
+            ON connector_runs(connector_id, started_at DESC);
+        CREATE INDEX IF NOT EXISTS connector_runs_org_started_idx
+            ON connector_runs(org_id, started_at DESC);
+    """),
 ]
 
 
