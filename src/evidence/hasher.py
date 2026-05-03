@@ -3,6 +3,7 @@ SHA-256 hashing pipeline for CMMC evidence artifacts.
 Generates individual hashes and CMMC-format manifests compatible with eMASS upload.
 """
 import hashlib
+import json
 import os
 from datetime import datetime, timezone
 
@@ -84,3 +85,15 @@ def save_manifest(manifest_text: str, output_dir: str, org_name: str = "export")
     with open(filepath, "w", encoding="utf-8") as f:
         f.write(manifest_text)
     return filepath
+
+
+def hash_dict(d: dict) -> str:
+    """SHA-256 hex digest of a dict via canonical JSON serialization.
+
+    Matches the audit-chain canonical-bytes pattern (json.dumps with
+    sort_keys=True, default=str). Use for content hashes of dict-shaped
+    evidence payloads or anywhere a stable digest of structured data
+    is needed.
+    """
+    payload = json.dumps(d, sort_keys=True, default=str).encode("utf-8")
+    return hashlib.sha256(payload).hexdigest()

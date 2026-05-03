@@ -21,6 +21,7 @@ def upload_evidence(
     filename: str,
     file_bytes: bytes,
     uploaded_by: str,
+    actor_type: str = "user",
     description: str = "",
     source_system: str = "manual",
     evidence_dir: str = os.path.join("data", "evidence"),
@@ -82,7 +83,7 @@ def upload_evidence(
     create_audit_entry(
         db=db,
         actor=uploaded_by,
-        actor_type="user",
+        actor_type=actor_type,
         action="evidence.created",
         target_type="evidence_artifact",
         target_id=artifact_id,
@@ -108,6 +109,7 @@ def link_evidence_to_controls(
     artifact_id: str,
     control_ids: list[str],
     objective_ids: list[str] | None = None,
+    mapped_by: str = "manual",
 ) -> int:
     """
     Link an evidence artifact to one or more controls/objectives
@@ -120,12 +122,13 @@ def link_evidence_to_controls(
         db.execute(
             text(
                 """
-                INSERT INTO evidence_control_map (id, evidence_id, control_id)
-                VALUES (:id, :evidence_id, :control_id)
+                INSERT INTO evidence_control_map (id, evidence_id, control_id, mapped_by)
+                VALUES (:id, :evidence_id, :control_id, :mapped_by)
                 ON CONFLICT DO NOTHING
                 """
             ),
-            {"id": link_id, "evidence_id": artifact_id, "control_id": control_id},
+            {"id": link_id, "evidence_id": artifact_id, "control_id": control_id,
+             "mapped_by": mapped_by},
         )
         count += 1
 
@@ -135,12 +138,13 @@ def link_evidence_to_controls(
             db.execute(
                 text(
                     """
-                    INSERT INTO evidence_control_map (id, evidence_id, objective_id)
-                    VALUES (:id, :evidence_id, :objective_id)
+                    INSERT INTO evidence_control_map (id, evidence_id, objective_id, mapped_by)
+                    VALUES (:id, :evidence_id, :objective_id, :mapped_by)
                     ON CONFLICT DO NOTHING
                     """
                 ),
-                {"id": link_id, "evidence_id": artifact_id, "objective_id": obj_id},
+                {"id": link_id, "evidence_id": artifact_id, "objective_id": obj_id,
+                 "mapped_by": mapped_by},
             )
             count += 1
 
