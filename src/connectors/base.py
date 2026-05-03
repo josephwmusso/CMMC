@@ -45,6 +45,51 @@ class BaseConnector(ABC):
     display_name: str = ""
     supported_controls: list[str] = []
 
+    # ----- Setup wizard contract --------------------------------------------
+    #
+    # credentials_schema declares the fields the setup form will render.
+    # The generic frontend renderer handles four field types only:
+    #
+    #     text     | password    | select    | textarea
+    #
+    # A field declaration looks like:
+    #
+    #     {
+    #         "name": "tenant_id",            # required, becomes the key in
+    #                                          #   the credentials dict
+    #         "label": "Tenant ID",           # required, shown above the input
+    #         "type": "text",                 # required, one of the four above
+    #         "required": True,               # optional, default False
+    #         "help": "Found in Entra...",    # optional, rendered below input
+    #         "placeholder": "00000000-...",  # optional, text/password only
+    #         "options": [                    # required for type=select
+    #             {"value": "us-1", "label": "US-1 (Commercial)"},
+    #             ...
+    #         ],
+    #     }
+    #
+    # HARD BOUNDARY RULES — do not break these when adding new connectors:
+    #
+    #   1. Schema fields cannot reference other fields. No conditional
+    #      visibility, no cross-field validation. If you need that, set
+    #      setup_component instead.
+    #
+    #   2. Schema cannot embed code, expressions, or callbacks. No regex
+    #      validators, no JS hooks. If you need that, set setup_component.
+    #
+    # When either rule would be tempting to break, the answer is always
+    # "use setup_component and write a real React component." The schema
+    # stays a contract, not a DSL.
+    #
+    credentials_schema: list[dict] = []
+
+    # If set, the frontend renders the named component from
+    # src/app/components/connector-setup/registry.ts instead of the
+    # generic form. Use only when credentials_schema cannot express
+    # the setup flow (OAuth redirects, multi-step wizards, region
+    # cascades, custom widgets).
+    setup_component: str | None = None
+
     def __init__(self, config: dict, credentials: dict):
         """config is non-secret tunables; credentials is the decrypted secrets dict."""
         self.config = config or {}

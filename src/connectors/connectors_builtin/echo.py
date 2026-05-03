@@ -19,6 +19,8 @@ class EchoConnector(BaseConnector):
     type_name = "echo"
     display_name = "Echo (test stub)"
     supported_controls = ["AC.L2-3.1.1"]
+    credentials_schema = []
+    setup_component = None
 
     def test_connection(self) -> tuple[bool, str]:
         return True, "echo connector always succeeds"

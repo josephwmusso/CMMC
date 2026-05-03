@@ -34,6 +34,8 @@ def list_types() -> list[dict]:
             "type": cls.type_name,
             "display_name": cls.display_name,
             "supported_controls": list(cls.supported_controls),
+            "credentials_schema": list(cls.credentials_schema),
+            "setup_component": cls.setup_component,
         }
         for cls in _REGISTRY.values()
     ]
