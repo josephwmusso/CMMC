@@ -1,0 +1,40 @@
+{
+  "users": [
+    {
+      "id": "user-id-1",
+      "displayName": "Alice Admin",
+      "userPrincipalName": "alice@apex.onmicrosoft.us",
+      "userType": "Member",
+      "accountEnabled": true
+    },
+    {
+      "id": "user-id-2",
+      "displayName": "Bob Engineer",
+      "userPrincipalName": "bob@apex.onmicrosoft.us",
+      "userType": "Member",
+      "accountEnabled": true
+    }
+  ],
+  "groups": [
+    {
+      "id": "group-id-1",
+      "displayName": "Engineers",
+      "groupTypes": [],
+      "securityEnabled": true,
+      "mailEnabled": false
+    },
+    {
+      "id": "group-id-2",
+      "displayName": "Admins",
+      "groupTypes": [],
+      "securityEnabled": true,
+      "mailEnabled": false
+    }
+  ],
+  "group_id_1_members": [
+    {"id": "user-id-2"}
+  ],
+  "group_id_2_members": [
+    {"id": "user-id-1"}
+  ]
+}

@@ -1,0 +1,27 @@
+{
+  "conditional_access_policies": [
+    {
+      "id": "policy-id-1",
+      "displayName": "Require MFA for All",
+      "state": "enabled",
+      "conditions": {"users": {"includeUsers": ["All"]}},
+      "grantControls": {"builtInControls": ["mfa"]}
+    }
+  ],
+  "users": [
+    {"id": "user-id-1"},
+    {"id": "user-id-2"}
+  ],
+  "user_id_1_methods": [
+    {
+      "id": "method-id-1",
+      "@odata.type": "#microsoft.graph.microsoftAuthenticatorAuthenticationMethod"
+    }
+  ],
+  "user_id_2_methods": [
+    {
+      "id": "method-id-2",
+      "@odata.type": "#microsoft.graph.passwordAuthenticationMethod"
+    }
+  ]
+}

@@ -1,0 +1,17 @@
+{
+  "role_assignments": [
+    {
+      "id": "assign-id-1",
+      "principalId": "user-id-1",
+      "roleDefinitionId": "62e90394-69f5-4237-9190-012177145e10",
+      "directoryScopeId": "/"
+    }
+  ],
+  "role_definitions": [
+    {
+      "id": "62e90394-69f5-4237-9190-012177145e10",
+      "displayName": "Global Administrator",
+      "isBuiltIn": true
+    }
+  ]
+}

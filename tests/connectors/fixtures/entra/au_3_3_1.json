@@ -1,0 +1,20 @@
+{
+  "sign_ins": [
+    {
+      "id": "signin-id-1",
+      "createdDateTime": "2026-05-04T10:30:00Z",
+      "userPrincipalName": "alice@apex.onmicrosoft.us",
+      "appDisplayName": "Microsoft 365",
+      "status": {"errorCode": 0, "additionalDetails": ""}
+    }
+  ],
+  "directory_audits": [
+    {
+      "id": "audit-id-1",
+      "activityDateTime": "2026-05-04T11:00:00Z",
+      "category": "RoleManagement",
+      "activityDisplayName": "Add member to role",
+      "result": "success"
+    }
+  ]
+}

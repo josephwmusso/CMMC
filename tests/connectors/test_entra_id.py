@@ -1,8 +1,11 @@
-"""Unit tests for EntraIdConnector — Pass E.2 (skeleton + test_connection)."""
+"""Unit tests for EntraIdConnector — Pass E.2 + E.3a + E.3c."""
 
 from __future__ import annotations
 
+import json
 import logging
+from datetime import datetime, timezone
+from pathlib import Path
 from unittest.mock import patch, MagicMock
 
 import pytest
@@ -13,6 +16,46 @@ from src.connectors._msgraph.errors import (
     MsGraphError,
     MsGraphPermissionError,
 )
+
+
+FIXTURE_DIR = Path(__file__).parent / "fixtures" / "entra"
+
+
+def load_fixture(name: str) -> dict:
+    """Load a fixture JSON by control name (e.g. 'ac_3_1_1')."""
+    return json.loads((FIXTURE_DIR / f"{name}.json").read_text(encoding="utf-8"))
+
+
+def make_mock_client(get_responses: dict, paginate_responses: dict) -> MagicMock:
+    """Build a MagicMock MsGraphClient that returns fixture data.
+
+    get_responses: maps endpoint substring -> return value (single dict).
+    paginate_responses: maps endpoint substring -> list of dicts.
+
+    Endpoint matching is by 'first substring that's in the URL'.
+    """
+    client = MagicMock()
+    client.__enter__.return_value = client
+    client.__exit__.return_value = None
+
+    def get_side_effect(path):
+        for key, value in get_responses.items():
+            if key in path:
+                return value
+        raise KeyError(f"no get fixture matched path: {path}")
+
+    def paginate_side_effect(path):
+        for key, value in paginate_responses.items():
+            if key in path:
+                return iter(value)
+        raise KeyError(f"no paginate fixture matched path: {path}")
+
+    client.get.side_effect = get_side_effect
+    client.paginate.side_effect = paginate_side_effect
+    return client
+
+
+FIXED_NOW = datetime(2026, 5, 4, 12, 0, 0, tzinfo=timezone.utc)
 
 
 VALID_CREDS = {
@@ -360,16 +403,10 @@ class TestTestConnection:
 
 
 # ──────────────────────────────────────────────────────────────────────
-# D. pull() — confirm explicit NotImplementedError
+# D. pull() — Pass E.2's deferred-implementation test removed in E.3c.
+#    pull() is now implemented; orchestrator + per-control tests live in
+#    sections F and G below.
 # ──────────────────────────────────────────────────────────────────────
-
-class TestPullNotImplemented:
-
-    def test_pull_raises_notimplemented(self, connector):
-        gen = connector.pull()
-        with pytest.raises(NotImplementedError) as exc_info:
-            next(gen)
-        assert "Pass E.3" in str(exc_info.value)
 
 
 # ──────────────────────────────────────────────────────────────────────
@@ -443,3 +480,555 @@ class TestSecretHygiene:
             assert self.UNIQUE_SECRET not in str(log_context)
             assert "client_secret" not in log_context
             assert "client_id" not in log_context
+
+
+# ──────────────────────────────────────────────────────────────────────
+# F. Per-control _pull_<control>() methods (Pass E.3c)
+# ──────────────────────────────────────────────────────────────────────
+
+class TestPullAC311:
+    """AC.L2-3.1.1 — users, groups, group memberships."""
+
+    def _setup(self, connector):
+        connector._now = lambda: FIXED_NOW
+        fx = load_fixture("ac_3_1_1")
+        client = make_mock_client(
+            get_responses={},
+            paginate_responses={
+                "/users?": fx["users"],
+                "/groups?": fx["groups"],
+                "/groups/group-id-1/members": fx["group_id_1_members"],
+                "/groups/group-id-2/members": fx["group_id_2_members"],
+            },
+        )
+        return connector, client, fx
+
+    def test_returns_pulled_evidence(self, connector):
+        c, client, _ = self._setup(connector)
+        ev = c._pull_ac_3_1_1(client)
+        assert ev is not None
+        assert ev.control_ids == ["AC.L2-3.1.1"]
+
+    def test_filename_includes_timestamp(self, connector):
+        c, client, _ = self._setup(connector)
+        ev = c._pull_ac_3_1_1(client)
+        assert ev.filename.startswith("entra_users_groups_")
+        assert ev.filename.endswith(".json")
+        assert "2026-05-04" in ev.filename
+
+    def test_content_is_bytes(self, connector):
+        c, client, _ = self._setup(connector)
+        ev = c._pull_ac_3_1_1(client)
+        assert isinstance(ev.content, bytes)
+
+    def test_content_parses_to_expected_shape(self, connector):
+        c, client, fx = self._setup(connector)
+        ev = c._pull_ac_3_1_1(client)
+        parsed = json.loads(ev.content.decode("utf-8"))
+        assert parsed["users"] == fx["users"]
+        assert parsed["groups"] == fx["groups"]
+        assert parsed["fetched_at"] == FIXED_NOW.isoformat()
+
+    def test_membership_aggregation(self, connector):
+        c, client, _ = self._setup(connector)
+        ev = c._pull_ac_3_1_1(client)
+        parsed = json.loads(ev.content.decode("utf-8"))
+        assert len(parsed["group_memberships"]) == 2
+        member_counts = {
+            m["group_id"]: len(m["members"])
+            for m in parsed["group_memberships"]
+        }
+        assert member_counts == {"group-id-1": 1, "group-id-2": 1}
+
+    def test_metadata_counts(self, connector):
+        c, client, _ = self._setup(connector)
+        ev = c._pull_ac_3_1_1(client)
+        assert ev.metadata["user_count"] == 2
+        assert ev.metadata["group_count"] == 2
+        assert ev.metadata["membership_count"] == 2
+        assert ev.metadata["skipped_group_count"] == 0
+
+    def test_per_group_failure_isolation(self, connector):
+        c = connector
+        c._now = lambda: FIXED_NOW
+        fx = load_fixture("ac_3_1_1")
+
+        client = MagicMock()
+        client.__enter__.return_value = client
+        client.__exit__.return_value = None
+
+        def paginate_side_effect(path):
+            if "/users?" in path and "members" not in path:
+                return iter(fx["users"])
+            if "/groups?" in path:
+                return iter(fx["groups"])
+            if "/groups/group-id-1/members" in path:
+                return iter(fx["group_id_1_members"])
+            if "/groups/group-id-2/members" in path:
+                raise RuntimeError("simulated graph 500")
+            raise KeyError(f"unmatched path: {path}")
+
+        client.paginate.side_effect = paginate_side_effect
+
+        ev = c._pull_ac_3_1_1(client)
+        assert ev is not None
+        parsed = json.loads(ev.content.decode("utf-8"))
+        assert len(parsed["group_memberships"]) == 1
+        assert parsed["skipped_groups"] == ["group-id-2"]
+        assert ev.metadata["skipped_group_count"] == 1
+
+
+class TestPullIA353:
+    """IA.L2-3.5.3 — conditional access + per-user auth methods."""
+
+    def _setup(self, connector):
+        connector._now = lambda: FIXED_NOW
+        fx = load_fixture("ia_3_5_3")
+        client = make_mock_client(
+            get_responses={},
+            paginate_responses={
+                "/identity/conditionalAccess/policies": fx["conditional_access_policies"],
+                "/users?": fx["users"],
+                "/users/user-id-1/authentication/methods": fx["user_id_1_methods"],
+                "/users/user-id-2/authentication/methods": fx["user_id_2_methods"],
+            },
+        )
+        return connector, client, fx
+
+    def test_returns_pulled_evidence(self, connector):
+        c, client, _ = self._setup(connector)
+        ev = c._pull_ia_3_5_3(client)
+        assert ev is not None
+        assert ev.control_ids == ["IA.L2-3.5.3"]
+
+    def test_content_includes_policies_and_methods(self, connector):
+        c, client, fx = self._setup(connector)
+        ev = c._pull_ia_3_5_3(client)
+        parsed = json.loads(ev.content.decode("utf-8"))
+        assert parsed["conditional_access_policies"] == fx["conditional_access_policies"]
+        assert len(parsed["user_authentication_methods"]) == 2
+
+    def test_metadata_counts(self, connector):
+        c, client, _ = self._setup(connector)
+        ev = c._pull_ia_3_5_3(client)
+        assert ev.metadata["policy_count"] == 1
+        assert ev.metadata["users_examined"] == 2
+        assert ev.metadata["skipped_user_count"] == 0
+
+    def test_per_user_failure_isolation(self, connector):
+        c = connector
+        c._now = lambda: FIXED_NOW
+        fx = load_fixture("ia_3_5_3")
+
+        client = MagicMock()
+        client.__enter__.return_value = client
+        client.__exit__.return_value = None
+
+        def paginate_side_effect(path):
+            if "/identity/conditionalAccess/policies" in path:
+                return iter(fx["conditional_access_policies"])
+            if "/users?" in path:
+                return iter(fx["users"])
+            if "/users/user-id-1/authentication/methods" in path:
+                return iter(fx["user_id_1_methods"])
+            if "/users/user-id-2/authentication/methods" in path:
+                raise RuntimeError("simulated 500")
+            raise KeyError(f"unmatched: {path}")
+
+        client.paginate.side_effect = paginate_side_effect
+
+        ev = c._pull_ia_3_5_3(client)
+        assert ev is not None
+        parsed = json.loads(ev.content.decode("utf-8"))
+        assert len(parsed["user_authentication_methods"]) == 1
+        assert parsed["skipped_users"] == ["user-id-2"]
+
+
+class TestPullAC315:
+    """AC.L2-3.1.5 — privileged role assignments."""
+
+    def _setup(self, connector):
+        connector._now = lambda: FIXED_NOW
+        fx = load_fixture("ac_3_1_5")
+        client = make_mock_client(
+            get_responses={},
+            paginate_responses={
+                "/roleManagement/directory/roleAssignments": fx["role_assignments"],
+                "/roleManagement/directory/roleDefinitions": fx["role_definitions"],
+            },
+        )
+        return connector, client, fx
+
+    def test_returns_pulled_evidence(self, connector):
+        c, client, _ = self._setup(connector)
+        ev = c._pull_ac_3_1_5(client)
+        assert ev is not None
+        assert ev.control_ids == ["AC.L2-3.1.5"]
+
+    def test_metadata_counts(self, connector):
+        c, client, _ = self._setup(connector)
+        ev = c._pull_ac_3_1_5(client)
+        assert ev.metadata["assignment_count"] == 1
+        assert ev.metadata["definition_count"] == 1
+        assert ev.metadata["roles_observed"] == [
+            "62e90394-69f5-4237-9190-012177145e10"
+        ]
+
+    def test_content_includes_assignments_and_definitions(self, connector):
+        c, client, fx = self._setup(connector)
+        ev = c._pull_ac_3_1_5(client)
+        parsed = json.loads(ev.content.decode("utf-8"))
+        assert parsed["role_assignments"] == fx["role_assignments"]
+        assert parsed["role_definitions"] == fx["role_definitions"]
+
+
+class TestPullAU331:
+    """AU.L2-3.3.1 — sign-in and directory audit logs."""
+
+    def _setup(self, connector):
+        connector._now = lambda: FIXED_NOW
+        fx = load_fixture("au_3_3_1")
+        client = make_mock_client(
+            get_responses={},
+            paginate_responses={
+                "/auditLogs/signIns": fx["sign_ins"],
+                "/auditLogs/directoryAudits": fx["directory_audits"],
+            },
+        )
+        return connector, client, fx
+
+    def test_returns_pulled_evidence(self, connector):
+        c, client, _ = self._setup(connector)
+        ev = c._pull_au_3_3_1(client)
+        assert ev is not None
+        assert ev.control_ids == ["AU.L2-3.3.1"]
+
+    def test_filename_includes_lookback_hours(self, connector):
+        c, client, _ = self._setup(connector)
+        ev = c._pull_au_3_3_1(client)
+        assert "_24h_" in ev.filename
+
+    def test_window_is_lookback_hours_before_now(self, connector):
+        c, client, _ = self._setup(connector)
+        ev = c._pull_au_3_3_1(client)
+        parsed = json.loads(ev.content.decode("utf-8"))
+        window_end = datetime.fromisoformat(parsed["window_end"])
+        window_start = datetime.fromisoformat(parsed["window_start"])
+        delta_hours = (window_end - window_start).total_seconds() / 3600
+        assert delta_hours == 24.0
+
+    def test_filter_uses_z_suffix(self, connector):
+        c = connector
+        c._now = lambda: FIXED_NOW
+
+        captured_paths = []
+
+        def paginate_side_effect(path):
+            captured_paths.append(path)
+            return iter([])
+
+        client = MagicMock()
+        client.__enter__.return_value = client
+        client.__exit__.return_value = None
+        client.paginate.side_effect = paginate_side_effect
+
+        c._pull_au_3_3_1(client)
+
+        for p in captured_paths:
+            assert "Z" in p
+            assert "+00:00" not in p
+
+    def test_lookback_hours_in_metadata(self, connector):
+        c, client, _ = self._setup(connector)
+        ev = c._pull_au_3_3_1(client)
+        assert ev.metadata["lookback_hours"] == 24
+
+    def test_custom_lookback_hours(self):
+        c = EntraIdConnector(config={"lookback_hours": 72}, credentials=VALID_CREDS)
+        c._now = lambda: FIXED_NOW
+        fx = load_fixture("au_3_3_1")
+        client = make_mock_client(
+            get_responses={},
+            paginate_responses={
+                "/auditLogs/signIns": fx["sign_ins"],
+                "/auditLogs/directoryAudits": fx["directory_audits"],
+            },
+        )
+        ev = c._pull_au_3_3_1(client)
+        assert "_72h_" in ev.filename
+        assert ev.metadata["lookback_hours"] == 72
+
+
+class TestPullAC3120:
+    """AC.L2-3.1.20 — external collaboration."""
+
+    def _setup(self, connector):
+        connector._now = lambda: FIXED_NOW
+        fx = load_fixture("ac_3_1_20")
+        client = make_mock_client(
+            get_responses={
+                "/policies/crossTenantAccessPolicy/default": fx["cross_tenant_access_policy"],
+            },
+            paginate_responses={
+                "/invitations": fx["b2b_invitations"],
+            },
+        )
+        return connector, client, fx
+
+    def test_returns_pulled_evidence(self, connector):
+        c, client, _ = self._setup(connector)
+        ev = c._pull_ac_3_1_20(client)
+        assert ev is not None
+        assert ev.control_ids == ["AC.L2-3.1.20"]
+
+    def test_uses_get_for_singleton_policy(self, connector):
+        # crossTenantAccessPolicy/default is a SINGLE OBJECT, not a collection.
+        # The connector must use client.get(), not client.paginate().
+        c, client, _ = self._setup(connector)
+        c._pull_ac_3_1_20(client)
+        get_calls = [call.args[0] for call in client.get.call_args_list]
+        assert any("crossTenantAccessPolicy" in p for p in get_calls)
+
+    def test_uses_paginate_for_invitations(self, connector):
+        c, client, _ = self._setup(connector)
+        c._pull_ac_3_1_20(client)
+        paginate_calls = [call.args[0] for call in client.paginate.call_args_list]
+        assert any("/invitations" in p for p in paginate_calls)
+
+    def test_content_includes_policy_and_invitations(self, connector):
+        c, client, fx = self._setup(connector)
+        ev = c._pull_ac_3_1_20(client)
+        parsed = json.loads(ev.content.decode("utf-8"))
+        assert parsed["cross_tenant_access_policy"] == fx["cross_tenant_access_policy"]
+        assert parsed["b2b_invitations"] == fx["b2b_invitations"]
+
+    def test_metadata_counts(self, connector):
+        c, client, _ = self._setup(connector)
+        ev = c._pull_ac_3_1_20(client)
+        assert ev.metadata["invitation_count"] == 1
+
+
+# ──────────────────────────────────────────────────────────────────────
+# G. pull() orchestrator (Pass E.3c)
+# ──────────────────────────────────────────────────────────────────────
+
+def _build_all_succeed_client(fxs):
+    """Build a MagicMock client whose dispatch covers all five controls."""
+    client = MagicMock()
+    client.__enter__.return_value = client
+    client.__exit__.return_value = None
+
+    def paginate_side_effect(path):
+        # Order matters — most specific paths first.
+        if "/users/user-id-1/authentication/methods" in path:
+            return iter(fxs["ia_3_5_3"]["user_id_1_methods"])
+        if "/users/user-id-2/authentication/methods" in path:
+            return iter(fxs["ia_3_5_3"]["user_id_2_methods"])
+        if "/groups/group-id-1/members" in path:
+            return iter(fxs["ac_3_1_1"]["group_id_1_members"])
+        if "/groups/group-id-2/members" in path:
+            return iter(fxs["ac_3_1_1"]["group_id_2_members"])
+        # IA.L2-3.5.3 only $select=id; AC.L2-3.1.1 selects more fields.
+        # Both match "/users?" — return the same user list shape (id-only
+        # works for both code paths).
+        if "/users?" in path:
+            return iter(fxs["ac_3_1_1"]["users"])
+        if "/groups?" in path:
+            return iter(fxs["ac_3_1_1"]["groups"])
+        if "/identity/conditionalAccess/policies" in path:
+            return iter(fxs["ia_3_5_3"]["conditional_access_policies"])
+        if "/roleManagement/directory/roleAssignments" in path:
+            return iter(fxs["ac_3_1_5"]["role_assignments"])
+        if "/roleManagement/directory/roleDefinitions" in path:
+            return iter(fxs["ac_3_1_5"]["role_definitions"])
+        if "/auditLogs/signIns" in path:
+            return iter(fxs["au_3_3_1"]["sign_ins"])
+        if "/auditLogs/directoryAudits" in path:
+            return iter(fxs["au_3_3_1"]["directory_audits"])
+        if "/invitations" in path:
+            return iter(fxs["ac_3_1_20"]["b2b_invitations"])
+        raise KeyError(f"unmatched paginate: {path}")
+
+    def get_side_effect(path):
+        if "crossTenantAccessPolicy" in path:
+            return fxs["ac_3_1_20"]["cross_tenant_access_policy"]
+        raise KeyError(f"unmatched get: {path}")
+
+    client.paginate.side_effect = paginate_side_effect
+    client.get.side_effect = get_side_effect
+    return client
+
+
+class TestPullOrchestrator:
+    """The pull() method composing five _pull_<control>() helpers."""
+
+    def _setup_all_succeed(self, connector):
+        connector._now = lambda: FIXED_NOW
+        fxs = {k: load_fixture(k) for k in
+               ["ac_3_1_1", "ia_3_5_3", "ac_3_1_5", "au_3_3_1", "ac_3_1_20"]}
+        client = _build_all_succeed_client(fxs)
+        connector._build_client = lambda: client
+        return connector
+
+    def test_all_five_controls_yield_evidence(self, connector):
+        c = self._setup_all_succeed(connector)
+        items = list(c.pull())
+        assert len(items) == 5
+        control_ids = [item.control_ids[0] for item in items]
+        assert control_ids == [
+            "AC.L2-3.1.1", "IA.L2-3.5.3", "AC.L2-3.1.5",
+            "AU.L2-3.3.1", "AC.L2-3.1.20",
+        ]
+
+    def test_no_errors_when_all_succeed(self, connector):
+        c = self._setup_all_succeed(connector)
+        list(c.pull())
+        assert c.get_pull_errors() == []
+
+    def test_one_control_failure_isolated(self, connector):
+        c = connector
+        c._now = lambda: FIXED_NOW
+
+        client = MagicMock()
+        client.__enter__.return_value = client
+        client.__exit__.return_value = None
+
+        fxs = {k: load_fixture(k) for k in
+               ["ac_3_1_1", "ia_3_5_3", "ac_3_1_5", "au_3_3_1", "ac_3_1_20"]}
+
+        def paginate_side_effect(path):
+            if "/roleManagement" in path:
+                raise RuntimeError("simulated graph failure")
+            # Re-use the all-succeed dispatch otherwise.
+            if "/users/user-id-1/authentication/methods" in path:
+                return iter(fxs["ia_3_5_3"]["user_id_1_methods"])
+            if "/users/user-id-2/authentication/methods" in path:
+                return iter(fxs["ia_3_5_3"]["user_id_2_methods"])
+            if "/groups/group-id-1/members" in path:
+                return iter(fxs["ac_3_1_1"]["group_id_1_members"])
+            if "/groups/group-id-2/members" in path:
+                return iter(fxs["ac_3_1_1"]["group_id_2_members"])
+            if "/users?" in path:
+                return iter(fxs["ac_3_1_1"]["users"])
+            if "/groups?" in path:
+                return iter(fxs["ac_3_1_1"]["groups"])
+            if "/identity/conditionalAccess/policies" in path:
+                return iter(fxs["ia_3_5_3"]["conditional_access_policies"])
+            if "/auditLogs/signIns" in path:
+                return iter(fxs["au_3_3_1"]["sign_ins"])
+            if "/auditLogs/directoryAudits" in path:
+                return iter(fxs["au_3_3_1"]["directory_audits"])
+            if "/invitations" in path:
+                return iter(fxs["ac_3_1_20"]["b2b_invitations"])
+            raise KeyError(f"unmatched: {path}")
+
+        def get_side_effect(path):
+            if "crossTenantAccessPolicy" in path:
+                return fxs["ac_3_1_20"]["cross_tenant_access_policy"]
+            raise KeyError(f"unmatched: {path}")
+
+        client.paginate.side_effect = paginate_side_effect
+        client.get.side_effect = get_side_effect
+        c._build_client = lambda: client
+
+        items = list(c.pull())
+        # Four controls succeed, one fails.
+        assert len(items) == 4
+        control_ids = [item.control_ids[0] for item in items]
+        assert "AC.L2-3.1.5" not in control_ids
+
+        errors = c.get_pull_errors()
+        assert len(errors) == 1
+        assert "AC.L2-3.1.5" in errors[0]
+        assert "simulated graph failure" in errors[0]
+        assert " | " in errors[0]  # canonical format
+
+    def test_all_controls_fail_yields_zero_evidence(self, connector):
+        c = connector
+        c._now = lambda: FIXED_NOW
+
+        client = MagicMock()
+        client.__enter__.return_value = client
+        client.__exit__.return_value = None
+        client.paginate.side_effect = RuntimeError("everything broken")
+        client.get.side_effect = RuntimeError("everything broken")
+        c._build_client = lambda: client
+
+        items = list(c.pull())
+        assert items == []
+
+        errors = c.get_pull_errors()
+        assert len(errors) == 5
+        for cid in ["AC.L2-3.1.1", "IA.L2-3.5.3", "AC.L2-3.1.5",
+                    "AU.L2-3.3.1", "AC.L2-3.1.20"]:
+            assert any(cid in e for e in errors), f"missing {cid} in errors"
+
+    def test_pull_resets_accumulator(self, connector):
+        c = connector
+        c._now = lambda: FIXED_NOW
+        client = MagicMock()
+        client.__enter__.return_value = client
+        client.__exit__.return_value = None
+        client.paginate.side_effect = RuntimeError("broken")
+        client.get.side_effect = RuntimeError("broken")
+        c._build_client = lambda: client
+
+        list(c.pull())
+        assert len(c.get_pull_errors()) == 5
+
+        list(c.pull())
+        assert len(c.get_pull_errors()) == 5  # not 10
+
+    def test_get_pull_errors_returns_copy(self, connector):
+        c = connector
+        c._now = lambda: FIXED_NOW
+        client = MagicMock()
+        client.__enter__.return_value = client
+        client.__exit__.return_value = None
+        client.paginate.side_effect = RuntimeError("broken")
+        client.get.side_effect = RuntimeError("broken")
+        c._build_client = lambda: client
+
+        list(c.pull())
+        errors = c.get_pull_errors()
+        errors.append("local mutation")
+        assert "local mutation" not in c.get_pull_errors()
+
+
+# ──────────────────────────────────────────────────────────────────────
+# H. Pull-time secret hygiene (Pass E.3c regression bar)
+# ──────────────────────────────────────────────────────────────────────
+
+class TestPullSecretHygiene:
+    """Pass E.3c regression: client_secret never reaches logs/repr/errors
+    during a real pull cycle, including total-failure paths.
+    """
+
+    UNIQUE_SECRET = "TEST_SECRET_E3C_DO_NOT_LEAK_a1b2c3d4e5"
+
+    @pytest.fixture
+    def hygiene_connector(self):
+        creds = {**VALID_CREDS, "client_secret": self.UNIQUE_SECRET}
+        return EntraIdConnector(config={}, credentials=creds)
+
+    def test_secret_not_in_pull_errors_on_total_failure(self, hygiene_connector, caplog):
+        c = hygiene_connector
+        c._now = lambda: FIXED_NOW
+        client = MagicMock()
+        client.__enter__.return_value = client
+        client.__exit__.return_value = None
+        client.paginate.side_effect = RuntimeError("broken")
+        client.get.side_effect = RuntimeError("broken")
+        c._build_client = lambda: client
+
+        with caplog.at_level(logging.DEBUG):
+            list(c.pull())
+
+        for err in c.get_pull_errors():
+            assert self.UNIQUE_SECRET not in err
+
+        for record in caplog.records:
+            assert self.UNIQUE_SECRET not in record.getMessage()
+            assert self.UNIQUE_SECRET not in str(record.args)
+            if record.exc_info:
+                assert self.UNIQUE_SECRET not in str(record.exc_info)

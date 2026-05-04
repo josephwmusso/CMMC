@@ -11,7 +11,9 @@ Pass E.3 will implement pull() across five CMMC controls:
 
 from __future__ import annotations
 
+import json
 import logging
+from datetime import datetime, timedelta, timezone
 from typing import Iterator
 
 from src.connectors.base import BaseConnector, PulledEvidence
@@ -21,6 +23,7 @@ from src.connectors._msgraph import (
     MsGraphError,
     MsGraphAuthError,
     MsGraphPermissionError,
+    format_pull_error,
 )
 
 log = logging.getLogger(__name__)
@@ -117,6 +120,10 @@ class EntraIdConnector(BaseConnector):
             config.get("lookback_hours", 24)
         )
 
+        # Per-control errors accumulated during pull(), surfaced via
+        # get_pull_errors() per the Pass E.3b contract.
+        self._pull_errors: list[str] = []
+
     @staticmethod
     def _clamp_lookback_hours(raw_value) -> int:
         """Clamp lookback_hours to [1, 168] (one hour to one week).
@@ -157,6 +164,15 @@ class EntraIdConnector(BaseConnector):
             return MAX_HOURS
 
         return value
+
+    def _now(self) -> datetime:
+        """Inject point for current time. Tests monkeypatch this on the
+        instance to get deterministic timestamps in PulledEvidence content
+        and audit log time windows.
+
+        Returns timezone-aware UTC datetime.
+        """
+        return datetime.now(timezone.utc)
 
     def _build_client(self) -> MsGraphClient:
         """Construct a fresh MsGraphClient. Caller must close() or use as a
@@ -233,13 +249,305 @@ class EntraIdConnector(BaseConnector):
     def pull(self) -> Iterator[PulledEvidence]:
         """Pull evidence from Microsoft Graph for five CMMC controls.
 
-        NOT YET IMPLEMENTED — Pass E.3.
+        Per-control errors are caught and accumulated on self._pull_errors
+        (surfaced via get_pull_errors() per the Pass E.3b contract). One
+        failing control does NOT abort the others.
+
+        Errors during MsGraphClient construction or token acquisition kill
+        the entire pull (caught at the runner's outer scope, run -> FAILED).
+        Errors inside individual _pull_<control>() methods are isolated.
         """
-        raise NotImplementedError(
-            "EntraIdConnector.pull() is not yet implemented. "
-            "Pass E.2 ships the skeleton and test_connection() only. "
-            "Pass E.3 implements pull() across five controls."
+        # Reset accumulator at start of each pull. Per-run-fresh-instance
+        # guarantee makes this belt-and-suspenders, but the discipline
+        # protects against future runner refactors.
+        self._pull_errors = []
+
+        # Tuple shape: (control_id, endpoint_summary, method).
+        # endpoint_summary is the string used in format_pull_error for
+        # diagnostic output — not a real URL.
+        controls = [
+            ("AC.L2-3.1.1",  "/users,/groups",                              self._pull_ac_3_1_1),
+            ("IA.L2-3.5.3",  "/conditionalAccess,/authentication/methods",  self._pull_ia_3_5_3),
+            ("AC.L2-3.1.5",  "/roleManagement",                             self._pull_ac_3_1_5),
+            ("AU.L2-3.3.1",  "/auditLogs",                                  self._pull_au_3_3_1),
+            ("AC.L2-3.1.20", "/crossTenantAccessPolicy,/invitations",       self._pull_ac_3_1_20),
+        ]
+
+        with self._build_client() as client:
+            for control_id, endpoint_summary, fn in controls:
+                try:
+                    ev = fn(client)
+                    if ev is not None:
+                        yield ev
+                except Exception as e:  # noqa: BLE001
+                    self._pull_errors.append(
+                        format_pull_error(control_id, endpoint_summary, e)
+                    )
+                    log.warning(
+                        "control pull failed; isolating and continuing",
+                        extra={
+                            "control_id": control_id,
+                            "endpoint_summary": endpoint_summary,
+                            "error_class": type(e).__name__,
+                            "error": str(e),
+                        },
+                    )
+                    continue
+
+    def get_pull_errors(self) -> list[str]:
+        """Return per-control errors accumulated during pull().
+
+        Per the Pass E.3b contract, the runner calls this once after pull()
+        exhausts and extends summary.errors[] with the result. Returns a
+        copy (not the live list) so caller mutations don't affect connector
+        state.
+        """
+        return list(self._pull_errors)
+
+    # ----- Per-control pull helpers ---------------------------------------
+
+    def _pull_ac_3_1_1(self, client: MsGraphClient) -> PulledEvidence | None:
+        """AC.L2-3.1.1 — users, groups, group memberships."""
+        users = list(client.paginate(
+            "/users?$select=id,displayName,userPrincipalName,userType,accountEnabled"
+        ))
+        groups = list(client.paginate(
+            "/groups?$select=id,displayName,groupTypes,securityEnabled,mailEnabled"
+        ))
+
+        # Per-group membership fetch. A single group's membership failure
+        # (e.g., a synced group with broken Graph state) shouldn't kill the
+        # whole control. Track skipped groups for visibility but continue.
+        memberships: list[dict] = []
+        skipped_groups: list[str] = []
+        for group in groups:
+            gid = group["id"]
+            try:
+                members = list(client.paginate(
+                    f"/groups/{gid}/members?$select=id"
+                ))
+                memberships.append({
+                    "group_id": gid,
+                    "members": [{"id": m["id"]} for m in members],
+                })
+            except Exception as e:  # noqa: BLE001
+                log.warning(
+                    "skipping group membership fetch",
+                    extra={
+                        "group_id": gid,
+                        "error_class": type(e).__name__,
+                        "error": str(e),
+                    },
+                )
+                skipped_groups.append(gid)
+                continue
+
+        utc_iso = self._now().isoformat()
+        content = json.dumps({
+            "users": users,
+            "groups": groups,
+            "group_memberships": memberships,
+            "skipped_groups": skipped_groups,
+            "fetched_at": utc_iso,
+        }, sort_keys=True).encode("utf-8")
+
+        return PulledEvidence(
+            filename=f"entra_users_groups_{utc_iso}.json",
+            content=content,
+            mime_type="application/json",
+            description="Users, groups, and group memberships from Microsoft Entra ID.",
+            control_ids=["AC.L2-3.1.1"],
+            metadata={
+                "endpoints": ["/users", "/groups", "/groups/{id}/members"],
+                "user_count": len(users),
+                "group_count": len(groups),
+                "membership_count": sum(len(m["members"]) for m in memberships),
+                "skipped_group_count": len(skipped_groups),
+            },
         )
-        # The following yield is unreachable but makes Python recognize this
-        # as a generator function, matching the BaseConnector type signature.
-        yield  # pragma: no cover
+
+    def _pull_ia_3_5_3(self, client: MsGraphClient) -> PulledEvidence | None:
+        """IA.L2-3.5.3 — conditional access policies and per-user auth methods."""
+        policies = list(client.paginate(
+            "/identity/conditionalAccess/policies"
+        ))
+
+        # Per-user authentication methods. ~2 + N calls (N = user count).
+        # For Apex (45 users), ~47 calls. Acceptable for Pass E; $batch
+        # refactor is Pass I work.
+        users = list(client.paginate("/users?$select=id"))
+        user_auth_methods: list[dict] = []
+        skipped_users: list[str] = []
+        for user in users:
+            uid = user["id"]
+            try:
+                methods = list(client.paginate(
+                    f"/users/{uid}/authentication/methods"
+                ))
+                user_auth_methods.append({
+                    "user_id": uid,
+                    "methods": methods,
+                })
+            except Exception as e:  # noqa: BLE001
+                log.warning(
+                    "skipping user auth methods fetch",
+                    extra={
+                        "user_id": uid,
+                        "error_class": type(e).__name__,
+                        "error": str(e),
+                    },
+                )
+                skipped_users.append(uid)
+                continue
+
+        utc_iso = self._now().isoformat()
+        content = json.dumps({
+            "conditional_access_policies": policies,
+            "user_authentication_methods": user_auth_methods,
+            "skipped_users": skipped_users,
+            "fetched_at": utc_iso,
+        }, sort_keys=True).encode("utf-8")
+
+        return PulledEvidence(
+            filename=f"entra_mfa_{utc_iso}.json",
+            content=content,
+            mime_type="application/json",
+            description="Conditional access policies and per-user authentication methods.",
+            control_ids=["IA.L2-3.5.3"],
+            metadata={
+                "endpoints": [
+                    "/identity/conditionalAccess/policies",
+                    "/users",
+                    "/users/{id}/authentication/methods",
+                ],
+                "policy_count": len(policies),
+                "users_examined": len(user_auth_methods),
+                "skipped_user_count": len(skipped_users),
+            },
+        )
+
+    def _pull_ac_3_1_5(self, client: MsGraphClient) -> PulledEvidence | None:
+        """AC.L2-3.1.5 — privileged role assignments."""
+        role_assignments = list(client.paginate(
+            "/roleManagement/directory/roleAssignments"
+            "?$select=id,principalId,roleDefinitionId,directoryScopeId"
+        ))
+        role_definitions = list(client.paginate(
+            "/roleManagement/directory/roleDefinitions"
+            "?$select=id,displayName,isBuiltIn"
+        ))
+
+        utc_iso = self._now().isoformat()
+        content = json.dumps({
+            "role_assignments": role_assignments,
+            "role_definitions": role_definitions,
+            "fetched_at": utc_iso,
+        }, sort_keys=True).encode("utf-8")
+
+        # Roles observed = unique roleDefinitionIds in assignments.
+        roles_observed = sorted({
+            a.get("roleDefinitionId") for a in role_assignments
+            if a.get("roleDefinitionId")
+        })
+
+        return PulledEvidence(
+            filename=f"entra_role_assignments_{utc_iso}.json",
+            content=content,
+            mime_type="application/json",
+            description="Privileged role assignments and role definitions from Entra ID.",
+            control_ids=["AC.L2-3.1.5"],
+            metadata={
+                "endpoints": [
+                    "/roleManagement/directory/roleAssignments",
+                    "/roleManagement/directory/roleDefinitions",
+                ],
+                "assignment_count": len(role_assignments),
+                "definition_count": len(role_definitions),
+                "roles_observed": roles_observed,
+            },
+        )
+
+    def _pull_au_3_3_1(self, client: MsGraphClient) -> PulledEvidence | None:
+        """AU.L2-3.3.1 — sign-in and directory audit logs for the lookback window."""
+        now = self._now()
+        window_end = now
+        window_start = now - timedelta(hours=self._lookback_hours)
+
+        # Microsoft Graph's $filter on createdDateTime requires ISO 8601 with
+        # explicit Z. Python's .isoformat() emits +00:00 for UTC; we replace
+        # to Z for Graph compatibility.
+        start_iso = window_start.isoformat().replace("+00:00", "Z")
+
+        sign_ins = list(client.paginate(
+            f"/auditLogs/signIns?$filter=createdDateTime ge {start_iso}"
+            f"&$top=1000"
+        ))
+        directory_audits = list(client.paginate(
+            f"/auditLogs/directoryAudits?$filter=activityDateTime ge {start_iso}"
+            f"&$top=1000"
+        ))
+
+        utc_iso = now.isoformat()
+        content = json.dumps({
+            "sign_ins": sign_ins,
+            "directory_audits": directory_audits,
+            "lookback_hours": self._lookback_hours,
+            "window_start": window_start.isoformat(),
+            "window_end": window_end.isoformat(),
+            "fetched_at": utc_iso,
+        }, sort_keys=True).encode("utf-8")
+
+        return PulledEvidence(
+            filename=f"entra_audit_logs_{self._lookback_hours}h_{utc_iso}.json",
+            content=content,
+            mime_type="application/json",
+            description=(
+                f"Sign-in and directory audit logs for the last "
+                f"{self._lookback_hours}h."
+            ),
+            control_ids=["AU.L2-3.3.1"],
+            metadata={
+                "endpoints": ["/auditLogs/signIns", "/auditLogs/directoryAudits"],
+                "sign_in_count": len(sign_ins),
+                "audit_count": len(directory_audits),
+                "lookback_hours": self._lookback_hours,
+                "window_start": window_start.isoformat(),
+                "window_end": window_end.isoformat(),
+            },
+        )
+
+    def _pull_ac_3_1_20(self, client: MsGraphClient) -> PulledEvidence | None:
+        """AC.L2-3.1.20 — external collaboration settings and B2B invitations."""
+        # /policies/crossTenantAccessPolicy/default returns a SINGLE OBJECT,
+        # not a collection. Use client.get, not client.paginate.
+        cross_tenant_policy = client.get(
+            "/policies/crossTenantAccessPolicy/default"
+        )
+
+        # /invitations IS a collection — paginate.
+        invitations = list(client.paginate(
+            "/invitations?$select=id,inviteRedeemUrl,invitedUserEmailAddress,"
+            "status,invitedUserType"
+        ))
+
+        utc_iso = self._now().isoformat()
+        content = json.dumps({
+            "cross_tenant_access_policy": cross_tenant_policy,
+            "b2b_invitations": invitations,
+            "fetched_at": utc_iso,
+        }, sort_keys=True).encode("utf-8")
+
+        return PulledEvidence(
+            filename=f"entra_external_collab_{utc_iso}.json",
+            content=content,
+            mime_type="application/json",
+            description="Cross-tenant access policy and B2B invitation history.",
+            control_ids=["AC.L2-3.1.20"],
+            metadata={
+                "endpoints": [
+                    "/policies/crossTenantAccessPolicy/default",
+                    "/invitations",
+                ],
+                "invitation_count": len(invitations),
+            },
+        )

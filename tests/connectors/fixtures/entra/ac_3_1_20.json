@@ -1,0 +1,18 @@
+{
+  "cross_tenant_access_policy": {
+    "id": "policy-id-cross-tenant",
+    "displayName": "Default",
+    "default": {
+      "b2bCollaborationOutbound": {"usersAndGroups": {"accessType": "allowed"}}
+    }
+  },
+  "b2b_invitations": [
+    {
+      "id": "invite-id-1",
+      "inviteRedeemUrl": "https://login.microsoftonline.us/...",
+      "invitedUserEmailAddress": "external@partner.com",
+      "status": "PendingAcceptance",
+      "invitedUserType": "Guest"
+    }
+  ]
+}
