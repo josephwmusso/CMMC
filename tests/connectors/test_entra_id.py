@@ -146,6 +146,19 @@ class TestClassShape:
                     f"{field['name']}.help: {help_text!r}"
                 )
 
+    def test_help_text_is_pure_ascii(self):
+        """Stronger regression: after the mojibake fix didn't fully resolve
+        with \\u2192 escape sequences, we went nuclear — the help strings
+        are now pure ASCII (->, --) so no encoding interpretation can occur.
+        """
+        for field in EntraIdConnector.credentials_schema:
+            help_text = field.get("help", "")
+            non_ascii = [(i, c, ord(c)) for i, c in enumerate(help_text) if ord(c) > 127]
+            assert not non_ascii, (
+                f"{field['name']}.help contains non-ASCII characters: "
+                f"{non_ascii[:3]} (full: {help_text!r})"
+            )
+
 
 # ──────────────────────────────────────────────────────────────────────
 # B. __init__ behavior (no I/O)

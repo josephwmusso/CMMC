@@ -31,7 +31,7 @@ log = logging.getLogger(__name__)
 
 @register
 class EntraIdConnector(BaseConnector):
-    """Microsoft Entra ID connector — client-credentials flow."""
+    """Microsoft Entra ID connector -- client-credentials flow."""
 
     type_name = "entra_id"
     display_name = "Microsoft Entra ID"
@@ -52,7 +52,7 @@ class EntraIdConnector(BaseConnector):
             "placeholder": "00000000-0000-0000-0000-000000000000",
             "help": (
                 "Your Entra tenant ID (GUID). Find it in Entra admin center "
-                "\u2192 Identity \u2192 Overview \u2192 'Tenant ID'."
+                "-> Identity -> Overview -> 'Tenant ID'."
             ),
         },
         {
@@ -63,7 +63,7 @@ class EntraIdConnector(BaseConnector):
             "placeholder": "00000000-0000-0000-0000-000000000000",
             "help": (
                 "The app registration's Application (client) ID. After "
-                "creating the app registration in Entra \u2192 App registrations, "
+                "creating the app registration in Entra -> App registrations, "
                 "copy this from the Overview page."
             ),
         },
@@ -74,8 +74,8 @@ class EntraIdConnector(BaseConnector):
             "required": True,
             "placeholder": "Secret value (not the secret ID)",
             "help": (
-                "The secret VALUE created under Certificates & secrets \u2192 New "
-                "client secret. Copy immediately \u2014 Entra hides it after the "
+                "The secret VALUE created under Certificates & secrets -> New "
+                "client secret. Copy immediately -- Entra hides it after the "
                 "page refreshes. Default expiry is 6 months; you'll need to "
                 "rotate."
             ),
@@ -100,14 +100,14 @@ class EntraIdConnector(BaseConnector):
     setup_component = None  # Schema-driven form is sufficient
 
     def __init__(self, config: dict, credentials: dict):
-        """Construct the connector. Does NOT acquire a token — that happens
+        """Construct the connector. Does NOT acquire a token -- that happens
         lazily on the first call to test_connection() or pull().
         """
         super().__init__(config, credentials)
 
-        # Required credentials. Missing keys → KeyError, which the runner
+        # Required credentials. Missing keys -> KeyError, which the runner
         # catches and converts to a FAILED run with a useful message.
-        # Don't validate format here — MSAL/Graph rejects malformed inputs
+        # Don't validate format here -- MSAL/Graph rejects malformed inputs
         # and the AADSTS code maps to a humanized message in _msgraph/auth.py.
         self._tenant_id = credentials["tenant_id"].strip()
         self._client_id = credentials["client_id"].strip()
@@ -131,7 +131,7 @@ class EntraIdConnector(BaseConnector):
         Out-of-range or non-integer values are clamped with a warning rather
         than rejected. The customer might set lookback_hours via direct DB
         write before any UI exists for it; we don't want a typo to crash
-        every pull. Per discovery §10 Q11.
+        every pull. Per discovery section 10 Q11.
 
         Returns the clamped integer.
         """
@@ -176,7 +176,7 @@ class EntraIdConnector(BaseConnector):
 
     def _build_client(self) -> MsGraphClient:
         """Construct a fresh MsGraphClient. Caller must close() or use as a
-        context manager. Token acquisition is lazy — happens on first
+        context manager. Token acquisition is lazy -- happens on first
         Graph call.
         """
         return MsGraphClient(
@@ -215,7 +215,7 @@ class EntraIdConnector(BaseConnector):
                 if not orgs:
                     return (False,
                             "Authenticated, but /organization returned no "
-                            "rows. This is unusual — verify the tenant is "
+                            "rows. This is unusual -- verify the tenant is "
                             "active.")
                 org = orgs[0]
                 display_name = org.get("displayName", "<unknown tenant>")
@@ -232,7 +232,7 @@ class EntraIdConnector(BaseConnector):
             if e.missing_permission:
                 return (False,
                         f"Connected, but missing permission: {e.missing_permission}. "
-                        f"Grant it in Entra → App registrations → API permissions, "
+                        f"Grant it in Entra -> App registrations -> API permissions, "
                         f"then click 'Grant admin consent'.")
             return (False, f"Connected, but Graph returned 403: {e}")
 
@@ -240,7 +240,7 @@ class EntraIdConnector(BaseConnector):
             return (False, f"Microsoft Graph error: {e}")
 
         except Exception as e:  # noqa: BLE001
-            # Last-resort catch — BaseConnector contract requires no raises
+            # Last-resort catch -- BaseConnector contract requires no raises
             # from test_connection(). Log without secrets and return failure.
             log.exception("entra_id test_connection unexpected error",
                           extra={"tenant_id": self._tenant_id})
@@ -264,7 +264,7 @@ class EntraIdConnector(BaseConnector):
 
         # Tuple shape: (control_id, endpoint_summary, method).
         # endpoint_summary is the string used in format_pull_error for
-        # diagnostic output — not a real URL.
+        # diagnostic output -- not a real URL.
         controls = [
             ("AC.L2-3.1.1",  "/users,/groups",                              self._pull_ac_3_1_1),
             ("IA.L2-3.5.3",  "/conditionalAccess,/authentication/methods",  self._pull_ia_3_5_3),
@@ -307,7 +307,7 @@ class EntraIdConnector(BaseConnector):
     # ----- Per-control pull helpers ---------------------------------------
 
     def _pull_ac_3_1_1(self, client: MsGraphClient) -> PulledEvidence | None:
-        """AC.L2-3.1.1 — users, groups, group memberships."""
+        """AC.L2-3.1.1 -- users, groups, group memberships."""
         users = list(client.paginate(
             "/users?$select=id,displayName,userPrincipalName,userType,accountEnabled"
         ))
@@ -367,7 +367,7 @@ class EntraIdConnector(BaseConnector):
         )
 
     def _pull_ia_3_5_3(self, client: MsGraphClient) -> PulledEvidence | None:
-        """IA.L2-3.5.3 — conditional access policies and per-user auth methods."""
+        """IA.L2-3.5.3 -- conditional access policies and per-user auth methods."""
         policies = list(client.paginate(
             "/identity/conditionalAccess/policies"
         ))
@@ -427,7 +427,7 @@ class EntraIdConnector(BaseConnector):
         )
 
     def _pull_ac_3_1_5(self, client: MsGraphClient) -> PulledEvidence | None:
-        """AC.L2-3.1.5 — privileged role assignments."""
+        """AC.L2-3.1.5 -- privileged role assignments."""
         role_assignments = list(client.paginate(
             "/roleManagement/directory/roleAssignments"
             "?$select=id,principalId,roleDefinitionId,directoryScopeId"
@@ -468,7 +468,7 @@ class EntraIdConnector(BaseConnector):
         )
 
     def _pull_au_3_3_1(self, client: MsGraphClient) -> PulledEvidence | None:
-        """AU.L2-3.3.1 — sign-in and directory audit logs for the lookback window."""
+        """AU.L2-3.3.1 -- sign-in and directory audit logs for the lookback window."""
         now = self._now()
         window_end = now
         window_start = now - timedelta(hours=self._lookback_hours)
@@ -517,14 +517,14 @@ class EntraIdConnector(BaseConnector):
         )
 
     def _pull_ac_3_1_20(self, client: MsGraphClient) -> PulledEvidence | None:
-        """AC.L2-3.1.20 — external collaboration settings and B2B invitations."""
+        """AC.L2-3.1.20 -- external collaboration settings and B2B invitations."""
         # /policies/crossTenantAccessPolicy/default returns a SINGLE OBJECT,
         # not a collection. Use client.get, not client.paginate.
         cross_tenant_policy = client.get(
             "/policies/crossTenantAccessPolicy/default"
         )
 
-        # /invitations IS a collection — paginate.
+        # /invitations IS a collection -- paginate.
         invitations = list(client.paginate(
             "/invitations?$select=id,inviteRedeemUrl,invitedUserEmailAddress,"
             "status,invitedUserType"
