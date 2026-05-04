@@ -16,6 +16,7 @@ from typing import Iterator
 
 import httpx
 
+from src.connectors._msgraph import async_query
 from src.connectors._msgraph.auth import TokenManager
 from src.connectors._msgraph.endpoints import (
     CloudEnvironment,
@@ -96,6 +97,38 @@ class MsGraphClient:
             self._build_url(path),
             self._headers(),
             max_pages=max_pages,
+            log_context=self._log_context,
+        )
+
+    def post_for_async(self, path: str, body: dict) -> dict:
+        """POST a body to an async-query endpoint (e.g. /security/auditLog/queries).
+
+        Returns the parsed initial query resource (id, status, ...). Use
+        poll_until_done(query_path) to wait for terminal status. Retry
+        posture is narrower than get() — see async_query._post_with_retry.
+        """
+        return async_query.post_for_async(
+            self._http,
+            self._build_url(path),
+            self._headers(),
+            body,
+            log_context=self._log_context,
+        )
+
+    def poll_until_done(
+        self,
+        query_path: str,
+        *,
+        max_wait_seconds: int = 300,
+        poll_interval_seconds: int = 5,
+    ) -> dict:
+        """Poll a query resource until terminal. See async_query.poll_until_done."""
+        return async_query.poll_until_done(
+            self._http,
+            self._build_url(query_path),
+            self._headers(),
+            max_wait_seconds=max_wait_seconds,
+            poll_interval_seconds=poll_interval_seconds,
             log_context=self._log_context,
         )
 

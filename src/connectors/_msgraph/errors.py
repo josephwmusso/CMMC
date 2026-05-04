@@ -53,6 +53,46 @@ class MsGraphThrottledError(MsGraphError):
     """Graph 429 — exceeded retry budget on a single endpoint."""
 
 
+class MsGraphAsyncTimeoutError(MsGraphError):
+    """poll_until_done exceeded max_wait_seconds without reaching a terminal status.
+
+    Carries the last status string observed before timeout (when known) and the
+    query_id, for diagnostic surfacing in connector logs / format_pull_error
+    tails. F.1.5 framework contract.
+    """
+
+    def __init__(
+        self,
+        message: str,
+        *,
+        query_id: str | None = None,
+        last_status: str | None = None,
+    ):
+        super().__init__(message)
+        self.query_id = query_id
+        self.last_status = last_status
+
+
+class MsGraphAsyncFailureError(MsGraphError):
+    """Async query reached a terminal failure status (failed/cancelled).
+
+    Carries the terminal_status string so connector code can branch:
+    'failed' is a genuine error condition; 'cancelled' is operator- or
+    policy-driven (different remediation path). F.1.5 framework contract.
+    """
+
+    def __init__(
+        self,
+        message: str,
+        *,
+        query_id: str | None = None,
+        terminal_status: str | None = None,
+    ):
+        super().__init__(message)
+        self.query_id = query_id
+        self.terminal_status = terminal_status
+
+
 def format_pull_error(
     control_id: str,
     endpoint: str,
