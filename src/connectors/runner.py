@@ -118,6 +118,10 @@ def run_connector(
                 logger.warning("connector item ingestion failed: %s", e, exc_info=True)
                 errors.append(f"{item.filename}: {e}")
 
+        # Per-item errors the connector accumulated internally for isolation.
+        # Default impl returns []; connectors with per-control logic override.
+        errors.extend(connector.get_pull_errors())
+
         # 6. Final status.
         from datetime import datetime, timezone
         duration = time.time() - started

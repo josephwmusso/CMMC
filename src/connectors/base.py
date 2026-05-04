@@ -111,3 +111,31 @@ class BaseConnector(ABC):
         FAILED in that case. Per-item failures should be handled inside
         pull() — yield what works, log what doesn't.
         """
+
+    def get_pull_errors(self) -> list[str]:
+        """Return per-item errors accumulated during pull() that should
+        appear in summary.errors[] without aborting the run.
+
+        Default implementation returns []. Subclasses that handle
+        per-control isolation internally (catching exceptions inside pull()
+        rather than letting them propagate and kill the generator) should
+        override this method to expose their accumulated error list.
+
+        Contract:
+        - Called by the runner ONCE, after pull() exhausts.
+        - The returned list is extended onto the run's errors[]; from there
+          it lands in summary.errors[].
+        - Errors should follow the format from
+          src.connectors._msgraph.errors.format_pull_error:
+          "<control_id> | <endpoint> | <error_class>: <message>"
+        - The accumulator should be reset at the START of each pull()
+          invocation. Per-run fresh instances make this a belt-and-suspenders
+          practice rather than a current requirement, but the discipline
+          protects against future runner refactors that might reuse instances.
+
+        Connectors that do not need per-item isolation should NOT override
+        this method. Letting exceptions propagate from pull() is correct
+        for connectors with single-call or all-or-nothing semantics — the
+        runner catches at the outer scope and marks the run FAILED.
+        """
+        return []
