@@ -1,9 +1,91 @@
 {
   "cross_tenant_access_policy": {
+    "@odata.context": "https://graph.microsoft.com/v1.0/$metadata#policies/crossTenantAccessPolicy/default/$entity",
     "id": "policy-id-cross-tenant",
     "displayName": "Default",
-    "default": {
-      "b2bCollaborationOutbound": {"usersAndGroups": {"accessType": "allowed"}}
+    "isServiceDefault": true,
+    "inboundTrust": {
+      "isMfaAccepted": false,
+      "isCompliantDeviceAccepted": false,
+      "isHybridAzureADJoinedDeviceAccepted": false
+    },
+    "automaticUserConsentSettings": {
+      "inboundAllowed": null,
+      "outboundAllowed": null
+    },
+    "invitationRedemptionIdentityProviderConfiguration": {
+      "primaryIdentityProviderPrecedenceOrder": [
+        "azureActiveDirectory",
+        "externalFederation",
+        "socialIdentityProviders",
+        "emailOneTimePasscode"
+      ],
+      "fallbackIdentityProvider": "defaultConfiguredIdp"
+    },
+    "b2bCollaborationInbound": {
+      "usersAndGroups": {
+        "accessType": "allowed",
+        "targets": [{"target": "AllUsers", "targetType": "user"}]
+      },
+      "applications": {
+        "accessType": "allowed",
+        "targets": [{"target": "AllApplications", "targetType": "application"}]
+      }
+    },
+    "b2bCollaborationOutbound": {
+      "usersAndGroups": {
+        "accessType": "allowed",
+        "targets": [{"target": "AllUsers", "targetType": "user"}]
+      },
+      "applications": {
+        "accessType": "allowed",
+        "targets": [{"target": "AllApplications", "targetType": "application"}]
+      }
+    },
+    "b2bDirectConnectInbound": {
+      "usersAndGroups": {
+        "accessType": "blocked",
+        "targets": [{"target": "AllUsers", "targetType": "user"}]
+      },
+      "applications": {
+        "accessType": "blocked",
+        "targets": [{"target": "AllApplications", "targetType": "application"}]
+      }
+    },
+    "b2bDirectConnectOutbound": {
+      "usersAndGroups": {
+        "accessType": "blocked",
+        "targets": [{"target": "AllUsers", "targetType": "user"}]
+      },
+      "applications": {
+        "accessType": "blocked",
+        "targets": [{"target": "AllApplications", "targetType": "application"}]
+      }
+    },
+    "m365CollaborationInbound": {
+      "usersAndGroups": {
+        "accessType": "allowed"
+      }
+    },
+    "m365CollaborationOutbound": {
+      "usersAndGroups": {
+        "accessType": "allowed"
+      }
+    },
+    "appServiceConnectInbound": {
+      "usersAndGroups": {
+        "accessType": "blocked"
+      }
+    },
+    "tenantRestrictions": {
+      "usersAndGroups": {
+        "accessType": "allowed",
+        "targets": [{"target": "AllUsers", "targetType": "user"}]
+      },
+      "applications": {
+        "accessType": "allowed",
+        "targets": [{"target": "AllApplications", "targetType": "application"}]
+      }
     }
   },
   "external_users": [
