@@ -113,8 +113,50 @@ class EntraIdConnector(BaseConnector):
         self._client_secret = credentials["client_secret"]
         self._cloud_env = credentials.get("cloud_environment", "commercial")
 
-        # Pass E.3 will read this from config:
-        # self._lookback_hours = max(1, min(168, int(config.get("lookback_hours", 24))))
+        self._lookback_hours = self._clamp_lookback_hours(
+            config.get("lookback_hours", 24)
+        )
+
+    @staticmethod
+    def _clamp_lookback_hours(raw_value) -> int:
+        """Clamp lookback_hours to [1, 168] (one hour to one week).
+
+        Out-of-range or non-integer values are clamped with a warning rather
+        than rejected. The customer might set lookback_hours via direct DB
+        write before any UI exists for it; we don't want a typo to crash
+        every pull. Per discovery §10 Q11.
+
+        Returns the clamped integer.
+        """
+        DEFAULT = 24
+        MIN_HOURS = 1
+        MAX_HOURS = 168  # 7 days
+
+        # Coerce to int. Accept int, float, str-of-int. Reject everything else.
+        try:
+            value = int(raw_value)
+        except (TypeError, ValueError):
+            log.warning(
+                "lookback_hours is not coercible to int; using default",
+                extra={"raw_value": repr(raw_value), "default": DEFAULT},
+            )
+            return DEFAULT
+
+        if value < MIN_HOURS:
+            log.warning(
+                "lookback_hours below minimum; clamping",
+                extra={"requested": value, "clamped_to": MIN_HOURS},
+            )
+            return MIN_HOURS
+
+        if value > MAX_HOURS:
+            log.warning(
+                "lookback_hours above maximum; clamping",
+                extra={"requested": value, "clamped_to": MAX_HOURS},
+            )
+            return MAX_HOURS
+
+        return value
 
     def _build_client(self) -> MsGraphClient:
         """Construct a fresh MsGraphClient. Caller must close() or use as a

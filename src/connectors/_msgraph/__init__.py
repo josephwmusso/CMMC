@@ -16,6 +16,7 @@ from src.connectors._msgraph.errors import (
     MsGraphError,
     MsGraphPermissionError,
     MsGraphThrottledError,
+    format_pull_error,
 )
 
 __all__ = [
@@ -27,4 +28,5 @@ __all__ = [
     "MsGraphAuthError",
     "MsGraphPermissionError",
     "MsGraphThrottledError",
+    "format_pull_error",
 ]

@@ -123,6 +123,104 @@ class TestInit:
 
 
 # ──────────────────────────────────────────────────────────────────────
+# B'. lookback_hours config (Pass E.3a)
+# ──────────────────────────────────────────────────────────────────────
+
+class TestLookbackHoursConfig:
+    """Pass E.3a — config-driven lookback_hours with [1, 168] clamp.
+
+    Per discovery §5.3 and §10 Q11: lookback_hours lives in `config`
+    (not credentials_schema), defaults to 24, and out-of-range values
+    are clamped server-side rather than rejected.
+    """
+
+    def test_default_when_config_empty(self):
+        c = EntraIdConnector(config={}, credentials=VALID_CREDS)
+        assert c._lookback_hours == 24
+
+    def test_default_when_key_absent(self):
+        c = EntraIdConnector(config={"other_key": "value"}, credentials=VALID_CREDS)
+        assert c._lookback_hours == 24
+
+    def test_valid_int_pass_through(self):
+        c = EntraIdConnector(config={"lookback_hours": 48}, credentials=VALID_CREDS)
+        assert c._lookback_hours == 48
+
+    def test_minimum_value_one_hour(self):
+        c = EntraIdConnector(config={"lookback_hours": 1}, credentials=VALID_CREDS)
+        assert c._lookback_hours == 1
+
+    def test_maximum_value_one_week(self):
+        c = EntraIdConnector(config={"lookback_hours": 168}, credentials=VALID_CREDS)
+        assert c._lookback_hours == 168
+
+    def test_below_minimum_clamps_to_one(self, caplog):
+        with caplog.at_level(logging.WARNING):
+            c = EntraIdConnector(config={"lookback_hours": 0}, credentials=VALID_CREDS)
+        assert c._lookback_hours == 1
+        assert any("below minimum" in r.getMessage() for r in caplog.records)
+
+    def test_negative_clamps_to_one(self, caplog):
+        with caplog.at_level(logging.WARNING):
+            c = EntraIdConnector(config={"lookback_hours": -50}, credentials=VALID_CREDS)
+        assert c._lookback_hours == 1
+        assert any("below minimum" in r.getMessage() for r in caplog.records)
+
+    def test_above_maximum_clamps_to_168(self, caplog):
+        with caplog.at_level(logging.WARNING):
+            c = EntraIdConnector(config={"lookback_hours": 8760}, credentials=VALID_CREDS)
+        assert c._lookback_hours == 168
+        assert any("above maximum" in r.getMessage() for r in caplog.records)
+
+    def test_string_int_coerced(self):
+        c = EntraIdConnector(config={"lookback_hours": "72"}, credentials=VALID_CREDS)
+        assert c._lookback_hours == 72
+
+    def test_float_truncated(self):
+        # int(48.7) == 48. Document the behavior; don't pretend we round.
+        c = EntraIdConnector(config={"lookback_hours": 48.7}, credentials=VALID_CREDS)
+        assert c._lookback_hours == 48
+
+    def test_garbage_string_falls_back_to_default(self, caplog):
+        with caplog.at_level(logging.WARNING):
+            c = EntraIdConnector(
+                config={"lookback_hours": "not a number"},
+                credentials=VALID_CREDS,
+            )
+        assert c._lookback_hours == 24
+        assert any("not coercible" in r.getMessage() for r in caplog.records)
+
+    def test_none_falls_back_to_default(self, caplog):
+        with caplog.at_level(logging.WARNING):
+            c = EntraIdConnector(
+                config={"lookback_hours": None},
+                credentials=VALID_CREDS,
+            )
+        assert c._lookback_hours == 24
+        assert any("not coercible" in r.getMessage() for r in caplog.records)
+
+    def test_dict_falls_back_to_default(self, caplog):
+        # Defensive: someone direct-DB-pokes a non-scalar value.
+        with caplog.at_level(logging.WARNING):
+            c = EntraIdConnector(
+                config={"lookback_hours": {"hours": 24}},
+                credentials=VALID_CREDS,
+            )
+        assert c._lookback_hours == 24
+
+
+class TestSchemaUnchangedByPassE3a:
+    """Sanity: Pass E.3a does NOT add lookback_hours to credentials_schema.
+    Per discovery §5.3 — it's a config field, not a credential.
+    """
+
+    def test_credentials_schema_still_has_four_fields(self):
+        names = {f["name"] for f in EntraIdConnector.credentials_schema}
+        assert names == {"tenant_id", "client_id", "client_secret", "cloud_environment"}
+        assert "lookback_hours" not in names
+
+
+# ──────────────────────────────────────────────────────────────────────
 # C. test_connection() success and failure paths
 # ──────────────────────────────────────────────────────────────────────
 
