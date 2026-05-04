@@ -52,7 +52,7 @@ class EntraIdConnector(BaseConnector):
             "placeholder": "00000000-0000-0000-0000-000000000000",
             "help": (
                 "Your Entra tenant ID (GUID). Find it in Entra admin center "
-                "→ Identity → Overview → 'Tenant ID'."
+                "\u2192 Identity \u2192 Overview \u2192 'Tenant ID'."
             ),
         },
         {
@@ -63,7 +63,7 @@ class EntraIdConnector(BaseConnector):
             "placeholder": "00000000-0000-0000-0000-000000000000",
             "help": (
                 "The app registration's Application (client) ID. After "
-                "creating the app registration in Entra → App registrations, "
+                "creating the app registration in Entra \u2192 App registrations, "
                 "copy this from the Overview page."
             ),
         },
@@ -74,8 +74,8 @@ class EntraIdConnector(BaseConnector):
             "required": True,
             "placeholder": "Secret value (not the secret ID)",
             "help": (
-                "The secret VALUE created under Certificates & secrets → New "
-                "client secret. Copy immediately — Entra hides it after the "
+                "The secret VALUE created under Certificates & secrets \u2192 New "
+                "client secret. Copy immediately \u2014 Entra hides it after the "
                 "page refreshes. Default expiry is 6 months; you'll need to "
                 "rotate."
             ),

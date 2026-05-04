@@ -125,6 +125,27 @@ class TestClassShape:
         for f in EntraIdConnector.credentials_schema:
             assert f.get("help"), f"{f['name']} missing help text"
 
+    def test_help_text_no_mojibake_bytes(self):
+        """Regression: help strings must not contain mojibake byte sequences
+        from cp1252-misinterpreted UTF-8 (the bug surfaced during Pass E.3d
+        production verification).
+        """
+        # Known mojibake patterns from cp1252 misinterpretation of common
+        # UTF-8 sequences. These bytes appear when the writer's host shell
+        # uses cp1252 but emits to a UTF-8-expecting consumer.
+        MOJIBAKE_PATTERNS = [
+            "â†",   # \xe2\x86 prefix as cp1252-mojibake (e.g. arrows)
+            "â€",   # \xe2\x80 prefix as cp1252-mojibake (dashes/quotes)
+            "Ã¢",   # double-encoded UTF-8 prefix (Ã¢)
+        ]
+        for field in EntraIdConnector.credentials_schema:
+            help_text = field.get("help", "")
+            for pattern in MOJIBAKE_PATTERNS:
+                assert pattern not in help_text, (
+                    f"mojibake byte sequence {pattern!r} found in "
+                    f"{field['name']}.help: {help_text!r}"
+                )
+
 
 # ──────────────────────────────────────────────────────────────────────
 # B. __init__ behavior (no I/O)
