@@ -180,3 +180,95 @@ def test_parse_retry_after_http_date():
 def test_parse_retry_after_none():
     assert _parse_retry_after(None) is None
     assert _parse_retry_after("garbage-not-a-date") is None
+
+
+# ──────────────────────────────────────────────────────────────────────
+# F.1 framework contract: licensing_signal on MsGraphPermissionError
+# ──────────────────────────────────────────────────────────────────────
+
+class TestLicensingSignal:
+    """When the Graph 403 body's error.code matches a known unlicensed-tenant
+    signal (e.g. Forbidden_LicensingError), the raised MsGraphPermissionError
+    carries licensing_signal=True. Connector code can choose to convert these
+    into a degraded PulledEvidence rather than raising.
+
+    Initial detection set is narrow per Phase 2 design (one code:
+    Forbidden_LicensingError). Future commits add codes one at a time as
+    F.3a/F.3b live verification surfaces them.
+    """
+
+    def test_403_with_licensing_error_code_sets_signal(self):
+        def handler(req):
+            return httpx.Response(
+                403,
+                json={
+                    "error": {
+                        "code": "Forbidden_LicensingError",
+                        "message": "Tenant requires Microsoft Intune license.",
+                    }
+                },
+            )
+        with _client(handler) as c:
+            with pytest.raises(MsGraphPermissionError) as exc_info:
+                get_with_retry(c, "https://example/x", {})
+        assert exc_info.value.licensing_signal is True
+
+    def test_403_with_generic_code_leaves_signal_false(self):
+        def handler(req):
+            return httpx.Response(
+                403,
+                json={"error": {"code": "Forbidden", "message": "Access denied."}},
+            )
+        with _client(handler) as c:
+            with pytest.raises(MsGraphPermissionError) as exc_info:
+                get_with_retry(c, "https://example/x", {})
+        assert exc_info.value.licensing_signal is False
+
+    def test_403_with_no_code_field_leaves_signal_false(self):
+        def handler(req):
+            return httpx.Response(
+                403,
+                json={"error": {"message": "denied"}},
+            )
+        with _client(handler) as c:
+            with pytest.raises(MsGraphPermissionError) as exc_info:
+                get_with_retry(c, "https://example/x", {})
+        assert exc_info.value.licensing_signal is False
+
+    def test_403_with_non_string_code_leaves_signal_false(self):
+        # Defensive: Microsoft has occasionally returned numeric codes
+        # in some endpoints. Don't crash if the field type is unexpected.
+        def handler(req):
+            return httpx.Response(
+                403,
+                json={"error": {"code": 12345, "message": "weird"}},
+            )
+        with _client(handler) as c:
+            with pytest.raises(MsGraphPermissionError) as exc_info:
+                get_with_retry(c, "https://example/x", {})
+        assert exc_info.value.licensing_signal is False
+
+    def test_403_with_no_error_object_leaves_signal_false(self):
+        def handler(req):
+            return httpx.Response(403, json={})
+        with _client(handler) as c:
+            with pytest.raises(MsGraphPermissionError) as exc_info:
+                get_with_retry(c, "https://example/x", {})
+        assert exc_info.value.licensing_signal is False
+
+    def test_default_attribute_when_constructed_directly(self):
+        """Backward compat: existing catch-and-inspect sites that construct
+        MsGraphPermissionError without the new kwarg still work. The default
+        value False applies."""
+        e = MsGraphPermissionError("test", missing_permission="X.Y.Z")
+        assert e.licensing_signal is False
+        # Existing attributes preserved.
+        assert e.missing_permission == "X.Y.Z"
+        assert e.endpoint is None
+
+    def test_explicit_signal_round_trip_when_constructed_directly(self):
+        """Direct construction with licensing_signal=True works and round-trips."""
+        e = MsGraphPermissionError(
+            "test", missing_permission=None, endpoint="/x", licensing_signal=True
+        )
+        assert e.licensing_signal is True

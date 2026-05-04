@@ -4,7 +4,7 @@ from __future__ import annotations
 
 from abc import ABC, abstractmethod
 from dataclasses import dataclass, field
-from typing import Iterator
+from typing import Iterator, Literal
 
 
 @dataclass
@@ -20,6 +20,32 @@ class PulledEvidence:
         metadata: Connector-specific extras. Persisted into the artifact's
                   source-system field path or an audit detail; not surfaced to
                   the user directly in 5.1.
+
+        coverage_scope: "full" (default) or "partial". When "partial", populate
+                        missing_sources with a list of source identifiers that
+                        explain what's missing (e.g.,
+                        ["dlp_policies", "label_policies"]). Pairing is
+                        docstring-only; no runtime validation. SSP narrative
+                        renderer uses this to render exclusion text.
+        missing_sources: List of source identifiers explaining gaps when
+                         coverage_scope="partial". Empty list when "full".
+        evidence_directness: "raw_config" (default) or "aggregate". Set to
+                             "aggregate" when the evidence is a derived /
+                             scored signal (e.g. Microsoft Secure Score)
+                             rather than raw configuration state. Auditors
+                             treat aggregate evidence as supplementary, not
+                             primary.
+        degraded: False (default) or True when the connector ran successfully
+                  but the upstream tenant lacks a capability that would
+                  normally produce richer evidence (e.g. no Intune license,
+                  no Purview Premium). When True, populate degradation_reason.
+        degradation_reason: Human-readable explanation of why this evidence
+                            is degraded. None when degraded=False.
+
+    Pairing conventions (docstring-only, NOT runtime-enforced):
+      - coverage_scope == "partial"  ⇒ missing_sources should be non-empty
+      - degraded == True             ⇒ degradation_reason should be non-None
+    Type checkers catch Literal-typo mistakes statically; runtime is permissive.
     """
 
     filename: str
@@ -28,6 +54,18 @@ class PulledEvidence:
     description: str = ""
     control_ids: list[str] = field(default_factory=list)
     metadata: dict = field(default_factory=dict)
+
+    # F.1 framework contracts — coverage / directness / graceful degradation.
+    # Optional, defaulted, advisory-typed. Future connectors set these to
+    # express partial coverage, aggregate-vs-raw evidence directness, and
+    # tenant-capability-conditional graceful degradation. Pairing conventions
+    # documented in the class docstring above are docstring-only — no
+    # __post_init__ raise on inconsistency. See Pass F discovery for design.
+    coverage_scope: Literal["full", "partial"] = "full"
+    missing_sources: list[str] = field(default_factory=list)
+    evidence_directness: Literal["raw_config", "aggregate"] = "raw_config"
+    degraded: bool = False
+    degradation_reason: str | None = None
 
 
 class BaseConnector(ABC):

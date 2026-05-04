@@ -45,6 +45,15 @@ _KNOWN_PERMISSIONS = frozenset({
     "Directory.Read.All",
 })
 
+# Graph error.code values that indicate a tenant lacks a license / capability
+# the connector tried to use. Connectors can convert these into degraded
+# PulledEvidence rather than raising. F.1 framework contract.
+# Initial set is intentionally narrow — grow on encounter as F.3a/F.3b live
+# verification surfaces new codes (one new test per addition).
+_LICENSING_ERROR_CODES = frozenset({
+    "Forbidden_LicensingError",
+})
+
 
 def _parse_retry_after(header_value: str | None) -> float | None:
     """Parse Retry-After. Numeric (seconds) or HTTP-date. Returns seconds or None."""
@@ -71,6 +80,21 @@ def _identify_missing_permission(response_body: dict) -> str | None:
         if perm in message:
             return perm
     return None
+
+
+def _detect_licensing_signal(response_body: dict) -> bool:
+    """Return True if the Graph 403 body's error.code matches a known
+    unlicensed-tenant signal (e.g. Forbidden_LicensingError).
+
+    Defensive against absent or non-string code field — Graph occasionally
+    returns numeric codes on certain endpoints. Returns False rather than
+    raising on any malformed shape.
+    """
+    error = response_body.get("error") or {}
+    code = error.get("code")
+    if not isinstance(code, str):
+        return False
+    return code in _LICENSING_ERROR_CODES
 
 
 def get_with_retry(
@@ -144,6 +168,7 @@ def get_with_retry(
             except Exception:
                 body = {}
             missing = _identify_missing_permission(body)
+            licensing = _detect_licensing_signal(body)
             message = f"403 Forbidden on {url}"
             if missing:
                 message = (
@@ -152,7 +177,10 @@ def get_with_retry(
                     f"'Grant admin consent for <tenant>'."
                 )
             raise MsGraphPermissionError(
-                message, missing_permission=missing, endpoint=url
+                message,
+                missing_permission=missing,
+                endpoint=url,
+                licensing_signal=licensing,
             )
 
         if 400 <= resp.status_code < 500:

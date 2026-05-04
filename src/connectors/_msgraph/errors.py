@@ -28,6 +28,12 @@ class MsGraphPermissionError(MsGraphError):
 
     Includes the permission name (e.g. "AuditLog.Read.All") parsed from the
     Graph error body when identifiable, plus the endpoint URL.
+
+    licensing_signal is set to True when the Graph error body's error.code
+    matches a known unlicensed-tenant signal (e.g. Forbidden_LicensingError).
+    Connector code can choose to convert these into a degraded PulledEvidence
+    rather than raising — see PulledEvidence.degraded in
+    src.connectors.base. F.1 framework contract.
     """
 
     def __init__(
@@ -35,10 +41,12 @@ class MsGraphPermissionError(MsGraphError):
         message: str,
         missing_permission: str | None = None,
         endpoint: str | None = None,
+        licensing_signal: bool = False,
     ):
         super().__init__(message)
         self.missing_permission = missing_permission
         self.endpoint = endpoint
+        self.licensing_signal = licensing_signal
 
 
 class MsGraphThrottledError(MsGraphError):
