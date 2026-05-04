@@ -6,13 +6,20 @@
       "b2bCollaborationOutbound": {"usersAndGroups": {"accessType": "allowed"}}
     }
   },
-  "b2b_invitations": [
+  "external_users": [
     {
-      "id": "invite-id-1",
-      "inviteRedeemUrl": "https://login.microsoftonline.us/...",
-      "invitedUserEmailAddress": "external@partner.com",
-      "status": "PendingAcceptance",
-      "invitedUserType": "Guest"
+      "id": "guest-id-1",
+      "userType": "Guest",
+      "createdDateTime": "2026-04-15T10:30:00Z",
+      "externalUserState": "Accepted",
+      "externalUserStateChangeDateTime": "2026-04-15T10:32:14Z"
+    },
+    {
+      "id": "guest-id-2",
+      "userType": "Guest",
+      "createdDateTime": "2026-04-20T14:22:00Z",
+      "externalUserState": "PendingAcceptance",
+      "externalUserStateChangeDateTime": "2026-04-20T14:22:00Z"
     }
   ]
 }

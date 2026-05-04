@@ -791,7 +791,7 @@ class TestPullAC3120:
                 "/policies/crossTenantAccessPolicy/default": fx["cross_tenant_access_policy"],
             },
             paginate_responses={
-                "/invitations": fx["b2b_invitations"],
+                "/users?$filter=userType eq": fx["external_users"],
             },
         )
         return connector, client, fx
@@ -810,23 +810,23 @@ class TestPullAC3120:
         get_calls = [call.args[0] for call in client.get.call_args_list]
         assert any("crossTenantAccessPolicy" in p for p in get_calls)
 
-    def test_uses_paginate_for_invitations(self, connector):
+    def test_uses_paginate_for_external_users(self, connector):
         c, client, _ = self._setup(connector)
         c._pull_ac_3_1_20(client)
         paginate_calls = [call.args[0] for call in client.paginate.call_args_list]
-        assert any("/invitations" in p for p in paginate_calls)
+        assert any("/users?$filter=userType eq 'Guest'" in p for p in paginate_calls)
 
-    def test_content_includes_policy_and_invitations(self, connector):
+    def test_content_includes_policy_and_external_users(self, connector):
         c, client, fx = self._setup(connector)
         ev = c._pull_ac_3_1_20(client)
         parsed = json.loads(ev.content.decode("utf-8"))
         assert parsed["cross_tenant_access_policy"] == fx["cross_tenant_access_policy"]
-        assert parsed["b2b_invitations"] == fx["b2b_invitations"]
+        assert parsed["external_users"] == fx["external_users"]
 
     def test_metadata_counts(self, connector):
         c, client, _ = self._setup(connector)
         ev = c._pull_ac_3_1_20(client)
-        assert ev.metadata["invitation_count"] == 1
+        assert ev.metadata["external_user_count"] == 2
 
 
 # ──────────────────────────────────────────────────────────────────────
@@ -866,8 +866,8 @@ def _build_all_succeed_client(fxs):
             return iter(fxs["au_3_3_1"]["sign_ins"])
         if "/auditLogs/directoryAudits" in path:
             return iter(fxs["au_3_3_1"]["directory_audits"])
-        if "/invitations" in path:
-            return iter(fxs["ac_3_1_20"]["b2b_invitations"])
+        if "/users?$filter=userType eq" in path:
+            return iter(fxs["ac_3_1_20"]["external_users"])
         raise KeyError(f"unmatched paginate: {path}")
 
     def get_side_effect(path):
@@ -939,8 +939,8 @@ class TestPullOrchestrator:
                 return iter(fxs["au_3_3_1"]["sign_ins"])
             if "/auditLogs/directoryAudits" in path:
                 return iter(fxs["au_3_3_1"]["directory_audits"])
-            if "/invitations" in path:
-                return iter(fxs["ac_3_1_20"]["b2b_invitations"])
+            if "/users?$filter=userType eq" in path:
+                return iter(fxs["ac_3_1_20"]["external_users"])
             raise KeyError(f"unmatched: {path}")
 
         def get_side_effect(path):

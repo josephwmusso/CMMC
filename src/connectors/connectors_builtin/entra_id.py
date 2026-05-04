@@ -517,23 +517,28 @@ class EntraIdConnector(BaseConnector):
         )
 
     def _pull_ac_3_1_20(self, client: MsGraphClient) -> PulledEvidence | None:
-        """AC.L2-3.1.20 — external collaboration settings and B2B invitations."""
+        """AC.L2-3.1.20 — external collaboration settings and external users."""
         # /policies/crossTenantAccessPolicy/default returns a SINGLE OBJECT,
         # not a collection. Use client.get, not client.paginate.
         cross_tenant_policy = client.get(
             "/policies/crossTenantAccessPolicy/default"
         )
 
-        # /invitations IS a collection — paginate.
-        invitations = list(client.paginate(
-            "/invitations?$select=id,inviteRedeemUrl,invitedUserEmailAddress,"
-            "status,invitedUserType"
+        # External users via userType filter. /invitations does not support
+        # GET (POST-only — creates invitations). userType=Guest captures
+        # both pending and redeemed external users, which is strictly more
+        # useful than /invitations' pending-only view. Surfaced by Pass E.4
+        # live verification.
+        external_users = list(client.paginate(
+            "/users?$filter=userType eq 'Guest'"
+            "&$select=id,userType,createdDateTime,externalUserState,externalUserStateChangeDateTime"
+            "&$count=true"
         ))
 
         utc_iso = self._now().isoformat()
         content = json.dumps({
             "cross_tenant_access_policy": cross_tenant_policy,
-            "b2b_invitations": invitations,
+            "external_users": external_users,
             "fetched_at": utc_iso,
         }, sort_keys=True).encode("utf-8")
 
@@ -541,13 +546,13 @@ class EntraIdConnector(BaseConnector):
             filename=f"entra_external_collab_{utc_iso}.json",
             content=content,
             mime_type="application/json",
-            description="Cross-tenant access policy and B2B invitation history.",
+            description="Cross-tenant access policy and external (Guest) user inventory.",
             control_ids=["AC.L2-3.1.20"],
             metadata={
                 "endpoints": [
                     "/policies/crossTenantAccessPolicy/default",
-                    "/invitations",
+                    "/users?$filter=userType eq 'Guest'",
                 ],
-                "invitation_count": len(invitations),
+                "external_user_count": len(external_users),
             },
         )
