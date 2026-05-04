@@ -46,7 +46,7 @@ class TestHealthEndpoint:
 
 class TestScoringRoutes:
     def test_sprs_endpoint_exists(self, client, auth_headers):
-        with patch("src.api.scoring_routes.SPRSCalculator") as mock_calc:
+        with patch("src.scoring.sprs.SPRSCalculator") as mock_calc:
             mock_calc.return_value.get_score_summary.return_value = {
                 "score": 82,
                 "deductions": 28,
@@ -59,7 +59,7 @@ class TestScoringRoutes:
         assert "score" in resp.json()
 
     def test_gaps_endpoint_exists(self, client, auth_headers):
-        with patch("src.api.scoring_routes.GapAssessmentEngine") as mock_engine:
+        with patch("src.scoring.gap_assessment.GapAssessmentEngine") as mock_engine:
             mock_engine.return_value.get_summary.return_value = {
                 "total_gaps": 5,
                 "gap_details": [],
@@ -69,9 +69,9 @@ class TestScoringRoutes:
         assert resp.status_code == 200
 
     def test_overview_endpoint_returns_all_sections(self, client, auth_headers):
-        with patch("src.api.scoring_routes.SPRSCalculator") as mock_sprs, \
-             patch("src.api.scoring_routes.GapAssessmentEngine") as mock_gaps, \
-             patch("src.api.scoring_routes.POAMGenerator") as mock_poam:
+        with patch("src.scoring.sprs.SPRSCalculator") as mock_sprs, \
+             patch("src.scoring.gap_assessment.GapAssessmentEngine") as mock_gaps, \
+             patch("src.scoring.poam.POAMGenerator") as mock_poam:
             mock_sprs.return_value.get_score_summary.return_value = {"score": 95}
             mock_gaps.return_value.get_summary.return_value = {"total_gaps": 2}
             mock_poam.return_value.get_poam_summary.return_value = {"total": 1}
@@ -85,20 +85,16 @@ class TestScoringRoutes:
 
 class TestSSPRoutes:
     def test_generate_single_control(self, client):
-        from src.agents.ssp_generator_v2 import SSPControlResult
-
-        mock_result = SSPControlResult(
-            control_id="AC.L2-3.1.1",
-            status="Implemented",
-            narrative="Access control is enforced via Active Directory policies...",
-            evidence_artifacts=["AD_Policy.pdf"],
-            gaps=[],
-            generation_time_sec=2.3,
-        )
-
-        with patch("src.api.ssp_routes.SSPGenerator") as mock_gen, \
-             patch("src.api.ssp_routes.get_llm"):
-            mock_gen.return_value.generate_single_control.return_value = mock_result
+        with patch("src.agents.ssp_generator_v2.SSPGenerator") as mock_gen:
+            mock_gen.return_value.generate_section.return_value = {
+                "parsed": {
+                    "control_id": "AC.L2-3.1.1",
+                    "implementation_status": "Implemented",
+                    "narrative": "Access control is enforced via Active Directory policies...",
+                    "evidence_references": [],
+                    "gaps": [],
+                }
+            }
             resp = client.post(
                 "/api/ssp/generate",
                 json={"control_id": "AC.L2-3.1.1"},

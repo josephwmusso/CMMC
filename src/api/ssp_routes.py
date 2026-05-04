@@ -272,6 +272,7 @@ def _run_full_ssp(job_id: str, org_profile: dict, control_ids: Optional[list[str
 def generate_full_ssp(
     req: FullSSPRequest,
     background_tasks: BackgroundTasks,
+    db: Session = Depends(get_db),
     current_user: dict = Depends(get_current_user),
 ):
     """Start full SSP generation as a background job.
@@ -311,6 +312,7 @@ def generate_full_ssp(
 @router.post("/generate-full-temporal", response_model=JobStatus)
 async def generate_full_ssp_temporal(
     req: FullSSPRequest,
+    db: Session = Depends(get_db),
     current_user: dict = Depends(get_current_user),
 ):
     """Start full SSP generation as a durable Temporal workflow.
