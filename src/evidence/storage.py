@@ -116,6 +116,19 @@ def link_evidence_to_controls(
     via the evidence_control_map table.
     Returns count of links created.
     """
+    # Defensive guard: evidence_control_map.control_id is NOT NULL in the
+    # schema, but the objective-only INSERT branch below does not supply it.
+    # No current caller exercises this path (PulledEvidence only carries
+    # control_ids; the runner never passes objective_ids). Convert a future
+    # regression from a Postgres FK error into a clear application error.
+    # Backlog: Phase 5.2.bug-1.
+    if not control_ids and objective_ids:
+        raise ValueError(
+            "control_ids required: objective-only linkage path is not yet "
+            "supported (NOT NULL constraint on evidence_control_map.control_id). "
+            "Track via backlog item Phase 5.2.bug-1."
+        )
+
     count = 0
     for control_id in control_ids:
         link_id = f"ECM-{uuid.uuid4().hex[:12].upper()}"
