@@ -2107,3 +2107,62 @@ class TestSecretHygiene:
             assert self.UNIQUE_SECRET not in str(log_context)
             assert "client_secret" not in log_context
             assert "client_id" not in log_context
+
+
+# ──────────────────────────────────────────────────────────────────────
+# J. Endpoint wiring (F.3d post-flip)
+# ──────────────────────────────────────────────────────────────────────
+
+class TestM365GccHighEndpointWiring:
+    """F.3d: now that the eager-import is flipped, /api/connectors/types
+    sees m365_gcc_high. This smoke confirms the production deployment
+    surface end-to-end at the framework layer:
+
+      1. The connector class is reachable via registry.get_connector_class
+         (the same lookup /api/connectors/{id}/test uses to instantiate
+         the connector for a stored credential record).
+      2. The class can be instantiated with the credentials_schema's
+         required keys filled in — no missing-arg crashes that would
+         surface as 500 to the API caller.
+      3. test_connection() with fake credentials returns (False, msg)
+         cleanly, NOT a raise. This is BaseConnector's contract; the
+         smoke proves m365_gcc_high honors it through the full
+         registry-lookup-then-instantiate-then-test path.
+
+    Pattern mirrors EntraIdConnector's TestSafeFailureWithFakeCredentials
+    (test_entra_id_registration.py). NOTE: this test makes a real HTTP
+    call to login.microsoftonline.com — fake credentials produce a
+    deterministic AADSTS error response that we verify the connector
+    handles gracefully. If the test environment is offline, this test
+    is expected to fail with a network error rather than be silently
+    skipped.
+    """
+
+    def test_registry_lookup_then_instantiate_then_test_connection(self):
+        from src.connectors.registry import get_connector_class
+
+        # 1. Registry lookup — same path /api/connectors/{id}/test uses.
+        cls = get_connector_class("m365_gcc_high")
+        assert cls.__name__ == "M365GccHighConnector"
+        assert cls.type_name == "m365_gcc_high"
+
+        # 2. Instantiate with credentials_schema-prescribed keys filled
+        # with fake values (mirrors what the API caller would POST).
+        connector = cls(
+            config={},
+            credentials={
+                "tenant_id": "00000000-0000-0000-0000-000000000000",
+                "client_id": "00000000-0000-0000-0000-000000000001",
+                "client_secret": "fake_secret_for_endpoint_wiring_smoke_f3d",
+                "cloud_environment": "commercial",
+            },
+        )
+
+        # 3. test_connection() must return (False, msg), never raise —
+        # BaseConnector contract.
+        ok, msg = connector.test_connection()
+        assert ok is False
+        assert isinstance(msg, str)
+        assert len(msg) > 0
+        # Message must not echo the secret back to the API caller.
+        assert "fake_secret_for_endpoint_wiring_smoke_f3d" not in msg
