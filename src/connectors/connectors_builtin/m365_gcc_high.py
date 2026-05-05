@@ -1,33 +1,39 @@
-"""Microsoft 365 (GCC High) connector — Pass F.3a (3 of 5 controls live).
+"""Microsoft 365 (GCC High) connector — Pass F.3b (4 of 5 controls live).
 
 Pulls evidence from Microsoft Graph using the OAuth2 client-credentials flow
 for Application API permissions. Supports commercial Microsoft Graph as well
 as GCC High and DoD national clouds.
 
-Pass F.3a ships pull() with the orchestrator + three _pull_<control> methods:
+Pass F.3b adds AC.L2-3.1.3 sensitivity-label completion and the new
+SC.L2-3.13.8 (Data in Transit) control. Live state:
   MP.L2-3.8.1 — Media Protection (digital): SharePoint sharing posture +
                 retention labels + Intune device compliance (license-conditional).
   MP.L2-3.8.2 — Media Access (digital): SharePoint sharing posture +
                 Conditional Access policies (CA reuse from Pass E IA.L2-3.5.3
                 domain). coverage_scope=partial; per-site sharingCapability is
-                missing because Graph v1.0 does not expose it (lives in the
-                SharePoint admin REST API, outside Graph's auth surface).
-  AC.L2-3.1.3 — Control CUI Flow (partial): Conditional Access policies
-                only. coverage_scope=partial; sensitivity_labels/dlp_policies/
-                label_policies missing. F.3b removes sensitivity_labels;
-                DLP/label-policy enumeration is permanently deferred (no
-                Graph endpoint exists for tenant-wide DLP enumeration).
+                not in Graph v1.0 (empirically confirmed by Microsoft's schema
+                parser during F.3a live verification).
+  AC.L2-3.1.3 — Control CUI Flow (partial): Conditional Access + sensitivity
+                labels. coverage_scope=partial; dlp_policies and label_policies
+                permanently deferred (PowerShell-only, no Graph endpoint —
+                hypothetical Phase 5.4 shim out of Pass F scope entirely).
+  SC.L2-3.13.8 — Data in Transit (aggregate): Microsoft Secure Score (TLS-
+                relevant control breakdown) + Conditional Access (TLS/app-
+                protection) + sensitivity labels with encryption settings.
+                coverage_scope=partial; exchange_online_tls deferred to
+                Phase 5.4 PowerShell shim. evidence_directness="aggregate"
+                because the headline signal is Microsoft's score; raw_config
+                sub-components live in metadata.
 
 Outstanding sub-passes:
-  F.3b — AC.L2-3.1.3 sensitivity-label completion + SC.L2-3.13.8
   F.3c — AU.L2-3.3.1 (via /security/auditLog/queries async helper from F.1.5)
   F.3d — eager-import this module from src/connectors/__init__.py so the
          connector becomes visible on /api/connectors/types
 
-Conventions established by F.3a (load-bearing for SSP narrative downstream):
+Conventions established by F.3a/b (load-bearing for SSP narrative downstream):
 
   metadata["media_scope"]: closed-set string literal {"digital", "paper"}.
-    F.3a sets only "digital" — paper-media controls are out of scope for
+    F.3a/b set only "digital" — paper-media controls are out of scope for
     automated pulls (paper destruction is a physical-process control).
     Future SSP renderer reads this key to render the paper-media exclusion
     narrative for MP family controls.
@@ -47,6 +53,18 @@ Conventions established by F.3a (load-bearing for SSP narrative downstream):
     by 400 + BadRequest + "does not have a SPO license." (no separate
     licensing-signal path observed for SPO yet — F.3a only sees the 400
     shape). Used by both MP.L2-3.8.1 and MP.L2-3.8.2.
+
+  metadata["sensitivity_label_status"]: closed-set string literal {"ok",
+    "service_unavailable", "license_not_detected"}. Captures Purview /
+    Information Protection sub-component health. Used by AC.L2-3.1.3 and
+    SC.L2-3.13.8. F.3b sees only the "service_unavailable" path against
+    the unprovisioned trial; the licensing_signal path is anticipated for
+    tenants with Purview-but-no-Premium and validated by F.4.
+
+  metadata["secure_score_status"]: closed-set string literal {"ok",
+    "service_unavailable", "license_not_detected"}. Captures Microsoft
+    Secure Score (Microsoft 365 Defender) sub-component health on
+    SC.L2-3.13.8's PulledEvidence.
 
 Until F.3d, this module is registered (via @register at class-def) but is
 NOT eager-imported from src.connectors. /api/connectors/types does not show
@@ -73,6 +91,51 @@ from src.connectors._msgraph import (
 )
 
 log = logging.getLogger(__name__)
+
+
+def _label_has_encryption(label: dict) -> bool:
+    """Return True if a sensitivity-label dict carries encryption settings.
+
+    Defensive both-shape match. Per Phase 1.f of F.3b discovery, the
+    /beta/security/informationProtection/sensitivityLabels response uses
+    one of two shapes for encryption configuration:
+
+      Shape A — top-level protectionSettings:
+          {"protectionSettings": {"encryptContent": true, ...}, ...}
+
+      Shape B — actionSettings array with @odata.type discriminator:
+          {"actionSettings": [
+              {"@odata.type": "#microsoft.graph.security.encryptContent", ...},
+              ...
+          ], ...}
+
+    Both shapes appear in beta documentation and may evolve. We match
+    either rather than assume one. F.4 against a Purview-provisioned
+    tenant validates which shape Microsoft actually returns; until then,
+    the defensive filter is correct in expectation.
+
+    Returns False on malformed inputs (non-dict, missing keys, non-iterable
+    actionSettings) — never raises.
+    """
+    if not isinstance(label, dict):
+        return False
+
+    # Shape A
+    ps = label.get("protectionSettings")
+    if isinstance(ps, dict) and ps.get("encryptContent") is True:
+        return True
+
+    # Shape B
+    actions = label.get("actionSettings")
+    if isinstance(actions, list):
+        for action in actions:
+            if not isinstance(action, dict):
+                continue
+            odata_type = action.get("@odata.type")
+            if isinstance(odata_type, str) and "encrypt" in odata_type.lower():
+                return True
+
+    return False
 
 
 @register
@@ -342,8 +405,16 @@ class M365GccHighConnector(BaseConnector):
             ),
             (
                 "AC.L2-3.1.3",
-                "/identity/conditionalAccess/policies (partial)",
+                "/identity/conditionalAccess/policies,"
+                "/beta/security/informationProtection/sensitivityLabels (partial)",
                 self._pull_ac_3_1_3,
+            ),
+            (
+                "SC.L2-3.13.8",
+                "/security/secureScores,/security/secureScoreControlProfiles,"
+                "/identity/conditionalAccess/policies,"
+                "/beta/security/informationProtection/sensitivityLabels (partial)",
+                self._pull_sc_3_13_8,
             ),
         ]
 
@@ -590,27 +661,81 @@ class M365GccHighConnector(BaseConnector):
     def _pull_ac_3_1_3(self, client: MsGraphClient) -> PulledEvidence | None:
         """AC.L2-3.1.3 — Control CUI Flow (partial).
 
-        F.3a ships the Conditional Access slice only. Conditional Access
-        policies enforce CUI-flow restrictions through session controls,
-        cloud-app filters, and location restrictions — so /identity/
-        conditionalAccess/policies is the load-bearing endpoint for this
-        control's automated coverage.
+        Two Graph endpoints compose this evidence:
+          /identity/conditionalAccess/policies                    (paginated)
+          /beta/security/informationProtection/sensitivityLabels  (paginated, beta)
 
-        coverage_scope="partial". missing_sources lists three sub-sources:
-          - sensitivity_labels: lands in F.3b (Graph endpoint exists)
-          - dlp_policies:        permanently deferred (no Graph endpoint)
-          - label_policies:      permanently deferred (no Graph endpoint)
+        Conditional Access policies enforce CUI-flow restrictions through
+        session controls, cloud-app filters, and location restrictions.
+        Sensitivity labels classify data so flow controls can target CUI
+        specifically. Together they constitute Graph-observable CUI-flow
+        evidence.
 
-        F.3b removes sensitivity_labels from missing_sources when the
-        sensitivity-label component goes live.
+        coverage_scope="partial". missing_sources after F.3b:
+          - dlp_policies:    permanently deferred (no Graph endpoint;
+                             enumeration is PowerShell-only via
+                             Get-DlpCompliancePolicy)
+          - label_policies:  permanently deferred (no Graph endpoint;
+                             enumeration is PowerShell-only via
+                             Get-LabelPolicy)
+        Both DLP and label-policy enumeration would land in a hypothetical
+        Phase 5.4 PowerShell shim, out of Pass F scope entirely.
+
+        Capability-gap handling on sensitivity labels: when Purview is
+        unprovisioned (400 + BadRequest), the sub-component degrades but
+        CA still yields. CA is core Entra and works on tenants without
+        Purview.
         """
         ca_policies = list(
             client.paginate("/identity/conditionalAccess/policies")
         )
 
+        # Sensitivity labels — capability-gap-conditional (Purview /
+        # Information Protection licensing).
+        sensitivity_labels: list[dict] = []
+        sensitivity_label_status: str = "ok"
+        sensitivity_label_degradation_reason: str | None = None
+        try:
+            sensitivity_labels = list(
+                client.paginate(
+                    "/beta/security/informationProtection/sensitivityLabels"
+                )
+            )
+        except MsGraphCapabilityError as exc:
+            sensitivity_label_status = "service_unavailable"
+            sensitivity_label_degradation_reason = (
+                f"Purview / Information Protection unavailable on tenant: {exc}"
+            )
+            log.warning(
+                "Sensitivity labels unavailable; emitting degraded evidence "
+                "for AC.L2-3.1.3",
+                extra={
+                    "tenant_id": self._tenant_id,
+                    "endpoint": "/beta/security/informationProtection/sensitivityLabels",
+                },
+            )
+        except MsGraphPermissionError as exc:
+            if exc.licensing_signal:
+                sensitivity_label_status = "license_not_detected"
+                sensitivity_label_degradation_reason = (
+                    "Purview / Information Protection license not detected"
+                )
+                log.warning(
+                    "Purview license not detected; emitting degraded evidence "
+                    "for AC.L2-3.1.3",
+                    extra={
+                        "tenant_id": self._tenant_id,
+                        "endpoint": "/beta/security/informationProtection/sensitivityLabels",
+                    },
+                )
+            else:
+                raise
+
         utc_iso = self._now().isoformat()
         content = json.dumps({
             "conditional_access_policies": ca_policies,
+            "sensitivity_labels": sensitivity_labels,
+            "sensitivity_label_status": sensitivity_label_status,
             "fetched_at": utc_iso,
         }, sort_keys=True).encode("utf-8")
 
@@ -619,19 +744,245 @@ class M365GccHighConnector(BaseConnector):
             content=content,
             mime_type="application/json",
             description=(
-                "CUI-flow controls (partial): Conditional Access policies. "
-                "Sensitivity labels, DLP policies, and label policies are not "
-                "yet pulled — see missing_sources."
+                "CUI-flow controls (partial): Conditional Access policies "
+                "and sensitivity labels. DLP policies and label policies "
+                "require PowerShell shim (out of Pass F scope) — see "
+                "missing_sources."
             ),
             control_ids=["AC.L2-3.1.3"],
             metadata={
-                "endpoints": ["/identity/conditionalAccess/policies"],
+                "endpoints": [
+                    "/identity/conditionalAccess/policies",
+                    "/beta/security/informationProtection/sensitivityLabels",
+                ],
                 "ca_policy_count": len(ca_policies),
+                "sensitivity_label_count": len(sensitivity_labels),
+                "sensitivity_label_status": sensitivity_label_status,
             },
             coverage_scope="partial",
             missing_sources=[
-                "sensitivity_labels",
                 "dlp_policies",
                 "label_policies",
             ],
+            degraded=(sensitivity_label_status != "ok"),
+            degradation_reason=sensitivity_label_degradation_reason,
+        )
+
+    def _pull_sc_3_13_8(self, client: MsGraphClient) -> PulledEvidence | None:
+        """SC.L2-3.13.8 — Data in Transit (mixed-directness).
+
+        Four Graph endpoints compose this evidence; the headline signal is
+        Microsoft's Secure Score (aggregate by definition), so the parent
+        PulledEvidence carries evidence_directness="aggregate". The CA-
+        filter and label-encryption sub-components are raw_config but live
+        in metadata as supporting evidence.
+
+          /security/secureScores               (paginated, aggregate)
+          /security/secureScoreControlProfiles (paginated, profile metadata
+                                                for filtering scores)
+          /identity/conditionalAccess/policies (paginated, REUSE — filtered
+                                                for TLS / app-protection)
+          /beta/security/informationProtection/sensitivityLabels
+                                               (paginated, REUSE — filtered
+                                                for encryption-bearing labels)
+
+        coverage_scope="partial", missing_sources=["exchange_online_tls"].
+        Exchange Online transport rules require PowerShell (Get-TransportRule
+        + Get-TlsReceiveDomainSecureList), out of Pass F scope.
+
+        Capability-gap handling: Secure Score and sensitivity labels are
+        each independently capability-gap-conditional. CA always works on
+        a working tenant. Both capability-gapped sub-components flag the
+        parent degraded=True with combined reason.
+
+        TLS-relevance filter on control profiles is conservative; F.4
+        against a Defender-provisioned tenant validates the discriminator.
+        """
+        # Secure Score — aggregate, capability-gap-conditional.
+        secure_scores: list[dict] = []
+        secure_score_status: str = "ok"
+        secure_score_degradation_reason: str | None = None
+        try:
+            secure_scores = list(client.paginate("/security/secureScores"))
+        except MsGraphCapabilityError as exc:
+            secure_score_status = "service_unavailable"
+            secure_score_degradation_reason = (
+                f"Microsoft Secure Score unavailable on tenant: {exc}"
+            )
+            log.warning(
+                "Secure Score unavailable; emitting degraded evidence "
+                "for SC.L2-3.13.8",
+                extra={
+                    "tenant_id": self._tenant_id,
+                    "endpoint": "/security/secureScores",
+                },
+            )
+        except MsGraphPermissionError as exc:
+            if exc.licensing_signal:
+                secure_score_status = "license_not_detected"
+                secure_score_degradation_reason = (
+                    "Microsoft Secure Score license (Defender) not detected"
+                )
+                log.warning(
+                    "Defender license not detected; emitting degraded "
+                    "Secure Score evidence for SC.L2-3.13.8",
+                    extra={"tenant_id": self._tenant_id},
+                )
+            else:
+                raise
+
+        # Control profiles — separately capability-gap-conditional. Often
+        # available even when Secure Score data is empty (profile metadata
+        # is largely tenant-independent).
+        control_profiles: list[dict] = []
+        try:
+            control_profiles = list(
+                client.paginate("/security/secureScoreControlProfiles")
+            )
+        except MsGraphCapabilityError as exc:
+            log.warning(
+                "Secure Score control profiles unavailable; continuing without",
+                extra={
+                    "tenant_id": self._tenant_id,
+                    "endpoint": "/security/secureScoreControlProfiles",
+                },
+            )
+        except MsGraphPermissionError as exc:
+            if exc.licensing_signal:
+                log.warning(
+                    "Defender license not detected for control profiles; "
+                    "continuing without",
+                    extra={"tenant_id": self._tenant_id},
+                )
+            else:
+                raise
+
+        # CA — always works on a working tenant.
+        ca_policies = list(
+            client.paginate("/identity/conditionalAccess/policies")
+        )
+
+        # Sensitivity labels — capability-gap-conditional.
+        sensitivity_labels: list[dict] = []
+        sensitivity_label_status: str = "ok"
+        sensitivity_label_degradation_reason: str | None = None
+        try:
+            sensitivity_labels = list(
+                client.paginate(
+                    "/beta/security/informationProtection/sensitivityLabels"
+                )
+            )
+        except MsGraphCapabilityError as exc:
+            sensitivity_label_status = "service_unavailable"
+            sensitivity_label_degradation_reason = (
+                f"Purview / Information Protection unavailable on tenant: {exc}"
+            )
+            log.warning(
+                "Sensitivity labels unavailable; emitting degraded evidence "
+                "for SC.L2-3.13.8",
+                extra={
+                    "tenant_id": self._tenant_id,
+                    "endpoint": "/beta/security/informationProtection/sensitivityLabels",
+                },
+            )
+        except MsGraphPermissionError as exc:
+            if exc.licensing_signal:
+                sensitivity_label_status = "license_not_detected"
+                sensitivity_label_degradation_reason = (
+                    "Purview / Information Protection license not detected"
+                )
+                log.warning(
+                    "Purview license not detected for SC.L2-3.13.8",
+                    extra={"tenant_id": self._tenant_id},
+                )
+            else:
+                raise
+
+        # TLS-relevance filter on control profiles. Conservative — minimizes
+        # false positives on the trial. F.4 against a Defender-provisioned
+        # tenant validates the discriminator. Service set anchors data-in-
+        # transit-relevant services; controlCategory or title-substring
+        # broadens within those services.
+        TLS_RELEVANT_SERVICES = {"Exchange", "SharePoint", "OneDrive"}
+        TLS_KEYWORDS = ("tls", "encrypt", "transport")
+
+        def _profile_is_tls_relevant(profile: dict) -> bool:
+            service = profile.get("service") or ""
+            if service not in TLS_RELEVANT_SERVICES:
+                return False
+            if profile.get("controlCategory") == "Data":
+                return True
+            title = (profile.get("title") or "").lower()
+            return any(kw in title for kw in TLS_KEYWORDS)
+
+        tls_relevant_profiles = [
+            p for p in control_profiles if _profile_is_tls_relevant(p)
+        ]
+
+        # Encryption-bearing labels for SC.L2-3.13.8 (data IN TRANSIT being
+        # encrypted via label policy). The shape uncertainty (per Phase 1.f:
+        # protectionSettings.encryptContent vs actionSettings[].@odata.type)
+        # is handled by a defensive both-shape match. F.4 against a Purview-
+        # provisioned tenant disambiguates.
+        encryption_labels = [
+            l for l in sensitivity_labels if _label_has_encryption(l)
+        ]
+
+        utc_iso = self._now().isoformat()
+        content = json.dumps({
+            "secure_scores": secure_scores,
+            "secure_score_control_profiles_full": control_profiles,
+            "secure_score_control_profiles_tls_relevant": tls_relevant_profiles,
+            "conditional_access_policies": ca_policies,
+            "sensitivity_labels_with_encryption": encryption_labels,
+            "secure_score_status": secure_score_status,
+            "sensitivity_label_status": sensitivity_label_status,
+            "fetched_at": utc_iso,
+        }, sort_keys=True).encode("utf-8")
+
+        # Compose parent degradation_reason from any non-"ok" sub-components.
+        degradation_reasons = [
+            r for r in (
+                secure_score_degradation_reason,
+                sensitivity_label_degradation_reason,
+            )
+            if r is not None
+        ]
+        degraded = bool(degradation_reasons)
+        combined_reason = " | ".join(degradation_reasons) if degradation_reasons else None
+
+        return PulledEvidence(
+            filename=f"m365_sc_3_13_8_{utc_iso}.json",
+            content=content,
+            mime_type="application/json",
+            description=(
+                "Data in transit (aggregate): Microsoft Secure Score with "
+                "TLS-relevant control breakdown, plus supporting raw_config "
+                "from Conditional Access (TLS / app-protection slice) and "
+                "encryption-bearing sensitivity labels. Exchange Online "
+                "transport rules require PowerShell shim (out of Pass F "
+                "scope) — see missing_sources."
+            ),
+            control_ids=["SC.L2-3.13.8"],
+            metadata={
+                "endpoints": [
+                    "/security/secureScores",
+                    "/security/secureScoreControlProfiles",
+                    "/identity/conditionalAccess/policies",
+                    "/beta/security/informationProtection/sensitivityLabels",
+                ],
+                "secure_score_count": len(secure_scores),
+                "control_profile_count": len(control_profiles),
+                "tls_relevant_profile_count": len(tls_relevant_profiles),
+                "ca_policy_count": len(ca_policies),
+                "sensitivity_label_count": len(sensitivity_labels),
+                "encryption_label_count": len(encryption_labels),
+                "secure_score_status": secure_score_status,
+                "sensitivity_label_status": sensitivity_label_status,
+            },
+            coverage_scope="partial",
+            missing_sources=["exchange_online_tls"],
+            evidence_directness="aggregate",
+            degraded=degraded,
+            degradation_reason=combined_reason,
         )

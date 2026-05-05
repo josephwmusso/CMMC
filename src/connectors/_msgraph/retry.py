@@ -71,6 +71,28 @@ _CAPABILITY_GAP_MESSAGE_FRAGMENTS = frozenset({
     "not applicable to target tenant",
 })
 
+# Substrings observed inside Graph 500 + generalException innerError.message
+# bodies when an underlying Microsoft service backend (e.g. Purview /
+# Information Protection's "PolicyProfile" service) rejects the otherwise-
+# valid Graph bearer token because the tenant has no subscription /
+# configuration to query. Surfaced by F.3b live verification against the
+# intranest-m365-test trial on the
+# /beta/security/informationProtection/sensitivityLabels endpoint:
+#
+#   error.code = "generalException"
+#   innerError.message = "The service didn't accept the auth token. Challenge:[''] ..."
+#   CorrelationId.Description = "PolicyProfile"
+#
+# Lowercase, substring-matched against the inner message. The narrow
+# signature (code == "generalException" AND inner-message-fragment match)
+# prevents transient 500s from being silently reclassified as capability
+# gaps — only this specific Microsoft signal pattern is treated as a
+# service-unavailable signal.
+_SERVICE_UNAVAILABLE_500_INNER_FRAGMENTS = frozenset({
+    "didn't accept the auth token",
+    "did not accept the auth token",
+})
+
 
 def _parse_retry_after(header_value: str | None) -> float | None:
     """Parse Retry-After. Numeric (seconds) or HTTP-date. Returns seconds or None."""
@@ -137,6 +159,43 @@ def _detect_capability_gap(response_body: dict) -> bool:
     return any(frag in lowered for frag in _CAPABILITY_GAP_MESSAGE_FRAGMENTS)
 
 
+def _detect_service_unavailable_500(response_body: dict) -> bool:
+    """Return True if a Graph 500 body indicates an underlying service
+    backend rejected the token because the tenant has no subscription
+    / configuration for that service (capability gap signaled as a 500
+    rather than a 400).
+
+    Match shape: error.code == "generalException" AND any fragment in
+    _SERVICE_UNAVAILABLE_500_INNER_FRAGMENTS appears in
+    error.innerError.message (case-insensitive).
+
+    The two-condition AND is load-bearing: it prevents transient 500
+    outages from being silently reclassified as capability gaps. A 500
+    with a different code, or a 500 whose inner message doesn't match
+    the narrow service-rejection fragments, falls through to the
+    existing retry-then-raise behavior.
+
+    Defensive against absent or non-string code/innerError/message
+    fields — returns False rather than raising on any malformed shape.
+    Surfaced by F.3b live verification against the
+    /beta/security/informationProtection/sensitivityLabels endpoint
+    (Purview / PolicyProfile backend rejected the token on the
+    unprovisioned trial tenant).
+    """
+    error = response_body.get("error") or {}
+    code = error.get("code")
+    if not isinstance(code, str) or code != "generalException":
+        return False
+    inner = error.get("innerError") or {}
+    if not isinstance(inner, dict):
+        return False
+    inner_message = inner.get("message")
+    if not isinstance(inner_message, str):
+        return False
+    lowered = inner_message.lower()
+    return any(frag in lowered for frag in _SERVICE_UNAVAILABLE_500_INNER_FRAGMENTS)
+
+
 def get_with_retry(
     client: httpx.Client,
     url: str,
@@ -190,6 +249,24 @@ def get_with_retry(
             continue
 
         if 500 <= resp.status_code < 600:
+            # F.3b amendment: classify some 500 shapes as capability gaps
+            # before burning the retry budget on an unrecoverable 500.
+            # Microsoft's InformationProtection backend (PolicyProfile)
+            # signals service-unavailability via 500 + generalException +
+            # token-rejection inner message — narrow signature, see
+            # _detect_service_unavailable_500's docstring.
+            try:
+                body = resp.json()
+            except Exception:
+                body = {}
+            if _detect_service_unavailable_500(body):
+                error_obj = body.get("error") or {}
+                inner = error_obj.get("innerError") or {}
+                inner_msg = inner.get("message") or "service unavailable"
+                raise MsGraphCapabilityError(
+                    f"Service unavailable on {url}: {inner_msg}",
+                    endpoint=url,
+                )
             if attempt == MAX_RETRIES:
                 resp.raise_for_status()
             sleep_for = min(

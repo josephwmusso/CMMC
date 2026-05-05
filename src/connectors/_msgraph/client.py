@@ -62,11 +62,20 @@ class MsGraphClient:
     def _build_url(self, path: str) -> str:
         """Build the full Graph URL.
 
-        Absolute URLs (e.g. @odata.nextLink) pass through unchanged. Relative
-        paths are anchored at /v1.0 under the cloud-specific base URL.
+        Absolute URLs (e.g. @odata.nextLink) pass through unchanged. Paths
+        starting with /beta/ are anchored at the cloud-specific base URL
+        without the /v1.0/ prefix (the beta version is already in the path).
+        All other relative paths are anchored at /v1.0 under the cloud-
+        specific base URL.
+
+        The /beta/ branch matches with startswith() — paths like
+        /foo/beta/bar are NOT treated as beta. Beta routing is a
+        prefix-only feature.
         """
         if path.startswith("http://") or path.startswith("https://"):
             return path
+        if path.startswith("/beta/"):
+            return f"{self._base_url}{path}"
         if path.startswith("/"):
             return f"{self._base_url}/v1.0{path}"
         return f"{self._base_url}/v1.0/{path}"

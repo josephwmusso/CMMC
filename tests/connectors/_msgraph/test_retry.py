@@ -22,6 +22,7 @@ from src.connectors._msgraph.errors import (
 )
 from src.connectors._msgraph.retry import (
     _detect_capability_gap,
+    _detect_service_unavailable_500,
     _parse_retry_after,
     get_with_retry,
 )
@@ -448,6 +449,240 @@ class TestCapabilityGapDetection:
     def test_detect_capability_gap_returns_false_when_no_fragment_match(self):
         body = {"error": {"code": "BadRequest", "message": "Property is required."}}
         assert _detect_capability_gap(body) is False
+
+
+class TestServiceUnavailable500Detection:
+    """F.3b framework amendment: a Graph 500 + generalException + inner
+    message indicating the underlying service rejected the token is
+    treated as a capability gap (MsGraphCapabilityError raised
+    immediately) rather than letting retry burn through the budget on
+    an unrecoverable 500.
+
+    The narrow two-condition AND signature prevents transient 500s from
+    being silently reclassified as capability gaps — the load-bearing
+    safety property exercised by the final test in this class.
+
+    Surfaced by F.3b live verification against
+    /beta/security/informationProtection/sensitivityLabels on the
+    intranest-m365-test trial.
+    """
+
+    def test_500_general_exception_with_token_rejection_raises_capability(
+        self, _no_real_sleep
+    ):
+        """The exact shape Microsoft returns for an unprovisioned Purview
+        tenant on the InformationProtection beta endpoint."""
+        def handler(req):
+            return httpx.Response(
+                500,
+                json={
+                    "error": {
+                        "code": "generalException",
+                        "message": "There was an internal server error while processing the request.",
+                        "innerError": {
+                            "message": "The service didn't accept the auth token. Challenge:['']",
+                            "CorrelationId.Description": "PolicyProfile",
+                        },
+                    }
+                },
+            )
+        with _client(handler) as c:
+            with pytest.raises(MsGraphCapabilityError) as exc_info:
+                get_with_retry(
+                    c,
+                    "https://example/beta/security/informationProtection/sensitivityLabels",
+                    {},
+                )
+        assert "didn't accept the auth token" in str(exc_info.value).lower()
+        assert exc_info.value.endpoint == (
+            "https://example/beta/security/informationProtection/sensitivityLabels"
+        )
+        # Critical: the 500 path must NOT have burned the retry budget. A
+        # capability-gap signal raises immediately on attempt 0.
+        _no_real_sleep.assert_not_called()
+
+    def test_500_alternative_message_variant(self, _no_real_sleep):
+        """Defensive: 'did not accept' (no contraction) also matches."""
+        def handler(req):
+            return httpx.Response(
+                500,
+                json={
+                    "error": {
+                        "code": "generalException",
+                        "message": "Internal error.",
+                        "innerError": {
+                            "message": "The service did not accept the auth token.",
+                        },
+                    }
+                },
+            )
+        with _client(handler) as c:
+            with pytest.raises(MsGraphCapabilityError):
+                get_with_retry(c, "https://example/x", {})
+
+    def test_500_case_insensitive_inner_message_match(self, _no_real_sleep):
+        def handler(req):
+            return httpx.Response(
+                500,
+                json={
+                    "error": {
+                        "code": "generalException",
+                        "message": "Internal error.",
+                        "innerError": {
+                            "message": "The Service Didn't Accept The Auth Token.",
+                        },
+                    }
+                },
+            )
+        with _client(handler) as c:
+            with pytest.raises(MsGraphCapabilityError):
+                get_with_retry(c, "https://example/x", {})
+
+    # ───── Defensive cases: must NOT silently turn 500s into capability gaps ─────
+
+    def test_500_with_no_error_key_falls_through_to_retry(self, _no_real_sleep):
+        """Defensive: a 500 with no 'error' key in the body must not crash
+        the detector AND must fall through to the existing 5xx retry
+        behavior (eventually raising httpx.HTTPStatusError after retry
+        exhaustion)."""
+        def handler(req):
+            return httpx.Response(500, json={"unexpected": "shape"})
+        with _client(handler) as c:
+            with pytest.raises(httpx.HTTPStatusError):
+                get_with_retry(c, "https://example/x", {})
+        # Should have retried 3 times before raising — proves the existing
+        # 5xx retry path is preserved.
+        assert _no_real_sleep.call_count == 3
+
+    def test_500_with_error_code_but_no_inner_error(self, _no_real_sleep):
+        """Defensive: a 500 with error.code but no innerError dict must
+        not match the detector. Falls through to retry."""
+        def handler(req):
+            return httpx.Response(
+                500,
+                json={
+                    "error": {
+                        "code": "generalException",
+                        "message": "Internal error.",
+                    }
+                },
+            )
+        with _client(handler) as c:
+            with pytest.raises(httpx.HTTPStatusError):
+                get_with_retry(c, "https://example/x", {})
+        assert _no_real_sleep.call_count == 3
+
+    def test_500_general_exception_but_inner_message_no_match(self, _no_real_sleep):
+        """Defensive: error.code=='generalException' alone is NOT enough —
+        the inner message must also match. Without the fragment, the 500
+        is a real internal error and falls through to retry."""
+        def handler(req):
+            return httpx.Response(
+                500,
+                json={
+                    "error": {
+                        "code": "generalException",
+                        "message": "Internal error.",
+                        "innerError": {
+                            "message": "Database connection pool exhausted.",
+                        },
+                    }
+                },
+            )
+        with _client(handler) as c:
+            with pytest.raises(httpx.HTTPStatusError):
+                get_with_retry(c, "https://example/x", {})
+        assert _no_real_sleep.call_count == 3
+
+    def test_500_token_rejection_message_but_wrong_code(self, _no_real_sleep):
+        """Defensive: the inner message matches but error.code is NOT
+        'generalException'. Must NOT fire — proves the AND. Falls through
+        to retry."""
+        def handler(req):
+            return httpx.Response(
+                500,
+                json={
+                    "error": {
+                        "code": "InternalServerError",
+                        "message": "Internal error.",
+                        "innerError": {
+                            "message": "The service didn't accept the auth token.",
+                        },
+                    }
+                },
+            )
+        with _client(handler) as c:
+            with pytest.raises(httpx.HTTPStatusError):
+                get_with_retry(c, "https://example/x", {})
+        assert _no_real_sleep.call_count == 3
+
+    def test_real_5xx_outage_falls_through_to_retry(self, _no_real_sleep):
+        """LOAD-BEARING: a generic 5xx outage with no token-rejection
+        marker must still be retried by the existing helper. This is
+        the safety property — narrow detection means transient outages
+        are NOT silently silenced as capability gaps."""
+        def handler(req):
+            return httpx.Response(503, json={})  # Service Unavailable
+        with _client(handler) as c:
+            with pytest.raises(httpx.HTTPStatusError):
+                get_with_retry(c, "https://example/x", {})
+        # 503 retries 3x before giving up.
+        assert _no_real_sleep.call_count == 3
+
+    def test_500_non_dict_inner_error(self, _no_real_sleep):
+        """Defensive: innerError is not a dict (e.g. None, list, string).
+        Must not crash; falls through to retry."""
+        def handler(req):
+            return httpx.Response(
+                500,
+                json={
+                    "error": {
+                        "code": "generalException",
+                        "innerError": "not a dict",
+                    }
+                },
+            )
+        with _client(handler) as c:
+            with pytest.raises(httpx.HTTPStatusError):
+                get_with_retry(c, "https://example/x", {})
+
+    # ───── Direct unit tests of the detector helper ─────
+
+    def test_detect_helper_matches_canonical_purview_shape(self):
+        body = {
+            "error": {
+                "code": "generalException",
+                "innerError": {
+                    "message": "The service didn't accept the auth token. Challenge:['']",
+                },
+            }
+        }
+        assert _detect_service_unavailable_500(body) is True
+
+    def test_detect_helper_returns_false_on_empty_body(self):
+        assert _detect_service_unavailable_500({}) is False
+
+    def test_detect_helper_returns_false_on_wrong_code(self):
+        body = {
+            "error": {
+                "code": "InternalServerError",
+                "innerError": {"message": "didn't accept the auth token"},
+            }
+        }
+        assert _detect_service_unavailable_500(body) is False
+
+    def test_detect_helper_returns_false_on_non_matching_inner(self):
+        body = {
+            "error": {
+                "code": "generalException",
+                "innerError": {"message": "Database timeout"},
+            }
+        }
+        assert _detect_service_unavailable_500(body) is False
+
+    def test_detect_helper_returns_false_when_inner_missing(self):
+        body = {"error": {"code": "generalException"}}
+        assert _detect_service_unavailable_500(body) is False
 
 
 class TestCapabilityErrorIsSubclassOfMsGraphError:

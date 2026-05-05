@@ -1,0 +1,33 @@
+{
+  "secure_scores": [
+    {
+      "id": "score-snapshot-2026-05-04",
+      "azureTenantId": "00000000-0000-0000-0000-000000000000",
+      "currentScore": 412.0,
+      "maxScore": 600.0,
+      "createdDateTime": "2026-05-04T00:00:00Z",
+      "enabledServices": ["AzureAD", "Exchange", "SharePoint"],
+      "licensedUserCount": 50,
+      "controlScores": [
+        {
+          "controlCategory": "Data",
+          "controlName": "RequireTLSForExchange",
+          "score": 7.0,
+          "total": 10.0,
+          "scoreInPercentage": 70.0,
+          "IsApplicable": true,
+          "state": "Default"
+        },
+        {
+          "controlCategory": "Identity",
+          "controlName": "MFAforAdmins",
+          "score": 10.0,
+          "total": 10.0,
+          "scoreInPercentage": 100.0,
+          "IsApplicable": true,
+          "state": "Default"
+        }
+      ]
+    }
+  ]
+}

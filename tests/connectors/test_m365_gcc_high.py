@@ -903,73 +903,548 @@ class TestPullMP382:
 # ──────────────────────────────────────────────────────────────────────
 
 class TestPullAC313Partial:
-    """AC.L2-3.1.3 — F.3a ships CA only; coverage_scope=partial with three
-    missing_sources. F.3b removes 'sensitivity_labels' later.
+    """AC.L2-3.1.3 — F.3b adds sensitivity-label component. coverage_scope
+    stays "partial" because dlp_policies and label_policies are still
+    missing (permanently deferred — PowerShell-only).
     """
 
     def _setup(self, connector):
         connector._now = lambda: FIXED_NOW
-        fx = load_fixture("ac_3_1_3")
+        ac_fx = load_fixture("ac_3_1_3")
+        labels_fx = load_fixture("sensitivity_labels")
         client = make_mock_client(
             get_responses={},
             paginate_responses={
-                "/identity/conditionalAccess/policies": fx[
+                "/identity/conditionalAccess/policies": ac_fx[
                     "conditional_access_policies"
                 ],
+                "/beta/security/informationProtection/sensitivityLabels": (
+                    labels_fx["sensitivity_labels"]
+                ),
             },
         )
-        return connector, client, fx
+        return connector, client, ac_fx, labels_fx
 
     def test_returns_pulled_evidence(self, connector):
-        c, client, _ = self._setup(connector)
+        c, client, _, _ = self._setup(connector)
         ev = c._pull_ac_3_1_3(client)
         assert ev is not None
         assert ev.control_ids == ["AC.L2-3.1.3"]
 
     def test_coverage_scope_is_partial(self, connector):
-        c, client, _ = self._setup(connector)
+        c, client, _, _ = self._setup(connector)
         ev = c._pull_ac_3_1_3(client)
         assert ev.coverage_scope == "partial"
 
-    def test_missing_sources_three_items_in_f3a(self, connector):
-        """F.3a ships missing_sources=[sensitivity_labels, dlp_policies,
-        label_policies]. F.3b removes sensitivity_labels."""
-        c, client, _ = self._setup(connector)
+    def test_missing_sources_after_f3b_completion(self, connector):
+        """F.3b removed sensitivity_labels from missing_sources after
+        implementing the sub-component. dlp_policies and label_policies
+        remain (permanently deferred — PowerShell-only)."""
+        c, client, _, _ = self._setup(connector)
         ev = c._pull_ac_3_1_3(client)
         assert ev.missing_sources == [
-            "sensitivity_labels",
             "dlp_policies",
             "label_policies",
         ]
 
     def test_content_includes_ca_policies(self, connector):
-        c, client, fx = self._setup(connector)
+        c, client, ac_fx, _ = self._setup(connector)
         ev = c._pull_ac_3_1_3(client)
         parsed = json.loads(ev.content.decode("utf-8"))
-        assert parsed["conditional_access_policies"] == fx[
+        assert parsed["conditional_access_policies"] == ac_fx[
             "conditional_access_policies"
         ]
 
+    def test_content_includes_sensitivity_labels(self, connector):
+        c, client, _, labels_fx = self._setup(connector)
+        ev = c._pull_ac_3_1_3(client)
+        parsed = json.loads(ev.content.decode("utf-8"))
+        assert parsed["sensitivity_labels"] == labels_fx["sensitivity_labels"]
+
     def test_metadata_ca_policy_count(self, connector):
-        c, client, fx = self._setup(connector)
+        c, client, ac_fx, _ = self._setup(connector)
         ev = c._pull_ac_3_1_3(client)
         assert ev.metadata["ca_policy_count"] == len(
-            fx["conditional_access_policies"]
+            ac_fx["conditional_access_policies"]
         )
 
+    def test_metadata_sensitivity_label_count(self, connector):
+        c, client, _, labels_fx = self._setup(connector)
+        ev = c._pull_ac_3_1_3(client)
+        assert ev.metadata["sensitivity_label_count"] == len(
+            labels_fx["sensitivity_labels"]
+        )
+
+    def test_metadata_endpoints_includes_beta_sensitivity_labels(self, connector):
+        c, client, _, _ = self._setup(connector)
+        ev = c._pull_ac_3_1_3(client)
+        assert ev.metadata["endpoints"] == [
+            "/identity/conditionalAccess/policies",
+            "/beta/security/informationProtection/sensitivityLabels",
+        ]
+
+    def test_sensitivity_label_status_ok_on_happy_path(self, connector):
+        c, client, _, _ = self._setup(connector)
+        ev = c._pull_ac_3_1_3(client)
+        assert ev.metadata["sensitivity_label_status"] == "ok"
+        assert ev.degraded is False
+        assert ev.degradation_reason is None
+
+    def test_sensitivity_label_400_capability_gap_emits_degraded(self, connector):
+        """Purview unprovisioned (400 + BadRequest) → MsGraphCapabilityError →
+        sensitivity_label_status='service_unavailable' on parent PE. CA still
+        pulled successfully."""
+        c = connector
+        c._now = lambda: FIXED_NOW
+        ac_fx = load_fixture("ac_3_1_3")
+
+        def paginate_side_effect(path):
+            if "/identity/conditionalAccess/policies" in path:
+                return iter(ac_fx["conditional_access_policies"])
+            if "/beta/security/informationProtection/sensitivityLabels" in path:
+                raise MsGraphCapabilityError(
+                    "Capability gap on /beta/security/informationProtection/"
+                    "sensitivityLabels: Tenant does not have an Information "
+                    "Protection subscription.",
+                    endpoint="/beta/security/informationProtection/sensitivityLabels",
+                )
+            raise KeyError(f"unmatched paginate: {path}")
+
+        client = MagicMock()
+        client.__enter__.return_value = client
+        client.__exit__.return_value = None
+        client.paginate.side_effect = paginate_side_effect
+
+        ev = c._pull_ac_3_1_3(client)
+
+        assert ev is not None
+        assert ev.metadata["sensitivity_label_status"] == "service_unavailable"
+        assert ev.metadata["sensitivity_label_count"] == 0
+        assert ev.degraded is True
+        assert "Purview" in (ev.degradation_reason or "")
+        # CA still pulled.
+        parsed = json.loads(ev.content.decode("utf-8"))
+        assert parsed["conditional_access_policies"] == ac_fx[
+            "conditional_access_policies"
+        ]
+        # missing_sources unchanged — still ["dlp_policies", "label_policies"].
+        assert ev.missing_sources == ["dlp_policies", "label_policies"]
+
+    def test_sensitivity_label_403_licensing_signal_emits_degraded(self, connector):
+        """Purview license missing (403 + Forbidden_LicensingError) →
+        MsGraphPermissionError + licensing_signal=True →
+        sensitivity_label_status='license_not_detected'."""
+        c = connector
+        c._now = lambda: FIXED_NOW
+        ac_fx = load_fixture("ac_3_1_3")
+
+        def paginate_side_effect(path):
+            if "/identity/conditionalAccess/policies" in path:
+                return iter(ac_fx["conditional_access_policies"])
+            if "/beta/security/informationProtection/sensitivityLabels" in path:
+                raise MsGraphPermissionError(
+                    "Tenant requires Microsoft Information Protection license.",
+                    missing_permission=None,
+                    endpoint="/beta/security/informationProtection/sensitivityLabels",
+                    licensing_signal=True,
+                )
+            raise KeyError(f"unmatched paginate: {path}")
+
+        client = MagicMock()
+        client.__enter__.return_value = client
+        client.__exit__.return_value = None
+        client.paginate.side_effect = paginate_side_effect
+
+        ev = c._pull_ac_3_1_3(client)
+
+        assert ev is not None
+        assert ev.metadata["sensitivity_label_status"] == "license_not_detected"
+        assert ev.degraded is True
+        assert "license not detected" in (ev.degradation_reason or "").lower()
+
+    def test_sensitivity_label_403_without_licensing_signal_propagates(self, connector):
+        """Plain permission missing (not licensing) propagates to orchestrator."""
+        c = connector
+        c._now = lambda: FIXED_NOW
+        ac_fx = load_fixture("ac_3_1_3")
+
+        def paginate_side_effect(path):
+            if "/identity/conditionalAccess/policies" in path:
+                return iter(ac_fx["conditional_access_policies"])
+            if "/beta/security/informationProtection/sensitivityLabels" in path:
+                raise MsGraphPermissionError(
+                    "Missing permission: InformationProtectionPolicy.Read.All",
+                    missing_permission="InformationProtectionPolicy.Read.All",
+                    endpoint="/beta/security/informationProtection/sensitivityLabels",
+                    licensing_signal=False,
+                )
+            raise KeyError(f"unmatched paginate: {path}")
+
+        client = MagicMock()
+        client.__enter__.return_value = client
+        client.__exit__.return_value = None
+        client.paginate.side_effect = paginate_side_effect
+
+        with pytest.raises(MsGraphPermissionError) as exc_info:
+            c._pull_ac_3_1_3(client)
+        assert exc_info.value.licensing_signal is False
+
     def test_filename_includes_control_id_slug(self, connector):
-        c, client, _ = self._setup(connector)
+        c, client, _, _ = self._setup(connector)
         ev = c._pull_ac_3_1_3(client)
         assert ev.filename.startswith("m365_ac_3_1_3_")
         assert ev.filename.endswith(".json")
 
 
 # ──────────────────────────────────────────────────────────────────────
-# G. pull() orchestrator — F.3a (3 controls)
+# G. _pull_sc_3_13_8() — Data in Transit (mixed-directness, aggregate)
 # ──────────────────────────────────────────────────────────────────────
 
-def _build_all_three_succeed_client(fxs):
-    """MagicMock client whose dispatch covers all three F.3a controls."""
+class TestPullSC3138:
+    """SC.L2-3.13.8 — F.3b new control. Mixed-directness evidence with
+    Microsoft Secure Score as the aggregate headline signal and CA +
+    encryption-bearing labels as raw_config sub-components.
+    """
+
+    def _setup(self, connector):
+        connector._now = lambda: FIXED_NOW
+        scores_fx = load_fixture("secure_scores")
+        profiles_fx = load_fixture("secure_score_control_profiles")
+        ca_fx = load_fixture("ac_3_1_3")
+        labels_fx = load_fixture("sensitivity_labels")
+        client = make_mock_client(
+            get_responses={},
+            paginate_responses={
+                "/security/secureScores": scores_fx["secure_scores"],
+                "/security/secureScoreControlProfiles": profiles_fx[
+                    "secure_score_control_profiles"
+                ],
+                "/identity/conditionalAccess/policies": ca_fx[
+                    "conditional_access_policies"
+                ],
+                "/beta/security/informationProtection/sensitivityLabels": (
+                    labels_fx["sensitivity_labels"]
+                ),
+            },
+        )
+        return connector, client, scores_fx, profiles_fx, ca_fx, labels_fx
+
+    def test_returns_pulled_evidence(self, connector):
+        c, client, *_ = self._setup(connector)
+        ev = c._pull_sc_3_13_8(client)
+        assert ev is not None
+        assert ev.control_ids == ["SC.L2-3.13.8"]
+
+    def test_coverage_scope_is_partial(self, connector):
+        c, client, *_ = self._setup(connector)
+        ev = c._pull_sc_3_13_8(client)
+        assert ev.coverage_scope == "partial"
+
+    def test_missing_sources_lists_exchange_online_tls(self, connector):
+        c, client, *_ = self._setup(connector)
+        ev = c._pull_sc_3_13_8(client)
+        assert ev.missing_sources == ["exchange_online_tls"]
+
+    def test_evidence_directness_is_aggregate(self, connector):
+        """Headline signal is Microsoft's Secure Score (aggregate by
+        definition). Raw_config sub-components live in metadata. SSP
+        renderer filtering by directness sees this correctly tagged."""
+        c, client, *_ = self._setup(connector)
+        ev = c._pull_sc_3_13_8(client)
+        assert ev.evidence_directness == "aggregate"
+
+    def test_content_includes_secure_score(self, connector):
+        c, client, scores_fx, *_ = self._setup(connector)
+        ev = c._pull_sc_3_13_8(client)
+        parsed = json.loads(ev.content.decode("utf-8"))
+        assert parsed["secure_scores"] == scores_fx["secure_scores"]
+
+    def test_content_includes_full_control_profiles(self, connector):
+        c, client, _, profiles_fx, *_ = self._setup(connector)
+        ev = c._pull_sc_3_13_8(client)
+        parsed = json.loads(ev.content.decode("utf-8"))
+        assert parsed["secure_score_control_profiles_full"] == profiles_fx[
+            "secure_score_control_profiles"
+        ]
+
+    def test_content_includes_tls_relevant_profile_subset(self, connector):
+        """Filter discriminator: service in {Exchange,SharePoint,OneDrive}
+        AND (controlCategory == 'Data' OR title contains tls/encrypt/transport).
+        Fixture has 5 profiles; 2 should match (RequireTLSForExchange,
+        EnableEncryptionInOneDrive)."""
+        c, client, *_ = self._setup(connector)
+        ev = c._pull_sc_3_13_8(client)
+        parsed = json.loads(ev.content.decode("utf-8"))
+        tls_profiles = parsed["secure_score_control_profiles_tls_relevant"]
+        assert len(tls_profiles) == 2
+        ids = sorted(p["id"] for p in tls_profiles)
+        assert ids == ["EnableEncryptionInOneDrive", "RequireTLSForExchange"]
+
+    def test_content_includes_ca_policies(self, connector):
+        c, client, _, _, ca_fx, _ = self._setup(connector)
+        ev = c._pull_sc_3_13_8(client)
+        parsed = json.loads(ev.content.decode("utf-8"))
+        assert parsed["conditional_access_policies"] == ca_fx[
+            "conditional_access_policies"
+        ]
+
+    def test_content_includes_encryption_labels_only(self, connector):
+        """Sensitivity labels filtered to encryption-bearing ONLY for
+        SC.L2-3.13.8. Fixture has 4 labels; 2 carry encryption (shape A
+        protectionSettings + shape B actionSettings@odata.type)."""
+        c, client, *_ = self._setup(connector)
+        ev = c._pull_sc_3_13_8(client)
+        parsed = json.loads(ev.content.decode("utf-8"))
+        encryption_labels = parsed["sensitivity_labels_with_encryption"]
+        assert len(encryption_labels) == 2
+        ids = sorted(l["id"] for l in encryption_labels)
+        assert ids == [
+            "label-id-encryption-shape-a",
+            "label-id-encryption-shape-b",
+        ]
+
+    def test_secure_score_status_ok_on_happy_path(self, connector):
+        c, client, *_ = self._setup(connector)
+        ev = c._pull_sc_3_13_8(client)
+        assert ev.metadata["secure_score_status"] == "ok"
+
+    def test_sensitivity_label_status_ok_on_happy_path(self, connector):
+        c, client, *_ = self._setup(connector)
+        ev = c._pull_sc_3_13_8(client)
+        assert ev.metadata["sensitivity_label_status"] == "ok"
+        assert ev.degraded is False
+        assert ev.degradation_reason is None
+
+    def test_metadata_endpoints_listed(self, connector):
+        c, client, *_ = self._setup(connector)
+        ev = c._pull_sc_3_13_8(client)
+        assert ev.metadata["endpoints"] == [
+            "/security/secureScores",
+            "/security/secureScoreControlProfiles",
+            "/identity/conditionalAccess/policies",
+            "/beta/security/informationProtection/sensitivityLabels",
+        ]
+
+    def test_metadata_counts(self, connector):
+        c, client, scores_fx, profiles_fx, ca_fx, labels_fx = self._setup(connector)
+        ev = c._pull_sc_3_13_8(client)
+        assert ev.metadata["secure_score_count"] == len(scores_fx["secure_scores"])
+        assert ev.metadata["control_profile_count"] == len(
+            profiles_fx["secure_score_control_profiles"]
+        )
+        assert ev.metadata["tls_relevant_profile_count"] == 2
+        assert ev.metadata["ca_policy_count"] == len(
+            ca_fx["conditional_access_policies"]
+        )
+        assert ev.metadata["sensitivity_label_count"] == len(
+            labels_fx["sensitivity_labels"]
+        )
+        assert ev.metadata["encryption_label_count"] == 2
+
+    def test_secure_score_400_capability_gap_emits_degraded(self, connector):
+        """Defender unprovisioned (400 + BadRequest) → MsGraphCapabilityError →
+        secure_score_status='service_unavailable'."""
+        c = connector
+        c._now = lambda: FIXED_NOW
+        profiles_fx = load_fixture("secure_score_control_profiles")
+        ca_fx = load_fixture("ac_3_1_3")
+        labels_fx = load_fixture("sensitivity_labels")
+
+        def paginate_side_effect(path):
+            if "/security/secureScores" in path:
+                raise MsGraphCapabilityError(
+                    "Capability gap on /security/secureScores: "
+                    "Tenant does not have a Microsoft Defender subscription.",
+                    endpoint="/security/secureScores",
+                )
+            if "/security/secureScoreControlProfiles" in path:
+                return iter(profiles_fx["secure_score_control_profiles"])
+            if "/identity/conditionalAccess/policies" in path:
+                return iter(ca_fx["conditional_access_policies"])
+            if "/beta/security/informationProtection/sensitivityLabels" in path:
+                return iter(labels_fx["sensitivity_labels"])
+            raise KeyError(f"unmatched: {path}")
+
+        client = MagicMock()
+        client.__enter__.return_value = client
+        client.__exit__.return_value = None
+        client.paginate.side_effect = paginate_side_effect
+
+        ev = c._pull_sc_3_13_8(client)
+
+        assert ev is not None
+        assert ev.metadata["secure_score_status"] == "service_unavailable"
+        assert ev.degraded is True
+        assert "Secure Score" in (ev.degradation_reason or "")
+        # Other sub-components unaffected.
+        parsed = json.loads(ev.content.decode("utf-8"))
+        assert parsed["conditional_access_policies"] == ca_fx[
+            "conditional_access_policies"
+        ]
+
+    def test_sensitivity_label_400_capability_gap_emits_degraded(self, connector):
+        """Purview unprovisioned → sensitivity_label_status='service_unavailable'."""
+        c = connector
+        c._now = lambda: FIXED_NOW
+        scores_fx = load_fixture("secure_scores")
+        profiles_fx = load_fixture("secure_score_control_profiles")
+        ca_fx = load_fixture("ac_3_1_3")
+
+        def paginate_side_effect(path):
+            if "/security/secureScores" in path:
+                return iter(scores_fx["secure_scores"])
+            if "/security/secureScoreControlProfiles" in path:
+                return iter(profiles_fx["secure_score_control_profiles"])
+            if "/identity/conditionalAccess/policies" in path:
+                return iter(ca_fx["conditional_access_policies"])
+            if "/beta/security/informationProtection/sensitivityLabels" in path:
+                raise MsGraphCapabilityError(
+                    "Capability gap: Tenant does not have an Information "
+                    "Protection subscription.",
+                    endpoint="/beta/security/informationProtection/sensitivityLabels",
+                )
+            raise KeyError(f"unmatched: {path}")
+
+        client = MagicMock()
+        client.__enter__.return_value = client
+        client.__exit__.return_value = None
+        client.paginate.side_effect = paginate_side_effect
+
+        ev = c._pull_sc_3_13_8(client)
+
+        assert ev is not None
+        assert ev.metadata["sensitivity_label_status"] == "service_unavailable"
+        assert ev.degraded is True
+        assert "Purview" in (ev.degradation_reason or "")
+
+    def test_both_sub_components_degrade_combined_reason(self, connector):
+        """Trial scenario: both Defender and Purview unprovisioned."""
+        c = connector
+        c._now = lambda: FIXED_NOW
+        ca_fx = load_fixture("ac_3_1_3")
+
+        def paginate_side_effect(path):
+            if "/security/secureScores" in path:
+                raise MsGraphCapabilityError(
+                    "Capability gap on /security/secureScores: "
+                    "Tenant does not have a Microsoft Defender subscription.",
+                    endpoint="/security/secureScores",
+                )
+            if "/security/secureScoreControlProfiles" in path:
+                # Profiles often available even without scores. Empty here.
+                return iter([])
+            if "/identity/conditionalAccess/policies" in path:
+                return iter(ca_fx["conditional_access_policies"])
+            if "/beta/security/informationProtection/sensitivityLabels" in path:
+                raise MsGraphCapabilityError(
+                    "Capability gap: Tenant does not have an Information "
+                    "Protection subscription.",
+                    endpoint="/beta/security/informationProtection/sensitivityLabels",
+                )
+            raise KeyError(f"unmatched: {path}")
+
+        client = MagicMock()
+        client.__enter__.return_value = client
+        client.__exit__.return_value = None
+        client.paginate.side_effect = paginate_side_effect
+
+        ev = c._pull_sc_3_13_8(client)
+
+        assert ev is not None
+        assert ev.degraded is True
+        assert ev.metadata["secure_score_status"] == "service_unavailable"
+        assert ev.metadata["sensitivity_label_status"] == "service_unavailable"
+        assert "Secure Score" in (ev.degradation_reason or "")
+        assert "Purview" in (ev.degradation_reason or "")
+        # CA still pulled successfully.
+        parsed = json.loads(ev.content.decode("utf-8"))
+        assert parsed["conditional_access_policies"] == ca_fx[
+            "conditional_access_policies"
+        ]
+
+    def test_filename_includes_control_id_slug(self, connector):
+        c, client, *_ = self._setup(connector)
+        ev = c._pull_sc_3_13_8(client)
+        assert ev.filename.startswith("m365_sc_3_13_8_")
+        assert ev.filename.endswith(".json")
+
+
+# ──────────────────────────────────────────────────────────────────────
+# G'. _label_has_encryption helper unit tests
+# ──────────────────────────────────────────────────────────────────────
+
+class TestLabelHasEncryption:
+    """Defensive both-shape match. Per Phase 1.f F.3b: the beta endpoint
+    returns one of two shapes for encryption settings; we match either.
+    """
+
+    def test_shape_a_top_level_protection_settings_true(self):
+        from src.connectors.connectors_builtin.m365_gcc_high import (
+            _label_has_encryption,
+        )
+        label = {"protectionSettings": {"encryptContent": True}}
+        assert _label_has_encryption(label) is True
+
+    def test_shape_a_protection_settings_false(self):
+        from src.connectors.connectors_builtin.m365_gcc_high import (
+            _label_has_encryption,
+        )
+        label = {"protectionSettings": {"encryptContent": False}}
+        assert _label_has_encryption(label) is False
+
+    def test_shape_b_action_settings_with_encrypt_odata_type(self):
+        from src.connectors.connectors_builtin.m365_gcc_high import (
+            _label_has_encryption,
+        )
+        label = {
+            "actionSettings": [
+                {"@odata.type": "#microsoft.graph.security.encryptContent"}
+            ]
+        }
+        assert _label_has_encryption(label) is True
+
+    def test_shape_b_action_settings_without_encrypt(self):
+        from src.connectors.connectors_builtin.m365_gcc_high import (
+            _label_has_encryption,
+        )
+        label = {
+            "actionSettings": [
+                {"@odata.type": "#microsoft.graph.security.applyContentMarking"}
+            ]
+        }
+        assert _label_has_encryption(label) is False
+
+    def test_no_protection_or_actions_returns_false(self):
+        from src.connectors.connectors_builtin.m365_gcc_high import (
+            _label_has_encryption,
+        )
+        assert _label_has_encryption({"id": "x", "displayName": "Public"}) is False
+
+    def test_non_dict_input_returns_false(self):
+        from src.connectors.connectors_builtin.m365_gcc_high import (
+            _label_has_encryption,
+        )
+        assert _label_has_encryption("not a dict") is False  # type: ignore[arg-type]
+        assert _label_has_encryption(None) is False  # type: ignore[arg-type]
+
+    def test_malformed_action_settings_does_not_raise(self):
+        from src.connectors.connectors_builtin.m365_gcc_high import (
+            _label_has_encryption,
+        )
+        # actionSettings should be a list; non-list is malformed.
+        assert _label_has_encryption({"actionSettings": "not a list"}) is False
+        # Non-dict entries inside the list are skipped.
+        assert _label_has_encryption({"actionSettings": ["string", 42]}) is False
+        # Missing @odata.type is skipped.
+        assert _label_has_encryption({"actionSettings": [{"foo": "bar"}]}) is False
+
+
+# ──────────────────────────────────────────────────────────────────────
+# H. pull() orchestrator — F.3b (4 controls)
+# ──────────────────────────────────────────────────────────────────────
+
+def _build_all_four_succeed_client(fxs):
+    """MagicMock client whose dispatch covers all four F.3b controls."""
     client = MagicMock()
     client.__enter__.return_value = client
     client.__exit__.return_value = None
@@ -979,10 +1454,15 @@ def _build_all_three_succeed_client(fxs):
             return iter(fxs["mp_3_8_1"]["retention_labels"])
         if "/deviceManagement/deviceCompliancePolicies" in path:
             return iter(fxs["mp_3_8_1"]["intune_compliance_policies"])
+        if "/security/secureScores" in path:
+            return iter(fxs["secure_scores"]["secure_scores"])
+        if "/security/secureScoreControlProfiles" in path:
+            return iter(fxs["profiles"]["secure_score_control_profiles"])
         if "/identity/conditionalAccess/policies" in path:
-            # MP.L2-3.8.2 and AC.L2-3.1.3 both hit this; serve the same
-            # CA policy list (real Graph would return identical data).
+            # MP.L2-3.8.2, AC.L2-3.1.3, SC.L2-3.13.8 all hit this.
             return iter(fxs["mp_3_8_2"]["conditional_access_policies"])
+        if "/beta/security/informationProtection/sensitivityLabels" in path:
+            return iter(fxs["labels"]["sensitivity_labels"])
         raise KeyError(f"unmatched paginate: {path}")
 
     def get_side_effect(path):
@@ -995,28 +1475,33 @@ def _build_all_three_succeed_client(fxs):
     return client
 
 
-class TestPullOrchestratorF3a:
-    """The pull() method composing the three F.3a control helpers."""
+class TestPullOrchestratorF3b:
+    """The pull() method composing all four F.3b control helpers."""
 
     def _setup_all_succeed(self, connector):
         connector._now = lambda: FIXED_NOW
         fxs = {
-            k: load_fixture(k)
-            for k in ["mp_3_8_1", "mp_3_8_2", "ac_3_1_3"]
+            "mp_3_8_1": load_fixture("mp_3_8_1"),
+            "mp_3_8_2": load_fixture("mp_3_8_2"),
+            "ac_3_1_3": load_fixture("ac_3_1_3"),
+            "secure_scores": load_fixture("secure_scores"),
+            "profiles": load_fixture("secure_score_control_profiles"),
+            "labels": load_fixture("sensitivity_labels"),
         }
-        client = _build_all_three_succeed_client(fxs)
+        client = _build_all_four_succeed_client(fxs)
         connector._build_client = lambda: client
         return connector
 
-    def test_all_three_controls_yield_evidence(self, connector):
+    def test_all_four_controls_yield_evidence(self, connector):
         c = self._setup_all_succeed(connector)
         items = list(c.pull())
-        assert len(items) == 3
+        assert len(items) == 4
         control_ids = [item.control_ids[0] for item in items]
         assert control_ids == [
             "MP.L2-3.8.1",
             "MP.L2-3.8.2",
             "AC.L2-3.1.3",
+            "SC.L2-3.13.8",
         ]
 
     def test_no_errors_when_all_succeed(self, connector):
@@ -1024,12 +1509,27 @@ class TestPullOrchestratorF3a:
         list(c.pull())
         assert c.get_pull_errors() == []
 
+    def test_sc_3_13_8_directness_aggregate_in_orchestrated_output(self, connector):
+        """End-to-end: SC.L2-3.13.8's evidence_directness flows through
+        the orchestrator unchanged."""
+        c = self._setup_all_succeed(connector)
+        items = list(c.pull())
+        sc = next(i for i in items if i.control_ids[0] == "SC.L2-3.13.8")
+        assert sc.evidence_directness == "aggregate"
+
     def test_one_control_failure_isolated(self, connector):
         """MP.L2-3.8.1 fails (Intune endpoint blows up with non-licensing
-        error); MP.L2-3.8.2 and AC.L2-3.1.3 still succeed."""
+        error); MP.L2-3.8.2, AC.L2-3.1.3, and SC.L2-3.13.8 still succeed."""
         c = connector
         c._now = lambda: FIXED_NOW
-        fxs = {k: load_fixture(k) for k in ["mp_3_8_1", "mp_3_8_2", "ac_3_1_3"]}
+        fxs = {
+            "mp_3_8_1": load_fixture("mp_3_8_1"),
+            "mp_3_8_2": load_fixture("mp_3_8_2"),
+            "ac_3_1_3": load_fixture("ac_3_1_3"),
+            "secure_scores": load_fixture("secure_scores"),
+            "profiles": load_fixture("secure_score_control_profiles"),
+            "labels": load_fixture("sensitivity_labels"),
+        }
 
         client = MagicMock()
         client.__enter__.return_value = client
@@ -1040,8 +1540,14 @@ class TestPullOrchestratorF3a:
                 return iter(fxs["mp_3_8_1"]["retention_labels"])
             if "/deviceManagement/deviceCompliancePolicies" in path:
                 raise RuntimeError("simulated graph 500 on Intune")
+            if "/security/secureScores" in path:
+                return iter(fxs["secure_scores"]["secure_scores"])
+            if "/security/secureScoreControlProfiles" in path:
+                return iter(fxs["profiles"]["secure_score_control_profiles"])
             if "/identity/conditionalAccess/policies" in path:
                 return iter(fxs["mp_3_8_2"]["conditional_access_policies"])
+            if "/beta/security/informationProtection/sensitivityLabels" in path:
+                return iter(fxs["labels"]["sensitivity_labels"])
             raise KeyError(f"unmatched: {path}")
 
         def get_side_effect(path):
@@ -1054,18 +1560,18 @@ class TestPullOrchestratorF3a:
         c._build_client = lambda: client
 
         items = list(c.pull())
-        # MP.L2-3.8.1 fails outright; the other two succeed.
-        assert len(items) == 2
+        # MP.L2-3.8.1 fails outright; the other three succeed.
+        assert len(items) == 3
         control_ids = [i.control_ids[0] for i in items]
         assert "MP.L2-3.8.1" not in control_ids
         assert "MP.L2-3.8.2" in control_ids
         assert "AC.L2-3.1.3" in control_ids
+        assert "SC.L2-3.13.8" in control_ids
 
         errors = c.get_pull_errors()
         assert len(errors) == 1
         assert "MP.L2-3.8.1" in errors[0]
-        assert "simulated graph 500 on Intune" in errors[0]
-        assert " | " in errors[0]  # canonical format
+        assert " | " in errors[0]
 
     def test_all_controls_fail_yields_zero_evidence(self, connector):
         c = connector
@@ -1081,8 +1587,13 @@ class TestPullOrchestratorF3a:
         assert items == []
 
         errors = c.get_pull_errors()
-        assert len(errors) == 3
-        for cid in ["MP.L2-3.8.1", "MP.L2-3.8.2", "AC.L2-3.1.3"]:
+        assert len(errors) == 4
+        for cid in [
+            "MP.L2-3.8.1",
+            "MP.L2-3.8.2",
+            "AC.L2-3.1.3",
+            "SC.L2-3.13.8",
+        ]:
             assert any(cid in e for e in errors), f"missing {cid} in errors"
 
     def test_pull_resets_accumulator(self, connector):
@@ -1096,10 +1607,10 @@ class TestPullOrchestratorF3a:
         c._build_client = lambda: client
 
         list(c.pull())
-        assert len(c.get_pull_errors()) == 3
+        assert len(c.get_pull_errors()) == 4
 
         list(c.pull())
-        assert len(c.get_pull_errors()) == 3  # not 6
+        assert len(c.get_pull_errors()) == 4  # not 8
 
     def test_get_pull_errors_returns_copy(self, connector):
         c = connector

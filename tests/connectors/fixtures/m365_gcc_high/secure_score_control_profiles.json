@@ -1,0 +1,49 @@
+{
+  "secure_score_control_profiles": [
+    {
+      "id": "RequireTLSForExchange",
+      "service": "Exchange",
+      "controlCategory": "Data",
+      "title": "Require TLS for Exchange Online connectors",
+      "description": "Enforce TLS 1.2+ on all inbound/outbound connectors",
+      "tier": "Core",
+      "rank": 5
+    },
+    {
+      "id": "EnableEncryptionInOneDrive",
+      "service": "OneDrive",
+      "controlCategory": "Data",
+      "title": "Enable encryption-at-rest defaults for OneDrive",
+      "description": "Verify default encryption is on",
+      "tier": "Core",
+      "rank": 8
+    },
+    {
+      "id": "MFAforAdmins",
+      "service": "AzureAD",
+      "controlCategory": "Identity",
+      "title": "Require MFA for administrative accounts",
+      "description": "Identity hardening — not data-in-transit",
+      "tier": "Core",
+      "rank": 1
+    },
+    {
+      "id": "DeprecatedSMBv1Block",
+      "service": "Defender",
+      "controlCategory": "Device",
+      "title": "Block SMBv1 in Microsoft Defender",
+      "description": "Endpoint hardening",
+      "tier": "Core",
+      "rank": 12
+    },
+    {
+      "id": "ExchangeMailboxAuditEnabled",
+      "service": "Exchange",
+      "controlCategory": "Apps",
+      "title": "Enable mailbox audit logging",
+      "description": "Audit trail (not TLS) on Exchange — title contains no TLS keyword",
+      "tier": "Core",
+      "rank": 9
+    }
+  ]
+}

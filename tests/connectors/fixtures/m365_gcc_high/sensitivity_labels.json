@@ -1,0 +1,52 @@
+{
+  "sensitivity_labels": [
+    {
+      "id": "label-id-encryption-shape-a",
+      "displayName": "CUI — Encrypted (shape A)",
+      "description": "Top-level protectionSettings shape",
+      "priority": 0,
+      "applicableTo": ["file", "email"],
+      "protectionSettings": {
+        "encryptContent": true,
+        "rights": ["VIEW", "EDIT"]
+      }
+    },
+    {
+      "id": "label-id-encryption-shape-b",
+      "displayName": "Confidential — Encrypted (shape B)",
+      "description": "actionSettings array shape with @odata.type discriminator",
+      "priority": 1,
+      "applicableTo": ["file", "email"],
+      "actionSettings": [
+        {
+          "@odata.type": "#microsoft.graph.security.encryptContent",
+          "rights": ["VIEW"]
+        },
+        {
+          "@odata.type": "#microsoft.graph.security.applyContentMarking",
+          "watermark": "CONFIDENTIAL"
+        }
+      ]
+    },
+    {
+      "id": "label-id-permissions-no-encryption",
+      "displayName": "Internal — Marking only",
+      "description": "Has actionSettings but no encryption action",
+      "priority": 2,
+      "applicableTo": ["file"],
+      "actionSettings": [
+        {
+          "@odata.type": "#microsoft.graph.security.applyContentMarking",
+          "watermark": "INTERNAL"
+        }
+      ]
+    },
+    {
+      "id": "label-id-bare",
+      "displayName": "Public",
+      "description": "No protection or actions",
+      "priority": 3,
+      "applicableTo": ["file", "email", "site"]
+    }
+  ]
+}

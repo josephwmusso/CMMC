@@ -1,0 +1,11 @@
+{
+  "error": {
+    "code": "BadRequest",
+    "message": "Tenant does not have an Information Protection subscription.",
+    "innerError": {
+      "date": "2026-05-04T12:00:00",
+      "request-id": "00000000-0000-0000-0000-000000000000",
+      "client-request-id": "00000000-0000-0000-0000-000000000000"
+    }
+  }
+}
