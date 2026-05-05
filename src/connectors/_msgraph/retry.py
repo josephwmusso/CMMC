@@ -22,6 +22,8 @@ from email.utils import parsedate_to_datetime
 import httpx
 
 from src.connectors._msgraph.errors import (
+    MsGraphCapabilityError,
+    MsGraphError,
     MsGraphPermissionError,
     MsGraphThrottledError,
 )
@@ -52,6 +54,21 @@ _KNOWN_PERMISSIONS = frozenset({
 # verification surfaces new codes (one new test per addition).
 _LICENSING_ERROR_CODES = frozenset({
     "Forbidden_LicensingError",
+})
+
+# Substrings observed inside Graph 400 + BadRequest message bodies when a
+# tenant entirely lacks the service the endpoint targets. Surfaced by
+# F.3a live verification against the intranest-m365-test trial:
+#
+#   "Tenant does not have a SPO license."     (no SharePoint Online)
+#   "Request not applicable to target tenant." (no Intune provisioning)
+#
+# Lowercase, substring-matched. Match implies the connector should treat
+# the 400 as a capability gap (degraded evidence path) rather than a real
+# bad-request bug. Distinct from licensing_signal — that path stays at 403.
+_CAPABILITY_GAP_MESSAGE_FRAGMENTS = frozenset({
+    "does not have",
+    "not applicable to target tenant",
 })
 
 
@@ -95,6 +112,29 @@ def _detect_licensing_signal(response_body: dict) -> bool:
     if not isinstance(code, str):
         return False
     return code in _LICENSING_ERROR_CODES
+
+
+def _detect_capability_gap(response_body: dict) -> bool:
+    """Return True if the Graph 400 body indicates a tenant capability gap
+    (service entirely unprovisioned) rather than a malformed-request bug.
+
+    Match shape: error.code == "BadRequest" AND any fragment in
+    _CAPABILITY_GAP_MESSAGE_FRAGMENTS appears as a substring in
+    error.message (case-insensitive).
+
+    Defensive against absent or non-string code/message fields — returns
+    False rather than raising on any malformed shape. Surfaced by F.3a
+    live verification.
+    """
+    error = response_body.get("error") or {}
+    code = error.get("code")
+    message = error.get("message")
+    if not isinstance(code, str) or not isinstance(message, str):
+        return False
+    if code != "BadRequest":
+        return False
+    lowered = message.lower()
+    return any(frag in lowered for frag in _CAPABILITY_GAP_MESSAGE_FRAGMENTS)
 
 
 def get_with_retry(
@@ -182,6 +222,23 @@ def get_with_retry(
                 endpoint=url,
                 licensing_signal=licensing,
             )
+
+        if resp.status_code == 400:
+            try:
+                body = resp.json()
+            except Exception:
+                body = {}
+            if _detect_capability_gap(body):
+                error_obj = body.get("error") or {}
+                graph_message = error_obj.get("message") or "Capability gap"
+                raise MsGraphCapabilityError(
+                    f"Capability gap on {url}: {graph_message}",
+                    endpoint=url,
+                )
+            # Generic 400 — not a known capability gap. Existing behavior:
+            # raise the httpx HTTPStatusError so the caller sees the
+            # status + URL, same as before this amendment.
+            resp.raise_for_status()
 
         if 400 <= resp.status_code < 500:
             resp.raise_for_status()

@@ -53,6 +53,40 @@ class MsGraphThrottledError(MsGraphError):
     """Graph 429 — exceeded retry budget on a single endpoint."""
 
 
+class MsGraphCapabilityError(MsGraphError):
+    """Raised when a Microsoft Graph endpoint returns a capability-gap response.
+
+    Capability gaps are 400 + BadRequest + a message indicating the service
+    isn't available on this tenant (e.g. SharePoint Online not licensed,
+    Intune not provisioned, Exchange Online not present). Distinct from
+    MsGraphPermissionError (403, where the service exists but the caller
+    lacks permission OR a per-feature license).
+
+    The 400 vs 403 distinction reflects how Microsoft signals the gap:
+
+      400 + "BadRequest" + "Tenant does not have a SPO license."
+        → service entirely unprovisioned on the tenant
+        → MsGraphCapabilityError
+
+      403 + "Forbidden_LicensingError" + ...
+        → service provisioned but a per-feature license is missing
+        → MsGraphPermissionError with licensing_signal=True
+
+    Connectors catch MsGraphCapabilityError to emit degraded PulledEvidence
+    rather than failing the whole control. Surfaced by Pass F.3a live
+    verification against the intranest-m365-test trial tenant.
+    """
+
+    def __init__(
+        self,
+        message: str,
+        *,
+        endpoint: str | None = None,
+    ):
+        super().__init__(message)
+        self.endpoint = endpoint
+
+
 class MsGraphAsyncTimeoutError(MsGraphError):
     """poll_until_done exceeded max_wait_seconds without reaching a terminal status.
 

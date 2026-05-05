@@ -15,10 +15,16 @@ import httpx
 import pytest
 
 from src.connectors._msgraph.errors import (
+    MsGraphCapabilityError,
+    MsGraphError,
     MsGraphPermissionError,
     MsGraphThrottledError,
 )
-from src.connectors._msgraph.retry import get_with_retry, _parse_retry_after
+from src.connectors._msgraph.retry import (
+    _detect_capability_gap,
+    _parse_retry_after,
+    get_with_retry,
+)
 
 
 def _client(handler) -> httpx.Client:
@@ -272,3 +278,195 @@ class TestLicensingSignal:
             "test", missing_permission=None, endpoint="/x", licensing_signal=True
         )
         assert e.licensing_signal is True
+
+
+# ──────────────────────────────────────────────────────────────────────
+# F.3a framework amendment: capability-gap detection on HTTP 400
+# ──────────────────────────────────────────────────────────────────────
+
+class TestCapabilityGapDetection:
+    """When a Graph endpoint returns 400 + BadRequest + a message
+    indicating the service isn't available on the tenant, get_with_retry
+    raises MsGraphCapabilityError instead of httpx.HTTPStatusError.
+
+    Surfaced by F.3a live verification against the intranest-m365-test
+    trial, where:
+      - /admin/sharepoint/settings returns 400 BadRequest 'Tenant does not
+        have a SPO license.'
+      - /deviceManagement/deviceCompliancePolicies returns 400 BadRequest
+        'Request not applicable to target tenant.'
+
+    Distinct from the 403 + Forbidden_LicensingError path (licensing_signal
+    on MsGraphPermissionError) — that path is unchanged.
+    """
+
+    def test_400_bad_request_spo_license_raises_capability(self, _no_real_sleep):
+        def handler(req):
+            return httpx.Response(
+                400,
+                json={
+                    "error": {
+                        "code": "BadRequest",
+                        "message": "Tenant does not have a SPO license.",
+                    }
+                },
+            )
+        with _client(handler) as c:
+            with pytest.raises(MsGraphCapabilityError) as exc_info:
+                get_with_retry(c, "https://example/admin/sharepoint/settings", {})
+        assert "SPO license" in str(exc_info.value)
+        assert exc_info.value.endpoint == "https://example/admin/sharepoint/settings"
+
+    def test_400_bad_request_not_applicable_raises_capability(self, _no_real_sleep):
+        def handler(req):
+            return httpx.Response(
+                400,
+                json={
+                    "error": {
+                        "code": "BadRequest",
+                        "message": "Request not applicable to target tenant.",
+                    }
+                },
+            )
+        with _client(handler) as c:
+            with pytest.raises(MsGraphCapabilityError) as exc_info:
+                get_with_retry(
+                    c,
+                    "https://example/deviceManagement/deviceCompliancePolicies",
+                    {},
+                )
+        assert "not applicable to target tenant" in str(exc_info.value).lower()
+
+    def test_400_bad_request_generic_message_raises_http_status_not_capability(
+        self, _no_real_sleep
+    ):
+        """A 400 with BadRequest code but no capability-fragment match must
+        NOT be misclassified as a capability gap. Falls through to the
+        existing httpx.HTTPStatusError path."""
+        def handler(req):
+            return httpx.Response(
+                400,
+                json={
+                    "error": {
+                        "code": "BadRequest",
+                        "message": "Property 'displayName' is required.",
+                    }
+                },
+            )
+        with _client(handler) as c:
+            with pytest.raises(httpx.HTTPStatusError):
+                get_with_retry(c, "https://example/x", {})
+
+    def test_400_with_non_bad_request_code_raises_http_status(self, _no_real_sleep):
+        """A 400 with a different error.code (e.g. 'InvalidRequest') is not
+        a capability gap — falls through to httpx.HTTPStatusError."""
+        def handler(req):
+            return httpx.Response(
+                400,
+                json={
+                    "error": {
+                        "code": "InvalidRequest",
+                        "message": "Tenant does not have a SPO license.",
+                    }
+                },
+            )
+        with _client(handler) as c:
+            with pytest.raises(httpx.HTTPStatusError):
+                get_with_retry(c, "https://example/x", {})
+
+    def test_400_with_malformed_body_no_error_key(self, _no_real_sleep):
+        """Defensive: a 400 with no 'error' key in the body must not crash
+        the detection helper. Falls through to httpx.HTTPStatusError."""
+        def handler(req):
+            return httpx.Response(400, json={"unexpected": "shape"})
+        with _client(handler) as c:
+            with pytest.raises(httpx.HTTPStatusError):
+                get_with_retry(c, "https://example/x", {})
+
+    def test_400_with_non_string_code(self, _no_real_sleep):
+        """Defensive: error.code is a non-string (e.g. numeric)."""
+        def handler(req):
+            return httpx.Response(
+                400,
+                json={"error": {"code": 12345, "message": "does not have"}},
+            )
+        with _client(handler) as c:
+            with pytest.raises(httpx.HTTPStatusError):
+                get_with_retry(c, "https://example/x", {})
+
+    def test_400_with_non_string_message(self, _no_real_sleep):
+        """Defensive: error.message is a non-string."""
+        def handler(req):
+            return httpx.Response(
+                400,
+                json={"error": {"code": "BadRequest", "message": ["weird"]}},
+            )
+        with _client(handler) as c:
+            with pytest.raises(httpx.HTTPStatusError):
+                get_with_retry(c, "https://example/x", {})
+
+    def test_400_non_json_body_falls_through(self, _no_real_sleep):
+        """Defensive: a 400 whose body isn't JSON at all must not crash."""
+        def handler(req):
+            return httpx.Response(400, content=b"<html>not json</html>")
+        with _client(handler) as c:
+            with pytest.raises(httpx.HTTPStatusError):
+                get_with_retry(c, "https://example/x", {})
+
+    def test_capability_message_match_is_case_insensitive(self, _no_real_sleep):
+        def handler(req):
+            return httpx.Response(
+                400,
+                json={
+                    "error": {
+                        "code": "BadRequest",
+                        "message": "TENANT DOES NOT HAVE A SPO LICENSE.",
+                    }
+                },
+            )
+        with _client(handler) as c:
+            with pytest.raises(MsGraphCapabilityError):
+                get_with_retry(c, "https://example/x", {})
+
+    # ----- _detect_capability_gap helper unit tests -----
+
+    def test_detect_capability_gap_spo_license(self):
+        body = {"error": {"code": "BadRequest", "message": "Tenant does not have a SPO license."}}
+        assert _detect_capability_gap(body) is True
+
+    def test_detect_capability_gap_not_applicable(self):
+        body = {"error": {"code": "BadRequest", "message": "Request not applicable to target tenant."}}
+        assert _detect_capability_gap(body) is True
+
+    def test_detect_capability_gap_returns_false_on_empty_body(self):
+        assert _detect_capability_gap({}) is False
+
+    def test_detect_capability_gap_returns_false_on_non_bad_request_code(self):
+        body = {"error": {"code": "Forbidden", "message": "does not have"}}
+        assert _detect_capability_gap(body) is False
+
+    def test_detect_capability_gap_returns_false_when_no_fragment_match(self):
+        body = {"error": {"code": "BadRequest", "message": "Property is required."}}
+        assert _detect_capability_gap(body) is False
+
+
+class TestCapabilityErrorIsSubclassOfMsGraphError:
+    """MsGraphCapabilityError must inherit from MsGraphError so existing
+    catch-MsGraphError sites still trap it (defensive — connectors should
+    upgrade to catch MsGraphCapabilityError specifically, but a fallback
+    is preserved)."""
+
+    def test_subclass_relation(self):
+        assert issubclass(MsGraphCapabilityError, MsGraphError)
+
+    def test_constructor_kwarg_only_endpoint(self):
+        with pytest.raises(TypeError):
+            MsGraphCapabilityError("msg", "/some/endpoint")  # type: ignore[misc]
+
+    def test_default_endpoint_is_none(self):
+        e = MsGraphCapabilityError("msg")
+        assert e.endpoint is None
+
+    def test_endpoint_round_trip(self):
+        e = MsGraphCapabilityError("msg", endpoint="/x")
+        assert e.endpoint == "/x"

@@ -1,17 +1,17 @@
-"""Unit tests for M365GccHighConnector — Pass F.2 skeleton.
+"""Unit tests for M365GccHighConnector — F.2 skeleton + F.3a control pulls.
 
-Mirrors test_entra_id.py's structural test surface. Per-control pull tests
-arrive in F.3a/b/c when pull() is implemented. F.2 stubs pull() with a
-NotImplementedError that names all five controls and the F.3a/b/c/d
-roadmap; TestPullStubbed pins the stub message contract.
-
-Default-respect contract: zero edits to existing tests. This file is
-purely additive.
+Mirrors test_entra_id.py's structural test surface. F.3a replaces F.2's
+TestPullStubbed class with four new classes covering the live pulls for
+MP.L2-3.8.1, MP.L2-3.8.2, AC.L2-3.1.3 (partial), and the orchestrator's
+per-control isolation. F.3b/c add classes for SC.L2-3.13.8 and AU.L2-3.3.1.
 """
 
 from __future__ import annotations
 
+import json
 import logging
+from datetime import datetime, timezone
+from pathlib import Path
 from unittest.mock import patch, MagicMock
 
 import pytest
@@ -19,9 +19,48 @@ import pytest
 from src.connectors.connectors_builtin.m365_gcc_high import M365GccHighConnector
 from src.connectors._msgraph.errors import (
     MsGraphAuthError,
+    MsGraphCapabilityError,
     MsGraphError,
     MsGraphPermissionError,
 )
+
+
+FIXTURE_DIR = Path(__file__).parent / "fixtures" / "m365_gcc_high"
+
+
+def load_fixture(name: str) -> dict:
+    """Load a fixture JSON by control name (e.g. 'mp_3_8_1')."""
+    return json.loads((FIXTURE_DIR / f"{name}.json").read_text(encoding="utf-8"))
+
+
+def make_mock_client(get_responses: dict, paginate_responses: dict) -> MagicMock:
+    """Build a MagicMock MsGraphClient that returns fixture data.
+
+    get_responses: maps endpoint substring -> return value (single dict).
+    paginate_responses: maps endpoint substring -> list of dicts.
+    """
+    client = MagicMock()
+    client.__enter__.return_value = client
+    client.__exit__.return_value = None
+
+    def get_side_effect(path):
+        for key, value in get_responses.items():
+            if key in path:
+                return value
+        raise KeyError(f"no get fixture matched path: {path}")
+
+    def paginate_side_effect(path):
+        for key, value in paginate_responses.items():
+            if key in path:
+                return iter(value)
+        raise KeyError(f"no paginate fixture matched path: {path}")
+
+    client.get.side_effect = get_side_effect
+    client.paginate.side_effect = paginate_side_effect
+    return client
+
+
+FIXED_NOW = datetime(2026, 5, 4, 12, 0, 0, tzinfo=timezone.utc)
 
 
 VALID_CREDS = {
@@ -432,53 +471,650 @@ class TestTestConnection:
 
 
 # ──────────────────────────────────────────────────────────────────────
-# D. pull() — F.2 stub
+# D. _pull_mp_3_8_1() — Media Protection (digital): SharePoint, retention,
+#    Intune (license-conditional)
 # ──────────────────────────────────────────────────────────────────────
 
-class TestPullStubbed:
-    """F.2 stubs pull() with a NotImplementedError that names the five
-    controls and the F.3a/b/c/d roadmap. The stub is self-documenting:
-    anyone hitting it sees the next steps without chasing docs.
-
-    F.3a will REPLACE this entire test class when the orchestrator and
-    per-control pulls land.
+class TestPullMP381:
+    """MP.L2-3.8.1 — three Graph endpoints; Intune call is license-
+    conditional and emits degraded evidence when unlicensed.
     """
 
-    def test_pull_raises_not_implemented(self, connector):
-        with pytest.raises(NotImplementedError):
-            connector.pull()
+    def _setup(self, connector):
+        connector._now = lambda: FIXED_NOW
+        fx = load_fixture("mp_3_8_1")
+        client = make_mock_client(
+            get_responses={
+                "/admin/sharepoint/settings": fx["sharepoint_settings"],
+            },
+            paginate_responses={
+                "/security/labels/retentionLabels": fx["retention_labels"],
+                "/deviceManagement/deviceCompliancePolicies": fx[
+                    "intune_compliance_policies"
+                ],
+            },
+        )
+        return connector, client, fx
 
-    def test_stub_message_names_class(self, connector):
-        with pytest.raises(NotImplementedError) as exc_info:
-            connector.pull()
-        assert "M365GccHighConnector" in str(exc_info.value)
+    def test_returns_pulled_evidence(self, connector):
+        c, client, _ = self._setup(connector)
+        ev = c._pull_mp_3_8_1(client)
+        assert ev is not None
+        assert ev.control_ids == ["MP.L2-3.8.1"]
 
-    def test_stub_message_names_all_five_controls(self, connector):
-        with pytest.raises(NotImplementedError) as exc_info:
-            connector.pull()
-        msg = str(exc_info.value)
-        for control_id in [
-            "AC.L2-3.1.3",
-            "SC.L2-3.13.8",
-            "MP.L2-3.8.1",
-            "MP.L2-3.8.2",
-            "AU.L2-3.3.1",
-        ]:
-            assert control_id in msg, (
-                f"Stub message must reference {control_id}"
+    def test_filename_includes_timestamp(self, connector):
+        c, client, _ = self._setup(connector)
+        ev = c._pull_mp_3_8_1(client)
+        assert ev.filename.startswith("m365_mp_3_8_1_")
+        assert ev.filename.endswith(".json")
+        assert "2026-05-04" in ev.filename
+
+    def test_content_includes_all_three_sub_components(self, connector):
+        c, client, fx = self._setup(connector)
+        ev = c._pull_mp_3_8_1(client)
+        parsed = json.loads(ev.content.decode("utf-8"))
+        assert parsed["sharepoint_settings"] == fx["sharepoint_settings"]
+        assert parsed["retention_labels"] == fx["retention_labels"]
+        assert parsed["intune_compliance_policies"] == fx[
+            "intune_compliance_policies"
+        ]
+        assert parsed["fetched_at"] == FIXED_NOW.isoformat()
+
+    def test_metadata_media_scope_is_digital(self, connector):
+        c, client, _ = self._setup(connector)
+        ev = c._pull_mp_3_8_1(client)
+        assert ev.metadata["media_scope"] == "digital"
+
+    def test_metadata_endpoints_listed(self, connector):
+        c, client, _ = self._setup(connector)
+        ev = c._pull_mp_3_8_1(client)
+        assert ev.metadata["endpoints"] == [
+            "/admin/sharepoint/settings",
+            "/security/labels/retentionLabels",
+            "/deviceManagement/deviceCompliancePolicies",
+        ]
+
+    def test_metadata_counts(self, connector):
+        c, client, fx = self._setup(connector)
+        ev = c._pull_mp_3_8_1(client)
+        assert ev.metadata["retention_label_count"] == len(fx["retention_labels"])
+        assert ev.metadata["intune_policy_count"] == len(
+            fx["intune_compliance_policies"]
+        )
+
+    def test_intune_status_ok_on_happy_path(self, connector):
+        """Closed-set value: 'ok' when Intune call succeeded."""
+        c, client, _ = self._setup(connector)
+        ev = c._pull_mp_3_8_1(client)
+        assert ev.metadata["intune_status"] == "ok"
+        assert ev.degraded is False
+        assert ev.degradation_reason is None
+
+    def test_sharepoint_status_ok_on_happy_path(self, connector):
+        """Closed-set value: 'ok' when SharePoint call succeeded."""
+        c, client, _ = self._setup(connector)
+        ev = c._pull_mp_3_8_1(client)
+        assert ev.metadata["sharepoint_status"] == "ok"
+
+    def test_intune_403_with_licensing_signal_emits_degraded(self, connector):
+        """The F.1 contract: Forbidden_LicensingError → licensing_signal=True
+        → connector emits degraded evidence rather than failing."""
+        c = connector
+        c._now = lambda: FIXED_NOW
+        fx = load_fixture("mp_3_8_1")
+
+        def paginate_side_effect(path):
+            if "/security/labels/retentionLabels" in path:
+                return iter(fx["retention_labels"])
+            if "/deviceManagement/deviceCompliancePolicies" in path:
+                raise MsGraphPermissionError(
+                    "Tenant requires Microsoft Intune license.",
+                    missing_permission=None,
+                    endpoint="/deviceManagement/deviceCompliancePolicies",
+                    licensing_signal=True,
+                )
+            raise KeyError(f"unmatched paginate: {path}")
+
+        client = MagicMock()
+        client.__enter__.return_value = client
+        client.__exit__.return_value = None
+        client.get.side_effect = lambda p: fx["sharepoint_settings"]
+        client.paginate.side_effect = paginate_side_effect
+
+        ev = c._pull_mp_3_8_1(client)
+
+        assert ev is not None
+        assert ev.degraded is True
+        assert ev.degradation_reason == "Intune license not detected on tenant"
+        assert ev.metadata["intune_status"] == "license_not_detected"
+        assert ev.metadata["intune_policy_count"] == 0
+        # Other sub-components still present.
+        parsed = json.loads(ev.content.decode("utf-8"))
+        assert parsed["sharepoint_settings"] == fx["sharepoint_settings"]
+        assert parsed["retention_labels"] == fx["retention_labels"]
+        assert parsed["intune_compliance_policies"] == []
+
+    def test_intune_403_without_licensing_signal_propagates(self, connector):
+        """Non-licensing 403 (e.g. plain permission missing) should propagate
+        to the orchestrator's per-control isolator, not be swallowed as
+        degradation."""
+        c = connector
+        c._now = lambda: FIXED_NOW
+        fx = load_fixture("mp_3_8_1")
+
+        def paginate_side_effect(path):
+            if "/security/labels/retentionLabels" in path:
+                return iter(fx["retention_labels"])
+            if "/deviceManagement/deviceCompliancePolicies" in path:
+                raise MsGraphPermissionError(
+                    "Missing permission: DeviceManagementConfiguration.Read.All",
+                    missing_permission="DeviceManagementConfiguration.Read.All",
+                    endpoint="/deviceManagement/deviceCompliancePolicies",
+                    licensing_signal=False,
+                )
+            raise KeyError(f"unmatched paginate: {path}")
+
+        client = MagicMock()
+        client.__enter__.return_value = client
+        client.__exit__.return_value = None
+        client.get.side_effect = lambda p: fx["sharepoint_settings"]
+        client.paginate.side_effect = paginate_side_effect
+
+        with pytest.raises(MsGraphPermissionError) as exc_info:
+            c._pull_mp_3_8_1(client)
+        assert exc_info.value.licensing_signal is False
+        assert exc_info.value.missing_permission == (
+            "DeviceManagementConfiguration.Read.All"
+        )
+
+    def test_uses_get_for_singleton_sharepoint_settings(self, connector):
+        """sharepoint_settings is a singleton; must use client.get(), not
+        client.paginate() (would attempt to read .value array)."""
+        c, client, _ = self._setup(connector)
+        c._pull_mp_3_8_1(client)
+        get_calls = [call.args[0] for call in client.get.call_args_list]
+        assert any("/admin/sharepoint/settings" in p for p in get_calls)
+
+    def test_uses_paginate_for_retention_and_intune(self, connector):
+        c, client, _ = self._setup(connector)
+        c._pull_mp_3_8_1(client)
+        paginate_calls = [c.args[0] for c in client.paginate.call_args_list]
+        assert any("/security/labels/retentionLabels" in p for p in paginate_calls)
+        assert any(
+            "/deviceManagement/deviceCompliancePolicies" in p
+            for p in paginate_calls
+        )
+
+    def test_intune_400_capability_gap_emits_degraded(self, connector):
+        """F.3a framework amendment: 400 + BadRequest + 'not applicable' on
+        Intune endpoint → MsGraphCapabilityError → intune_status =
+        'service_unavailable' on the parent PE."""
+        c = connector
+        c._now = lambda: FIXED_NOW
+        fx = load_fixture("mp_3_8_1")
+
+        def paginate_side_effect(path):
+            if "/security/labels/retentionLabels" in path:
+                return iter(fx["retention_labels"])
+            if "/deviceManagement/deviceCompliancePolicies" in path:
+                raise MsGraphCapabilityError(
+                    "Capability gap on /deviceManagement/...: "
+                    "Request not applicable to target tenant.",
+                    endpoint="/deviceManagement/deviceCompliancePolicies",
+                )
+            raise KeyError(f"unmatched paginate: {path}")
+
+        client = MagicMock()
+        client.__enter__.return_value = client
+        client.__exit__.return_value = None
+        client.get.side_effect = lambda p: fx["sharepoint_settings"]
+        client.paginate.side_effect = paginate_side_effect
+
+        ev = c._pull_mp_3_8_1(client)
+
+        assert ev is not None
+        assert ev.metadata["intune_status"] == "service_unavailable"
+        assert ev.metadata["intune_policy_count"] == 0
+        assert ev.degraded is True
+        assert "Intune service unavailable" in (ev.degradation_reason or "")
+        # SharePoint sub-component is fine.
+        assert ev.metadata["sharepoint_status"] == "ok"
+
+    def test_sharepoint_400_capability_gap_emits_degraded(self, connector):
+        """F.3a framework amendment: 400 + BadRequest + 'does not have' on
+        SharePoint endpoint → MsGraphCapabilityError → sharepoint_status =
+        'service_unavailable' on the parent PE."""
+        c = connector
+        c._now = lambda: FIXED_NOW
+        fx = load_fixture("mp_3_8_1")
+
+        def get_side_effect(path):
+            if "/admin/sharepoint/settings" in path:
+                raise MsGraphCapabilityError(
+                    "Capability gap on /admin/sharepoint/settings: "
+                    "Tenant does not have a SPO license.",
+                    endpoint="/admin/sharepoint/settings",
+                )
+            raise KeyError(f"unmatched get: {path}")
+
+        def paginate_side_effect(path):
+            if "/security/labels/retentionLabels" in path:
+                return iter(fx["retention_labels"])
+            if "/deviceManagement/deviceCompliancePolicies" in path:
+                return iter(fx["intune_compliance_policies"])
+            raise KeyError(f"unmatched paginate: {path}")
+
+        client = MagicMock()
+        client.__enter__.return_value = client
+        client.__exit__.return_value = None
+        client.get.side_effect = get_side_effect
+        client.paginate.side_effect = paginate_side_effect
+
+        ev = c._pull_mp_3_8_1(client)
+
+        assert ev is not None
+        assert ev.metadata["sharepoint_status"] == "service_unavailable"
+        assert ev.degraded is True
+        assert "SharePoint Online unavailable" in (ev.degradation_reason or "")
+        # Intune still ok in this scenario.
+        assert ev.metadata["intune_status"] == "ok"
+        # Content reflects the degraded sub-component.
+        parsed = json.loads(ev.content.decode("utf-8"))
+        assert parsed["sharepoint_settings"] is None
+        assert parsed["sharepoint_status"] == "service_unavailable"
+
+    def test_both_sharepoint_and_intune_degrade_combined_reason(self, connector):
+        """Trial-tenant scenario: both SharePoint and Intune are unprovisioned.
+        Both sub-components flag degraded; degradation_reason combines both."""
+        c = connector
+        c._now = lambda: FIXED_NOW
+        fx = load_fixture("mp_3_8_1")
+
+        def get_side_effect(path):
+            raise MsGraphCapabilityError(
+                "Capability gap on /admin/sharepoint/settings: "
+                "Tenant does not have a SPO license.",
+                endpoint="/admin/sharepoint/settings",
             )
 
-    def test_stub_message_names_pass_phases(self, connector):
-        with pytest.raises(NotImplementedError) as exc_info:
-            connector.pull()
-        msg = str(exc_info.value)
-        for phase in ["F.3a", "F.3b", "F.3c", "F.3d"]:
-            assert phase in msg, f"Stub message must reference {phase}"
+        def paginate_side_effect(path):
+            if "/security/labels/retentionLabels" in path:
+                return iter(fx["retention_labels"])
+            if "/deviceManagement/deviceCompliancePolicies" in path:
+                raise MsGraphCapabilityError(
+                    "Capability gap on /deviceManagement/...: "
+                    "Request not applicable to target tenant.",
+                    endpoint="/deviceManagement/deviceCompliancePolicies",
+                )
+            raise KeyError(f"unmatched: {path}")
 
-    def test_get_pull_errors_returns_empty_in_f2(self, connector):
-        """F.2's pull() raises before any accumulation; get_pull_errors()
-        returns []. F.3a wires real accumulation."""
-        assert connector.get_pull_errors() == []
+        client = MagicMock()
+        client.__enter__.return_value = client
+        client.__exit__.return_value = None
+        client.get.side_effect = get_side_effect
+        client.paginate.side_effect = paginate_side_effect
+
+        ev = c._pull_mp_3_8_1(client)
+
+        assert ev is not None
+        assert ev.degraded is True
+        assert ev.metadata["sharepoint_status"] == "service_unavailable"
+        assert ev.metadata["intune_status"] == "service_unavailable"
+        assert "SharePoint Online unavailable" in (ev.degradation_reason or "")
+        assert "Intune service unavailable" in (ev.degradation_reason or "")
+        # Retention labels still pulled successfully.
+        parsed = json.loads(ev.content.decode("utf-8"))
+        assert parsed["retention_labels"] == fx["retention_labels"]
+
+
+# ──────────────────────────────────────────────────────────────────────
+# E. _pull_mp_3_8_2() — Media Access (digital): SharePoint + CA;
+#    coverage_scope=partial because per-site sharingCapability isn't in
+#    Graph v1.0
+# ──────────────────────────────────────────────────────────────────────
+
+class TestPullMP382:
+    """MP.L2-3.8.2 — partial coverage on the per-site dimension."""
+
+    def _setup(self, connector):
+        connector._now = lambda: FIXED_NOW
+        fx = load_fixture("mp_3_8_2")
+        client = make_mock_client(
+            get_responses={
+                "/admin/sharepoint/settings": fx["sharepoint_settings"],
+            },
+            paginate_responses={
+                "/identity/conditionalAccess/policies": fx[
+                    "conditional_access_policies"
+                ],
+            },
+        )
+        return connector, client, fx
+
+    def test_returns_pulled_evidence(self, connector):
+        c, client, _ = self._setup(connector)
+        ev = c._pull_mp_3_8_2(client)
+        assert ev is not None
+        assert ev.control_ids == ["MP.L2-3.8.2"]
+
+    def test_coverage_scope_is_partial(self, connector):
+        c, client, _ = self._setup(connector)
+        ev = c._pull_mp_3_8_2(client)
+        assert ev.coverage_scope == "partial"
+
+    def test_missing_sources_lists_per_site_sharing(self, connector):
+        c, client, _ = self._setup(connector)
+        ev = c._pull_mp_3_8_2(client)
+        assert ev.missing_sources == ["per_site_sharing"]
+
+    def test_metadata_media_scope_is_digital(self, connector):
+        c, client, _ = self._setup(connector)
+        ev = c._pull_mp_3_8_2(client)
+        assert ev.metadata["media_scope"] == "digital"
+
+    def test_content_includes_sharepoint_and_ca(self, connector):
+        c, client, fx = self._setup(connector)
+        ev = c._pull_mp_3_8_2(client)
+        parsed = json.loads(ev.content.decode("utf-8"))
+        assert parsed["sharepoint_settings"] == fx["sharepoint_settings"]
+        assert parsed["conditional_access_policies"] == fx[
+            "conditional_access_policies"
+        ]
+
+    def test_metadata_endpoints_listed(self, connector):
+        c, client, _ = self._setup(connector)
+        ev = c._pull_mp_3_8_2(client)
+        assert ev.metadata["endpoints"] == [
+            "/admin/sharepoint/settings",
+            "/identity/conditionalAccess/policies",
+        ]
+
+    def test_metadata_ca_policy_count(self, connector):
+        c, client, fx = self._setup(connector)
+        ev = c._pull_mp_3_8_2(client)
+        assert ev.metadata["ca_policy_count"] == len(
+            fx["conditional_access_policies"]
+        )
+
+    def test_calls_sharepoint_settings_independently_from_mp_3_8_1(
+        self, connector
+    ):
+        """Per-control isolation contract: each control calls its endpoints
+        independently. No shared-state caching of sharepoint_settings between
+        MP.L2-3.8.1 and MP.L2-3.8.2."""
+        c, client, _ = self._setup(connector)
+        c._pull_mp_3_8_2(client)
+        get_calls = [call.args[0] for call in client.get.call_args_list]
+        assert any("/admin/sharepoint/settings" in p for p in get_calls)
+
+    def test_sharepoint_status_ok_on_happy_path(self, connector):
+        c, client, _ = self._setup(connector)
+        ev = c._pull_mp_3_8_2(client)
+        assert ev.metadata["sharepoint_status"] == "ok"
+        assert ev.degraded is False
+
+    def test_sharepoint_400_capability_gap_emits_degraded(self, connector):
+        """F.3a framework amendment: 400 + BadRequest + 'does not have' on
+        SharePoint → MsGraphCapabilityError → sharepoint_status =
+        'service_unavailable' on the parent PE. CA component still works."""
+        c = connector
+        c._now = lambda: FIXED_NOW
+        fx = load_fixture("mp_3_8_2")
+
+        def get_side_effect(path):
+            if "/admin/sharepoint/settings" in path:
+                raise MsGraphCapabilityError(
+                    "Capability gap on /admin/sharepoint/settings: "
+                    "Tenant does not have a SPO license.",
+                    endpoint="/admin/sharepoint/settings",
+                )
+            raise KeyError(f"unmatched get: {path}")
+
+        def paginate_side_effect(path):
+            if "/identity/conditionalAccess/policies" in path:
+                return iter(fx["conditional_access_policies"])
+            raise KeyError(f"unmatched paginate: {path}")
+
+        client = MagicMock()
+        client.__enter__.return_value = client
+        client.__exit__.return_value = None
+        client.get.side_effect = get_side_effect
+        client.paginate.side_effect = paginate_side_effect
+
+        ev = c._pull_mp_3_8_2(client)
+
+        assert ev is not None
+        assert ev.metadata["sharepoint_status"] == "service_unavailable"
+        assert ev.degraded is True
+        assert "SharePoint Online unavailable" in (ev.degradation_reason or "")
+        # CA is still pulled successfully.
+        parsed = json.loads(ev.content.decode("utf-8"))
+        assert parsed["conditional_access_policies"] == fx[
+            "conditional_access_policies"
+        ]
+        assert parsed["sharepoint_settings"] is None
+        # coverage_scope and missing_sources unchanged.
+        assert ev.coverage_scope == "partial"
+        assert ev.missing_sources == ["per_site_sharing"]
+
+
+# ──────────────────────────────────────────────────────────────────────
+# F. _pull_ac_3_1_3() — Control CUI Flow (partial): Conditional Access only
+# ──────────────────────────────────────────────────────────────────────
+
+class TestPullAC313Partial:
+    """AC.L2-3.1.3 — F.3a ships CA only; coverage_scope=partial with three
+    missing_sources. F.3b removes 'sensitivity_labels' later.
+    """
+
+    def _setup(self, connector):
+        connector._now = lambda: FIXED_NOW
+        fx = load_fixture("ac_3_1_3")
+        client = make_mock_client(
+            get_responses={},
+            paginate_responses={
+                "/identity/conditionalAccess/policies": fx[
+                    "conditional_access_policies"
+                ],
+            },
+        )
+        return connector, client, fx
+
+    def test_returns_pulled_evidence(self, connector):
+        c, client, _ = self._setup(connector)
+        ev = c._pull_ac_3_1_3(client)
+        assert ev is not None
+        assert ev.control_ids == ["AC.L2-3.1.3"]
+
+    def test_coverage_scope_is_partial(self, connector):
+        c, client, _ = self._setup(connector)
+        ev = c._pull_ac_3_1_3(client)
+        assert ev.coverage_scope == "partial"
+
+    def test_missing_sources_three_items_in_f3a(self, connector):
+        """F.3a ships missing_sources=[sensitivity_labels, dlp_policies,
+        label_policies]. F.3b removes sensitivity_labels."""
+        c, client, _ = self._setup(connector)
+        ev = c._pull_ac_3_1_3(client)
+        assert ev.missing_sources == [
+            "sensitivity_labels",
+            "dlp_policies",
+            "label_policies",
+        ]
+
+    def test_content_includes_ca_policies(self, connector):
+        c, client, fx = self._setup(connector)
+        ev = c._pull_ac_3_1_3(client)
+        parsed = json.loads(ev.content.decode("utf-8"))
+        assert parsed["conditional_access_policies"] == fx[
+            "conditional_access_policies"
+        ]
+
+    def test_metadata_ca_policy_count(self, connector):
+        c, client, fx = self._setup(connector)
+        ev = c._pull_ac_3_1_3(client)
+        assert ev.metadata["ca_policy_count"] == len(
+            fx["conditional_access_policies"]
+        )
+
+    def test_filename_includes_control_id_slug(self, connector):
+        c, client, _ = self._setup(connector)
+        ev = c._pull_ac_3_1_3(client)
+        assert ev.filename.startswith("m365_ac_3_1_3_")
+        assert ev.filename.endswith(".json")
+
+
+# ──────────────────────────────────────────────────────────────────────
+# G. pull() orchestrator — F.3a (3 controls)
+# ──────────────────────────────────────────────────────────────────────
+
+def _build_all_three_succeed_client(fxs):
+    """MagicMock client whose dispatch covers all three F.3a controls."""
+    client = MagicMock()
+    client.__enter__.return_value = client
+    client.__exit__.return_value = None
+
+    def paginate_side_effect(path):
+        if "/security/labels/retentionLabels" in path:
+            return iter(fxs["mp_3_8_1"]["retention_labels"])
+        if "/deviceManagement/deviceCompliancePolicies" in path:
+            return iter(fxs["mp_3_8_1"]["intune_compliance_policies"])
+        if "/identity/conditionalAccess/policies" in path:
+            # MP.L2-3.8.2 and AC.L2-3.1.3 both hit this; serve the same
+            # CA policy list (real Graph would return identical data).
+            return iter(fxs["mp_3_8_2"]["conditional_access_policies"])
+        raise KeyError(f"unmatched paginate: {path}")
+
+    def get_side_effect(path):
+        if "/admin/sharepoint/settings" in path:
+            return fxs["mp_3_8_1"]["sharepoint_settings"]
+        raise KeyError(f"unmatched get: {path}")
+
+    client.paginate.side_effect = paginate_side_effect
+    client.get.side_effect = get_side_effect
+    return client
+
+
+class TestPullOrchestratorF3a:
+    """The pull() method composing the three F.3a control helpers."""
+
+    def _setup_all_succeed(self, connector):
+        connector._now = lambda: FIXED_NOW
+        fxs = {
+            k: load_fixture(k)
+            for k in ["mp_3_8_1", "mp_3_8_2", "ac_3_1_3"]
+        }
+        client = _build_all_three_succeed_client(fxs)
+        connector._build_client = lambda: client
+        return connector
+
+    def test_all_three_controls_yield_evidence(self, connector):
+        c = self._setup_all_succeed(connector)
+        items = list(c.pull())
+        assert len(items) == 3
+        control_ids = [item.control_ids[0] for item in items]
+        assert control_ids == [
+            "MP.L2-3.8.1",
+            "MP.L2-3.8.2",
+            "AC.L2-3.1.3",
+        ]
+
+    def test_no_errors_when_all_succeed(self, connector):
+        c = self._setup_all_succeed(connector)
+        list(c.pull())
+        assert c.get_pull_errors() == []
+
+    def test_one_control_failure_isolated(self, connector):
+        """MP.L2-3.8.1 fails (Intune endpoint blows up with non-licensing
+        error); MP.L2-3.8.2 and AC.L2-3.1.3 still succeed."""
+        c = connector
+        c._now = lambda: FIXED_NOW
+        fxs = {k: load_fixture(k) for k in ["mp_3_8_1", "mp_3_8_2", "ac_3_1_3"]}
+
+        client = MagicMock()
+        client.__enter__.return_value = client
+        client.__exit__.return_value = None
+
+        def paginate_side_effect(path):
+            if "/security/labels/retentionLabels" in path:
+                return iter(fxs["mp_3_8_1"]["retention_labels"])
+            if "/deviceManagement/deviceCompliancePolicies" in path:
+                raise RuntimeError("simulated graph 500 on Intune")
+            if "/identity/conditionalAccess/policies" in path:
+                return iter(fxs["mp_3_8_2"]["conditional_access_policies"])
+            raise KeyError(f"unmatched: {path}")
+
+        def get_side_effect(path):
+            if "/admin/sharepoint/settings" in path:
+                return fxs["mp_3_8_1"]["sharepoint_settings"]
+            raise KeyError(f"unmatched: {path}")
+
+        client.paginate.side_effect = paginate_side_effect
+        client.get.side_effect = get_side_effect
+        c._build_client = lambda: client
+
+        items = list(c.pull())
+        # MP.L2-3.8.1 fails outright; the other two succeed.
+        assert len(items) == 2
+        control_ids = [i.control_ids[0] for i in items]
+        assert "MP.L2-3.8.1" not in control_ids
+        assert "MP.L2-3.8.2" in control_ids
+        assert "AC.L2-3.1.3" in control_ids
+
+        errors = c.get_pull_errors()
+        assert len(errors) == 1
+        assert "MP.L2-3.8.1" in errors[0]
+        assert "simulated graph 500 on Intune" in errors[0]
+        assert " | " in errors[0]  # canonical format
+
+    def test_all_controls_fail_yields_zero_evidence(self, connector):
+        c = connector
+        c._now = lambda: FIXED_NOW
+        client = MagicMock()
+        client.__enter__.return_value = client
+        client.__exit__.return_value = None
+        client.paginate.side_effect = RuntimeError("everything broken")
+        client.get.side_effect = RuntimeError("everything broken")
+        c._build_client = lambda: client
+
+        items = list(c.pull())
+        assert items == []
+
+        errors = c.get_pull_errors()
+        assert len(errors) == 3
+        for cid in ["MP.L2-3.8.1", "MP.L2-3.8.2", "AC.L2-3.1.3"]:
+            assert any(cid in e for e in errors), f"missing {cid} in errors"
+
+    def test_pull_resets_accumulator(self, connector):
+        c = connector
+        c._now = lambda: FIXED_NOW
+        client = MagicMock()
+        client.__enter__.return_value = client
+        client.__exit__.return_value = None
+        client.paginate.side_effect = RuntimeError("broken")
+        client.get.side_effect = RuntimeError("broken")
+        c._build_client = lambda: client
+
+        list(c.pull())
+        assert len(c.get_pull_errors()) == 3
+
+        list(c.pull())
+        assert len(c.get_pull_errors()) == 3  # not 6
+
+    def test_get_pull_errors_returns_copy(self, connector):
+        c = connector
+        c._now = lambda: FIXED_NOW
+        client = MagicMock()
+        client.__enter__.return_value = client
+        client.__exit__.return_value = None
+        client.paginate.side_effect = RuntimeError("broken")
+        client.get.side_effect = RuntimeError("broken")
+        c._build_client = lambda: client
+
+        list(c.pull())
+        errors = c.get_pull_errors()
+        errors.append("local mutation")
+        assert "local mutation" not in c.get_pull_errors()
 
 
 # ──────────────────────────────────────────────────────────────────────

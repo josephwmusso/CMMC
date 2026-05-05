@@ -1,0 +1,33 @@
+{
+  "sharepoint_settings": {
+    "id": "00000000-0000-0000-0000-000000000000",
+    "sharingCapability": "externalUserSharingOnly",
+    "defaultSharingLinkType": "internal",
+    "defaultLinkPermission": "view",
+    "isFileActivityNotificationEnabled": true,
+    "personalSiteDefaultStorageLimitInMB": 102400,
+    "tenantDefaultTimezone": "(UTC-05:00) Eastern Time (US and Canada)"
+  },
+  "conditional_access_policies": [
+    {
+      "id": "ca-policy-id-1",
+      "displayName": "Block external sharing on SharePoint/OneDrive from non-compliant devices",
+      "state": "enabled",
+      "conditions": {
+        "applications": {
+          "includeApplications": ["Office365"],
+          "includeAuthenticationContextClassReferences": []
+        },
+        "users": {"includeUsers": ["All"]},
+        "platforms": {"includePlatforms": ["all"]}
+      },
+      "grantControls": {
+        "operator": "AND",
+        "builtInControls": ["compliantDevice"]
+      },
+      "sessionControls": {
+        "cloudAppSecurity": {"isEnabled": true, "cloudAppSecurityType": "blockDownloads"}
+      }
+    }
+  ]
+}

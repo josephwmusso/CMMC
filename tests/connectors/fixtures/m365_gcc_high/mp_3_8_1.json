@@ -1,0 +1,40 @@
+{
+  "sharepoint_settings": {
+    "id": "00000000-0000-0000-0000-000000000000",
+    "sharingCapability": "externalUserSharingOnly",
+    "defaultSharingLinkType": "internal",
+    "defaultLinkPermission": "view",
+    "isFileActivityNotificationEnabled": true,
+    "personalSiteDefaultStorageLimitInMB": 102400,
+    "tenantDefaultTimezone": "(UTC-05:00) Eastern Time (US and Canada)"
+  },
+  "retention_labels": [
+    {
+      "id": "label-id-1",
+      "displayName": "CUI Standard",
+      "isInUse": true,
+      "retentionDuration": {"@odata.type": "#microsoft.graph.security.retentionDurationInDays", "days": 1825},
+      "behaviorDuringRetentionPeriod": "retainAsRecord",
+      "actionAfterRetentionPeriod": "delete",
+      "descriptionForUsers": "Apply to documents containing CUI"
+    },
+    {
+      "id": "label-id-2",
+      "displayName": "Project — General",
+      "isInUse": true,
+      "retentionDuration": {"@odata.type": "#microsoft.graph.security.retentionDurationInDays", "days": 365},
+      "behaviorDuringRetentionPeriod": "retainAsRecord",
+      "actionAfterRetentionPeriod": "none",
+      "descriptionForUsers": "General project documents"
+    }
+  ],
+  "intune_compliance_policies": [
+    {
+      "id": "policy-id-1",
+      "displayName": "Windows 10/11 — BitLocker required",
+      "description": "Disk encryption required for compliance",
+      "createdDateTime": "2026-01-15T10:00:00Z",
+      "version": 3
+    }
+  ]
+}

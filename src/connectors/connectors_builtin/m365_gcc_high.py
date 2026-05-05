@@ -1,17 +1,52 @@
-"""Microsoft 365 (GCC High) connector — Pass F.2 skeleton.
+"""Microsoft 365 (GCC High) connector — Pass F.3a (3 of 5 controls live).
 
 Pulls evidence from Microsoft Graph using the OAuth2 client-credentials flow
 for Application API permissions. Supports commercial Microsoft Graph as well
 as GCC High and DoD national clouds.
 
-Pass F.2 ships the class skeleton and test_connection() only. pull() raises
-NotImplementedError; the per-control pulls land in F.3a/b/c:
+Pass F.3a ships pull() with the orchestrator + three _pull_<control> methods:
+  MP.L2-3.8.1 — Media Protection (digital): SharePoint sharing posture +
+                retention labels + Intune device compliance (license-conditional).
+  MP.L2-3.8.2 — Media Access (digital): SharePoint sharing posture +
+                Conditional Access policies (CA reuse from Pass E IA.L2-3.5.3
+                domain). coverage_scope=partial; per-site sharingCapability is
+                missing because Graph v1.0 does not expose it (lives in the
+                SharePoint admin REST API, outside Graph's auth surface).
+  AC.L2-3.1.3 — Control CUI Flow (partial): Conditional Access policies
+                only. coverage_scope=partial; sensitivity_labels/dlp_policies/
+                label_policies missing. F.3b removes sensitivity_labels;
+                DLP/label-policy enumeration is permanently deferred (no
+                Graph endpoint exists for tenant-wide DLP enumeration).
 
-  F.3a — MP.L2-3.8.1, MP.L2-3.8.2, AC.L2-3.1.3 (partial)
-  F.3b — AC.L2-3.1.3 (complete) + SC.L2-3.13.8
+Outstanding sub-passes:
+  F.3b — AC.L2-3.1.3 sensitivity-label completion + SC.L2-3.13.8
   F.3c — AU.L2-3.3.1 (via /security/auditLog/queries async helper from F.1.5)
   F.3d — eager-import this module from src/connectors/__init__.py so the
          connector becomes visible on /api/connectors/types
+
+Conventions established by F.3a (load-bearing for SSP narrative downstream):
+
+  metadata["media_scope"]: closed-set string literal {"digital", "paper"}.
+    F.3a sets only "digital" — paper-media controls are out of scope for
+    automated pulls (paper destruction is a physical-process control).
+    Future SSP renderer reads this key to render the paper-media exclusion
+    narrative for MP family controls.
+
+  metadata["intune_status"]: closed-set string literal {"ok",
+    "license_not_detected", "service_unavailable"}. Captures Intune-sub-
+    component health on MP.L2-3.8.1's PulledEvidence. The two non-"ok"
+    values reflect distinct Microsoft signals:
+      - "license_not_detected": 403 + Forbidden_LicensingError. Tenant has
+        Intune at the directory level but a per-feature license is missing.
+      - "service_unavailable":  400 + BadRequest + "not applicable to
+        target tenant". Intune isn't provisioned on the tenant at all.
+    Either non-"ok" value flags the parent PulledEvidence degraded=True.
+
+  metadata["sharepoint_status"]: closed-set string literal {"ok",
+    "service_unavailable"}. SharePoint Online unavailability is signaled
+    by 400 + BadRequest + "does not have a SPO license." (no separate
+    licensing-signal path observed for SPO yet — F.3a only sees the 400
+    shape). Used by both MP.L2-3.8.1 and MP.L2-3.8.2.
 
 Until F.3d, this module is registered (via @register at class-def) but is
 NOT eager-imported from src.connectors. /api/connectors/types does not show
@@ -21,6 +56,7 @@ in tests/connectors/test_m365_gcc_high_registration.py.
 
 from __future__ import annotations
 
+import json
 import logging
 from datetime import datetime, timezone
 from typing import Iterator
@@ -31,7 +67,9 @@ from src.connectors._msgraph import (
     MsGraphClient,
     MsGraphError,
     MsGraphAuthError,
+    MsGraphCapabilityError,
     MsGraphPermissionError,
+    format_pull_error,
 )
 
 log = logging.getLogger(__name__)
@@ -268,28 +306,332 @@ class M365GccHighConnector(BaseConnector):
             return (False, f"Unexpected error: {type(e).__name__}: {e}")
 
     def pull(self) -> Iterator[PulledEvidence]:
-        """Pull evidence — NOT IMPLEMENTED in Pass F.2.
+        """Pull evidence from Microsoft Graph for the supported controls.
 
-        F.3a/b/c land the per-control pulls; F.3d makes the connector
-        visible on /api/connectors/types by adding the eager-import to
-        src/connectors/__init__.py. The NotImplementedError message
-        embeds the full Pass F roadmap so anyone hitting this stub by
-        accident sees the next steps without having to chase down docs.
+        F.3a ships three of five controls live: MP.L2-3.8.1, MP.L2-3.8.2,
+        AC.L2-3.1.3 (partial). F.3b adds SC.L2-3.13.8 and completes
+        AC.L2-3.1.3; F.3c adds AU.L2-3.3.1 via the async-query helper.
+
+        Per-control errors are caught and accumulated on self._pull_errors
+        (surfaced via get_pull_errors() per the Pass E.3b contract). One
+        failing control does NOT abort the others.
+
+        Errors during MsGraphClient construction or token acquisition kill
+        the entire pull (caught at the runner's outer scope, run -> FAILED).
+        Errors inside individual _pull_<control>() methods are isolated.
         """
-        raise NotImplementedError(
-            "M365GccHighConnector.pull() is not yet implemented. "
-            "F.3a will land MP.L2-3.8.1, MP.L2-3.8.2, AC.L2-3.1.3 (partial). "
-            "F.3b will complete AC.L2-3.1.3 and add SC.L2-3.13.8. "
-            "F.3c will add AU.L2-3.3.1 via async query. "
-            "F.3d will eager-import in src/connectors/__init__.py."
-        )
+        # Reset accumulator at start of each pull. Per-run-fresh-instance
+        # guarantee makes this belt-and-suspenders, but the discipline
+        # protects against future runner refactors that reuse instances.
+        self._pull_errors = []
+
+        # Tuple shape: (control_id, endpoint_summary, method).
+        # endpoint_summary is the diagnostic string used in format_pull_error
+        # output — not a real URL.
+        controls = [
+            (
+                "MP.L2-3.8.1",
+                "/admin/sharepoint/settings,/security/labels/retentionLabels,"
+                "/deviceManagement/deviceCompliancePolicies",
+                self._pull_mp_3_8_1,
+            ),
+            (
+                "MP.L2-3.8.2",
+                "/admin/sharepoint/settings,/identity/conditionalAccess/policies",
+                self._pull_mp_3_8_2,
+            ),
+            (
+                "AC.L2-3.1.3",
+                "/identity/conditionalAccess/policies (partial)",
+                self._pull_ac_3_1_3,
+            ),
+        ]
+
+        with self._build_client() as client:
+            for control_id, endpoint_summary, fn in controls:
+                try:
+                    ev = fn(client)
+                    if ev is not None:
+                        yield ev
+                except Exception as e:  # noqa: BLE001
+                    self._pull_errors.append(
+                        format_pull_error(control_id, endpoint_summary, e)
+                    )
+                    log.warning(
+                        "control pull failed; isolating and continuing",
+                        extra={
+                            "control_id": control_id,
+                            "endpoint_summary": endpoint_summary,
+                            "error_class": type(e).__name__,
+                            "error": str(e),
+                        },
+                    )
+                    continue
 
     def get_pull_errors(self) -> list[str]:
         """Return per-control errors accumulated during pull().
 
         Per the Pass E.3b contract, the runner calls this once after pull()
-        exhausts and extends summary.errors[] with the result. F.2's pull()
-        raises before any accumulation, so this returns an empty list in F.2.
-        F.3a wires actual accumulation.
+        exhausts and extends summary.errors[] with the result. Returns a
+        copy (not the live list) so caller mutations don't affect connector
+        state.
         """
         return list(self._pull_errors)
+
+    # ----- Per-control pull helpers ---------------------------------------
+
+    def _pull_mp_3_8_1(self, client: MsGraphClient) -> PulledEvidence | None:
+        """MP.L2-3.8.1 — Media Protection (digital).
+
+        Three Graph endpoints compose this evidence:
+          /admin/sharepoint/settings              (singleton, GET)
+          /security/labels/retentionLabels        (paginated)
+          /deviceManagement/deviceCompliancePolicies (paginated, license-cond.)
+
+        Capability-gap handling: each endpoint can independently fail with
+        either a 400 (service unprovisioned — MsGraphCapabilityError) or
+        a 403 (per-feature license missing — MsGraphPermissionError with
+        licensing_signal=True). Both classes of failure degrade the
+        sub-component without aborting the control. Non-licensing 403s
+        and other exceptions propagate to the orchestrator's per-control
+        isolator (whole-control failure).
+
+        Sub-component status keys are closed sets:
+          sharepoint_status: {"ok", "service_unavailable"}
+          intune_status:     {"ok", "license_not_detected", "service_unavailable"}
+        """
+        # SharePoint settings — capability-gap-conditional.
+        sharepoint_settings: dict | None = None
+        sharepoint_status: str = "ok"
+        sharepoint_degradation_reason: str | None = None
+        try:
+            sharepoint_settings = client.get("/admin/sharepoint/settings")
+        except MsGraphCapabilityError as exc:
+            sharepoint_status = "service_unavailable"
+            sharepoint_degradation_reason = (
+                f"SharePoint Online unavailable on tenant: {exc}"
+            )
+            log.warning(
+                "SharePoint unavailable; emitting degraded evidence for MP.L2-3.8.1",
+                extra={
+                    "tenant_id": self._tenant_id,
+                    "endpoint": "/admin/sharepoint/settings",
+                },
+            )
+
+        retention_labels = list(
+            client.paginate("/security/labels/retentionLabels")
+        )
+
+        # Intune call — both license-conditional (403) and capability-gap (400).
+        intune_policies: list[dict] = []
+        intune_status: str = "ok"
+        intune_degradation_reason: str | None = None
+        try:
+            intune_policies = list(
+                client.paginate("/deviceManagement/deviceCompliancePolicies")
+            )
+        except MsGraphCapabilityError as exc:
+            intune_status = "service_unavailable"
+            intune_degradation_reason = (
+                f"Intune service unavailable on tenant: {exc}"
+            )
+            log.warning(
+                "Intune service unavailable; emitting degraded evidence for MP.L2-3.8.1",
+                extra={
+                    "tenant_id": self._tenant_id,
+                    "endpoint": "/deviceManagement/deviceCompliancePolicies",
+                },
+            )
+        except MsGraphPermissionError as exc:
+            if exc.licensing_signal:
+                intune_status = "license_not_detected"
+                intune_degradation_reason = (
+                    "Intune license not detected on tenant"
+                )
+                log.warning(
+                    "Intune license not detected; emitting degraded evidence "
+                    "for MP.L2-3.8.1",
+                    extra={
+                        "tenant_id": self._tenant_id,
+                        "endpoint": "/deviceManagement/deviceCompliancePolicies",
+                        "missing_permission": exc.missing_permission,
+                    },
+                )
+            else:
+                # Non-licensing 403 — propagate so the orchestrator records
+                # this as a control failure, not a sub-component degradation.
+                raise
+
+        utc_iso = self._now().isoformat()
+        content = json.dumps({
+            "sharepoint_settings": sharepoint_settings,
+            "sharepoint_status": sharepoint_status,
+            "retention_labels": retention_labels,
+            "intune_compliance_policies": intune_policies,
+            "intune_status": intune_status,
+            "fetched_at": utc_iso,
+        }, sort_keys=True).encode("utf-8")
+
+        # Compose the parent degradation_reason from any non-"ok" sub-components.
+        degradation_reasons = [
+            r for r in (sharepoint_degradation_reason, intune_degradation_reason)
+            if r is not None
+        ]
+        degraded = bool(degradation_reasons)
+        combined_reason = " | ".join(degradation_reasons) if degradation_reasons else None
+
+        return PulledEvidence(
+            filename=f"m365_mp_3_8_1_{utc_iso}.json",
+            content=content,
+            mime_type="application/json",
+            description=(
+                "Digital media protection: tenant SharePoint sharing posture, "
+                "retention labels, and Intune device compliance policies."
+            ),
+            control_ids=["MP.L2-3.8.1"],
+            metadata={
+                "media_scope": "digital",
+                "endpoints": [
+                    "/admin/sharepoint/settings",
+                    "/security/labels/retentionLabels",
+                    "/deviceManagement/deviceCompliancePolicies",
+                ],
+                "retention_label_count": len(retention_labels),
+                "intune_policy_count": len(intune_policies),
+                "sharepoint_status": sharepoint_status,
+                "intune_status": intune_status,
+            },
+            degraded=degraded,
+            degradation_reason=combined_reason,
+        )
+
+    def _pull_mp_3_8_2(self, client: MsGraphClient) -> PulledEvidence | None:
+        """MP.L2-3.8.2 — Media Access (digital).
+
+        Two Graph endpoints compose this evidence:
+          /admin/sharepoint/settings              (singleton, GET — called
+                                                   independently from MP.L2-3.8.1
+                                                   per the per-control isolation
+                                                   contract)
+          /identity/conditionalAccess/policies    (paginated; same endpoint
+                                                   Pass E IA.L2-3.5.3 hits — dedup
+                                                   deferred to Phase 5.6)
+
+        Coverage scope is "partial": per-site sharingCapability is NOT
+        exposed by Graph v1.0 (lives in the SharePoint admin REST API,
+        outside Graph's auth surface). Tenant-wide sharing posture from
+        /admin/sharepoint/settings is real coverage at the tenant scope;
+        the partial flag is honest about the per-site gap, not the whole
+        control.
+
+        Capability-gap handling: when SharePoint is unprovisioned (400 +
+        BadRequest), the SharePoint sub-component degrades but the CA
+        component still yields. CA always works on a working tenant
+        (Conditional Access is an Entra ID Premium feature, not a
+        SharePoint feature).
+        """
+        # SharePoint settings — capability-gap-conditional.
+        sharepoint_settings: dict | None = None
+        sharepoint_status: str = "ok"
+        sharepoint_degradation_reason: str | None = None
+        try:
+            sharepoint_settings = client.get("/admin/sharepoint/settings")
+        except MsGraphCapabilityError as exc:
+            sharepoint_status = "service_unavailable"
+            sharepoint_degradation_reason = (
+                f"SharePoint Online unavailable on tenant: {exc}"
+            )
+            log.warning(
+                "SharePoint unavailable; emitting degraded evidence for MP.L2-3.8.2",
+                extra={
+                    "tenant_id": self._tenant_id,
+                    "endpoint": "/admin/sharepoint/settings",
+                },
+            )
+
+        ca_policies = list(
+            client.paginate("/identity/conditionalAccess/policies")
+        )
+
+        utc_iso = self._now().isoformat()
+        content = json.dumps({
+            "sharepoint_settings": sharepoint_settings,
+            "sharepoint_status": sharepoint_status,
+            "conditional_access_policies": ca_policies,
+            "fetched_at": utc_iso,
+        }, sort_keys=True).encode("utf-8")
+
+        return PulledEvidence(
+            filename=f"m365_mp_3_8_2_{utc_iso}.json",
+            content=content,
+            mime_type="application/json",
+            description=(
+                "Digital media access: tenant SharePoint sharing posture and "
+                "Conditional Access policies. Per-site sharing capability is "
+                "not exposed by Microsoft Graph v1.0 — see missing_sources."
+            ),
+            control_ids=["MP.L2-3.8.2"],
+            metadata={
+                "media_scope": "digital",
+                "endpoints": [
+                    "/admin/sharepoint/settings",
+                    "/identity/conditionalAccess/policies",
+                ],
+                "ca_policy_count": len(ca_policies),
+                "sharepoint_status": sharepoint_status,
+            },
+            coverage_scope="partial",
+            missing_sources=["per_site_sharing"],
+            degraded=(sharepoint_status != "ok"),
+            degradation_reason=sharepoint_degradation_reason,
+        )
+
+    def _pull_ac_3_1_3(self, client: MsGraphClient) -> PulledEvidence | None:
+        """AC.L2-3.1.3 — Control CUI Flow (partial).
+
+        F.3a ships the Conditional Access slice only. Conditional Access
+        policies enforce CUI-flow restrictions through session controls,
+        cloud-app filters, and location restrictions — so /identity/
+        conditionalAccess/policies is the load-bearing endpoint for this
+        control's automated coverage.
+
+        coverage_scope="partial". missing_sources lists three sub-sources:
+          - sensitivity_labels: lands in F.3b (Graph endpoint exists)
+          - dlp_policies:        permanently deferred (no Graph endpoint)
+          - label_policies:      permanently deferred (no Graph endpoint)
+
+        F.3b removes sensitivity_labels from missing_sources when the
+        sensitivity-label component goes live.
+        """
+        ca_policies = list(
+            client.paginate("/identity/conditionalAccess/policies")
+        )
+
+        utc_iso = self._now().isoformat()
+        content = json.dumps({
+            "conditional_access_policies": ca_policies,
+            "fetched_at": utc_iso,
+        }, sort_keys=True).encode("utf-8")
+
+        return PulledEvidence(
+            filename=f"m365_ac_3_1_3_{utc_iso}.json",
+            content=content,
+            mime_type="application/json",
+            description=(
+                "CUI-flow controls (partial): Conditional Access policies. "
+                "Sensitivity labels, DLP policies, and label policies are not "
+                "yet pulled — see missing_sources."
+            ),
+            control_ids=["AC.L2-3.1.3"],
+            metadata={
+                "endpoints": ["/identity/conditionalAccess/policies"],
+                "ca_policy_count": len(ca_policies),
+            },
+            coverage_scope="partial",
+            missing_sources=[
+                "sensitivity_labels",
+                "dlp_policies",
+                "label_policies",
+            ],
+        )

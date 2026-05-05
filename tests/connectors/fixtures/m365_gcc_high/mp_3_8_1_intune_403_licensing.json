@@ -1,0 +1,11 @@
+{
+  "error": {
+    "code": "Forbidden_LicensingError",
+    "message": "The operation requires an active Intune license. Verify the tenant has an Intune subscription and that the user/app has been granted appropriate licensing.",
+    "innerError": {
+      "date": "2026-05-04T12:00:00",
+      "request-id": "00000000-0000-0000-0000-000000000000",
+      "client-request-id": "00000000-0000-0000-0000-000000000000"
+    }
+  }
+}

@@ -1,0 +1,40 @@
+{
+  "conditional_access_policies": [
+    {
+      "id": "ca-policy-id-1",
+      "displayName": "Require compliant device for CUI-tagged apps",
+      "state": "enabled",
+      "conditions": {
+        "applications": {
+          "includeApplications": ["Office365", "00000003-0000-0ff1-ce00-000000000000"]
+        },
+        "users": {"includeGroups": ["cui-users-group-id"]},
+        "locations": {
+          "includeLocations": ["AllTrusted"],
+          "excludeLocations": ["00000000-0000-0000-0000-000000000000"]
+        }
+      },
+      "grantControls": {
+        "operator": "AND",
+        "builtInControls": ["compliantDevice", "mfa"]
+      },
+      "sessionControls": {
+        "applicationEnforcedRestrictions": {"isEnabled": true},
+        "cloudAppSecurity": {"isEnabled": true, "cloudAppSecurityType": "blockDownloads"}
+      }
+    },
+    {
+      "id": "ca-policy-id-2",
+      "displayName": "Block legacy auth tenant-wide",
+      "state": "enabled",
+      "conditions": {
+        "clientAppTypes": ["exchangeActiveSync", "other"],
+        "users": {"includeUsers": ["All"]}
+      },
+      "grantControls": {
+        "operator": "OR",
+        "builtInControls": ["block"]
+      }
+    }
+  ]
+}

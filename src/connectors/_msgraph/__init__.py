@@ -13,6 +13,7 @@ from src.connectors._msgraph.endpoints import (
 )
 from src.connectors._msgraph.errors import (
     MsGraphAuthError,
+    MsGraphCapabilityError,
     MsGraphError,
     MsGraphPermissionError,
     MsGraphThrottledError,
@@ -26,6 +27,7 @@ __all__ = [
     "get_graph_base_url",
     "MsGraphError",
     "MsGraphAuthError",
+    "MsGraphCapabilityError",
     "MsGraphPermissionError",
     "MsGraphThrottledError",
     "format_pull_error",
