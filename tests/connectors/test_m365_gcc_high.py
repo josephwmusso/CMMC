@@ -1440,11 +1440,373 @@ class TestLabelHasEncryption:
 
 
 # ──────────────────────────────────────────────────────────────────────
-# H. pull() orchestrator — F.3b (4 controls)
+# H. _pull_au_3_3_1() — Audit Logs via async query (F.3c, consumes F.1.5)
 # ──────────────────────────────────────────────────────────────────────
 
-def _build_all_four_succeed_client(fxs):
-    """MagicMock client whose dispatch covers all four F.3b controls."""
+class TestPullAU331:
+    """AU.L2-3.3.1 — first real consumer of F.1.5's async-query helper.
+
+    Lifecycle: POST /security/auditLog/queries -> poll until 'succeeded'
+    -> paginate /security/auditLog/queries/{id}/records.
+
+    Cross-connector dedup with Pass E's EntraIdConnector (synchronous
+    path) is documented in the module docstring; F.3c stays neutral.
+    """
+
+    AU_ENDPOINT = "/beta/security/auditLog/queries"
+    AU_RECORDS_PATH = "/beta/security/auditLog/queries/q1/records"
+
+    def _build_client(self, *,
+                      post_response=None,
+                      post_side_effect=None,
+                      poll_response=None,
+                      poll_side_effect=None,
+                      records=None,
+                      records_side_effect=None):
+        """Construct a MagicMock client wired for the async-query lifecycle."""
+        client = MagicMock()
+        client.__enter__.return_value = client
+        client.__exit__.return_value = None
+
+        if post_side_effect is not None:
+            client.post_for_async.side_effect = post_side_effect
+        else:
+            client.post_for_async.return_value = (
+                post_response or {"id": "q1", "status": "notStarted"}
+            )
+
+        if poll_side_effect is not None:
+            client.poll_until_done.side_effect = poll_side_effect
+        else:
+            client.poll_until_done.return_value = (
+                poll_response or {"id": "q1", "status": "succeeded"}
+            )
+
+        def paginate_side_effect(path):
+            if records_side_effect is not None:
+                return records_side_effect(path)
+            return iter(records or [])
+        client.paginate.side_effect = paginate_side_effect
+        return client
+
+    def _setup(self, connector, **kwargs):
+        connector._now = lambda: FIXED_NOW
+        client = self._build_client(**kwargs)
+        return connector, client
+
+    # ─── Happy paths ────────────────────────────────────────────────
+
+    def test_happy_path_empty_records(self, connector):
+        c, client = self._setup(connector, records=[])
+        ev = c._pull_au_3_3_1(client)
+        assert ev is not None
+        assert ev.control_ids == ["AU.L2-3.3.1"]
+        assert ev.metadata["audit_query_status"] == "ok"
+        assert ev.metadata["audit_record_count"] == 0
+        assert ev.degraded is False
+        assert ev.coverage_scope == "full"
+
+    def test_happy_path_with_records(self, connector):
+        records = [{"id": f"rec-{i}", "operation": "Op"} for i in range(10)]
+        c, client = self._setup(connector, records=records)
+        ev = c._pull_au_3_3_1(client)
+        assert ev.metadata["audit_record_count"] == 10
+        parsed = json.loads(ev.content.decode("utf-8"))
+        assert parsed["audit_records"] == records
+
+    def test_endpoints_metadata_provenance_signature(self, connector):
+        """Dedup-neutrality secondary signature: metadata["endpoints"]
+        is exactly ['/beta/security/auditLog/queries']. Pass E's parallel
+        AU.L2-3.3.1 implementation has a different list, so SSP-pipeline
+        consumers can disambiguate via this key. Beta prefix is locked —
+        F.3c live verification confirmed v1.0 doesn't have this endpoint
+        ('Resource not found for the segment auditLog')."""
+        c, client = self._setup(connector, records=[])
+        ev = c._pull_au_3_3_1(client)
+        assert ev.metadata["endpoints"] == ["/beta/security/auditLog/queries"]
+
+    def test_control_ids_neutral_with_pass_e(self, connector):
+        """Dedup-neutrality assertion: F.3c emits the same control_ids
+        list Pass E does. The connector_runs.id row linkage is the
+        primary discriminator; F.3c does not add a sub-ID."""
+        c, client = self._setup(connector, records=[])
+        ev = c._pull_au_3_3_1(client)
+        assert ev.control_ids == ["AU.L2-3.3.1"]
+
+    def test_query_id_captured_in_metadata(self, connector):
+        c, client = self._setup(
+            connector,
+            post_response={"id": "specific-query-id", "status": "notStarted"},
+            poll_response={"id": "specific-query-id", "status": "succeeded"},
+            records=[],
+        )
+        ev = c._pull_au_3_3_1(client)
+        assert ev.metadata["query_id"] == "specific-query-id"
+
+    def test_filename_includes_lookback_hours(self, connector):
+        c, client = self._setup(connector, records=[])
+        ev = c._pull_au_3_3_1(client)
+        # default lookback is 24h
+        assert "_24h_" in ev.filename
+        assert ev.filename.startswith("m365_au_3_3_1_")
+
+    def test_post_body_shape(self, connector):
+        """Verify the POST URL is the beta endpoint and the body has the
+        required Microsoft Graph shape: displayName, filterStartDateTime,
+        filterEndDateTime."""
+        c, client = self._setup(connector, records=[])
+        c._pull_au_3_3_1(client)
+        post_kwargs = client.post_for_async.call_args
+        # Positional args: (path, body) — beta path locked.
+        assert post_kwargs.args[0] == "/beta/security/auditLog/queries"
+        body = post_kwargs.args[1]
+        assert "displayName" in body
+        assert "filterStartDateTime" in body
+        assert "filterEndDateTime" in body
+        # Z-suffix ISO format (matches Entra precedent)
+        assert body["filterStartDateTime"].endswith("Z")
+        assert body["filterEndDateTime"].endswith("Z")
+
+    # ─── Records cap ────────────────────────────────────────────────
+
+    def test_records_cap_triggers_partial_coverage(self, connector):
+        """When records exceed AU_3_3_1_RECORDS_CAP (5000), coverage_scope
+        flips to 'partial' with missing_sources=['records_beyond_cap']."""
+        from src.connectors.connectors_builtin.m365_gcc_high import (
+            AU_3_3_1_RECORDS_CAP,
+        )
+        # 5001 records — one over the cap.
+        records = [{"id": f"rec-{i}"} for i in range(AU_3_3_1_RECORDS_CAP + 1)]
+        c, client = self._setup(connector, records=records)
+        ev = c._pull_au_3_3_1(client)
+        # coverage_scope shifted to partial.
+        assert ev.coverage_scope == "partial"
+        assert ev.missing_sources == ["records_beyond_cap"]
+        # Only AU_3_3_1_RECORDS_CAP records retained.
+        assert ev.metadata["audit_record_count"] == AU_3_3_1_RECORDS_CAP
+        assert ev.metadata["records_capped"] is True
+
+    def test_records_below_cap_full_coverage(self, connector):
+        """At-or-below-cap records yield coverage_scope='full' and
+        records_capped=False."""
+        records = [{"id": f"rec-{i}"} for i in range(100)]
+        c, client = self._setup(connector, records=records)
+        ev = c._pull_au_3_3_1(client)
+        assert ev.coverage_scope == "full"
+        assert ev.missing_sources == []
+        assert ev.metadata["records_capped"] is False
+        assert ev.metadata["audit_record_count"] == 100
+
+    # ─── Capability gaps ────────────────────────────────────────────
+
+    def test_capability_gap_during_post_emits_degraded(self, connector):
+        """MsGraphCapabilityError on POST -> degraded with
+        audit_query_status='service_unavailable'."""
+        c, client = self._setup(
+            connector,
+            post_side_effect=MsGraphCapabilityError(
+                "Capability gap on /security/auditLog/queries: "
+                "Tenant does not have a Purview subscription.",
+                endpoint="/security/auditLog/queries",
+            ),
+        )
+        ev = c._pull_au_3_3_1(client)
+        assert ev is not None
+        assert ev.degraded is True
+        assert ev.metadata["audit_query_status"] == "service_unavailable"
+        assert ev.metadata["audit_record_count"] == 0
+        assert "service unavailable" in (ev.degradation_reason or "").lower()
+
+    def test_capability_gap_during_polling_emits_degraded(self, connector):
+        """MsGraphCapabilityError raised during the polling loop (e.g.,
+        500 + service-unavailable signal on the GET /queries/{id} path)
+        is caught the same as the POST-time gap."""
+        from src.connectors._msgraph.errors import MsGraphCapabilityError
+        c, client = self._setup(
+            connector,
+            post_response={"id": "q1", "status": "notStarted"},
+            poll_side_effect=MsGraphCapabilityError(
+                "Service unavailable on /security/auditLog/queries/q1: "
+                "PolicyProfile backend rejected the token.",
+                endpoint="/security/auditLog/queries/q1",
+            ),
+        )
+        ev = c._pull_au_3_3_1(client)
+        assert ev is not None
+        assert ev.degraded is True
+        assert ev.metadata["audit_query_status"] == "service_unavailable"
+        # query_id was captured before the polling failure.
+        assert ev.metadata["query_id"] == "q1"
+
+    def test_capability_gap_during_records_pagination_emits_degraded(self, connector):
+        """Records pagination raising MsGraphCapabilityError shares the
+        capability-gap handler — service unavailable at any phase of the
+        async lifecycle is the same user-visible degradation."""
+        def records_raise(path):
+            if "/records" in path:
+                raise MsGraphCapabilityError(
+                    "Capability gap on .../records: service unavailable.",
+                    endpoint=path,
+                )
+            return iter([])
+        c, client = self._setup(
+            connector,
+            post_response={"id": "q1", "status": "notStarted"},
+            poll_response={"id": "q1", "status": "succeeded"},
+            records_side_effect=records_raise,
+        )
+        ev = c._pull_au_3_3_1(client)
+        assert ev is not None
+        assert ev.degraded is True
+        assert ev.metadata["audit_query_status"] == "service_unavailable"
+
+    def test_licensing_signal_during_post_emits_degraded(self, connector):
+        """403 + Forbidden_LicensingError on POST -> degraded with
+        audit_query_status='license_not_detected'."""
+        c, client = self._setup(
+            connector,
+            post_side_effect=MsGraphPermissionError(
+                "Tenant requires AuditLog license.",
+                missing_permission=None,
+                endpoint="/security/auditLog/queries",
+                licensing_signal=True,
+            ),
+        )
+        ev = c._pull_au_3_3_1(client)
+        assert ev is not None
+        assert ev.degraded is True
+        assert ev.metadata["audit_query_status"] == "license_not_detected"
+        assert "license not detected" in (ev.degradation_reason or "").lower()
+
+    def test_non_licensing_403_propagates_to_orchestrator(self, connector):
+        """Plain 403 (permission missing, NOT licensing) propagates so
+        the orchestrator records it as a control failure, not a sub-
+        component degradation."""
+        c, client = self._setup(
+            connector,
+            post_side_effect=MsGraphPermissionError(
+                "Missing permission: AuditLogsQuery.Read.All",
+                missing_permission="AuditLogsQuery.Read.All",
+                endpoint="/security/auditLog/queries",
+                licensing_signal=False,
+            ),
+        )
+        with pytest.raises(MsGraphPermissionError) as exc_info:
+            c._pull_au_3_3_1(client)
+        assert exc_info.value.licensing_signal is False
+
+    # ─── Async timeout ──────────────────────────────────────────────
+
+    def test_async_timeout_emits_degraded(self, connector):
+        """MsGraphAsyncTimeoutError -> degraded with
+        audit_query_status='timeout'. Carries last_status for diagnostics."""
+        from src.connectors._msgraph.errors import MsGraphAsyncTimeoutError
+        c, client = self._setup(
+            connector,
+            poll_side_effect=MsGraphAsyncTimeoutError(
+                "Async query did not reach terminal status within 300s.",
+                query_id="q1",
+                last_status="running",
+            ),
+        )
+        ev = c._pull_au_3_3_1(client)
+        assert ev is not None
+        assert ev.degraded is True
+        assert ev.metadata["audit_query_status"] == "timeout"
+        # last_status surfaces in degradation_reason
+        assert "running" in (ev.degradation_reason or "")
+
+    # ─── Async failure ──────────────────────────────────────────────
+
+    def test_async_failure_terminal_failed_emits_degraded(self, connector):
+        """Microsoft returned terminal status='failed' -> degraded with
+        audit_query_status='service_unavailable'. terminal_status
+        captured in degradation_reason."""
+        from src.connectors._msgraph.errors import MsGraphAsyncFailureError
+        c, client = self._setup(
+            connector,
+            poll_side_effect=MsGraphAsyncFailureError(
+                "Async query terminated with status 'failed'.",
+                query_id="q1",
+                terminal_status="failed",
+            ),
+        )
+        ev = c._pull_au_3_3_1(client)
+        assert ev is not None
+        assert ev.degraded is True
+        assert ev.metadata["audit_query_status"] == "service_unavailable"
+        assert "failed" in (ev.degradation_reason or "").lower()
+
+    def test_async_failure_terminal_cancelled_emits_degraded(self, connector):
+        """Microsoft returned terminal status='cancelled' -> same degraded
+        path as 'failed', but terminal_status reflects the policy/operator
+        nature of the cancellation."""
+        from src.connectors._msgraph.errors import MsGraphAsyncFailureError
+        c, client = self._setup(
+            connector,
+            poll_side_effect=MsGraphAsyncFailureError(
+                "Async query terminated with status 'cancelled'.",
+                query_id="q1",
+                terminal_status="cancelled",
+            ),
+        )
+        ev = c._pull_au_3_3_1(client)
+        assert ev is not None
+        assert ev.degraded is True
+        assert ev.metadata["audit_query_status"] == "service_unavailable"
+        assert "cancelled" in (ev.degradation_reason or "").lower()
+
+    # ─── Lookback boundaries ────────────────────────────────────────
+
+    def test_lookback_default_24h_in_filename_and_metadata(self, connector):
+        c, client = self._setup(connector, records=[])
+        ev = c._pull_au_3_3_1(client)
+        assert ev.metadata["lookback_hours"] == 24
+        assert "_24h_" in ev.filename
+
+    def test_custom_lookback_72h(self):
+        """Custom lookback_hours flows from config -> _clamp_lookback_hours
+        -> _pull_au_3_3_1 window calculation."""
+        c = M365GccHighConnector(
+            config={"lookback_hours": 72},
+            credentials=VALID_CREDS,
+        )
+        c._now = lambda: FIXED_NOW
+        client = MagicMock()
+        client.__enter__.return_value = client
+        client.__exit__.return_value = None
+        client.post_for_async.return_value = {"id": "q1", "status": "notStarted"}
+        client.poll_until_done.return_value = {"id": "q1", "status": "succeeded"}
+        client.paginate.return_value = iter([])
+
+        ev = c._pull_au_3_3_1(client)
+        assert ev.metadata["lookback_hours"] == 72
+        assert "_72h_" in ev.filename
+
+    def test_lookback_max_168h(self):
+        c = M365GccHighConnector(
+            config={"lookback_hours": 168},
+            credentials=VALID_CREDS,
+        )
+        c._now = lambda: FIXED_NOW
+        client = MagicMock()
+        client.__enter__.return_value = client
+        client.__exit__.return_value = None
+        client.post_for_async.return_value = {"id": "q1", "status": "notStarted"}
+        client.poll_until_done.return_value = {"id": "q1", "status": "succeeded"}
+        client.paginate.return_value = iter([])
+
+        ev = c._pull_au_3_3_1(client)
+        assert ev.metadata["lookback_hours"] == 168
+
+
+# ──────────────────────────────────────────────────────────────────────
+# I. pull() orchestrator — F.3c (5 controls)
+# ──────────────────────────────────────────────────────────────────────
+
+def _build_all_five_succeed_client(fxs):
+    """MagicMock client whose dispatch covers all five F.3c controls
+    (4 sync + AU.L2-3.3.1 async query)."""
     client = MagicMock()
     client.__enter__.return_value = client
     client.__exit__.return_value = None
@@ -1463,6 +1825,9 @@ def _build_all_four_succeed_client(fxs):
             return iter(fxs["mp_3_8_2"]["conditional_access_policies"])
         if "/beta/security/informationProtection/sensitivityLabels" in path:
             return iter(fxs["labels"]["sensitivity_labels"])
+        # AU.L2-3.3.1 records pagination.
+        if "/beta/security/auditLog/queries/" in path and "/records" in path:
+            return iter(fxs.get("audit_records") or [])
         raise KeyError(f"unmatched paginate: {path}")
 
     def get_side_effect(path):
@@ -1472,11 +1837,21 @@ def _build_all_four_succeed_client(fxs):
 
     client.paginate.side_effect = paginate_side_effect
     client.get.side_effect = get_side_effect
+    # AU.L2-3.3.1 async-query happy-path: POST returns initial query record;
+    # poll returns the succeeded record.
+    client.post_for_async.return_value = {
+        "id": "audit-query-id-orchestrator",
+        "status": "notStarted",
+    }
+    client.poll_until_done.return_value = {
+        "id": "audit-query-id-orchestrator",
+        "status": "succeeded",
+    }
     return client
 
 
-class TestPullOrchestratorF3b:
-    """The pull() method composing all four F.3b control helpers."""
+class TestPullOrchestratorF3c:
+    """The pull() method composing all five F.3c control helpers."""
 
     def _setup_all_succeed(self, connector):
         connector._now = lambda: FIXED_NOW
@@ -1487,21 +1862,26 @@ class TestPullOrchestratorF3b:
             "secure_scores": load_fixture("secure_scores"),
             "profiles": load_fixture("secure_score_control_profiles"),
             "labels": load_fixture("sensitivity_labels"),
+            "audit_records": [
+                {"id": "rec-1", "operation": "UserLoggedIn", "userId": "u1"},
+                {"id": "rec-2", "operation": "FileAccessed", "userId": "u2"},
+            ],
         }
-        client = _build_all_four_succeed_client(fxs)
+        client = _build_all_five_succeed_client(fxs)
         connector._build_client = lambda: client
         return connector
 
-    def test_all_four_controls_yield_evidence(self, connector):
+    def test_all_five_controls_yield_evidence(self, connector):
         c = self._setup_all_succeed(connector)
         items = list(c.pull())
-        assert len(items) == 4
+        assert len(items) == 5
         control_ids = [item.control_ids[0] for item in items]
         assert control_ids == [
             "MP.L2-3.8.1",
             "MP.L2-3.8.2",
             "AC.L2-3.1.3",
             "SC.L2-3.13.8",
+            "AU.L2-3.3.1",
         ]
 
     def test_no_errors_when_all_succeed(self, connector):
@@ -1517,9 +1897,22 @@ class TestPullOrchestratorF3b:
         sc = next(i for i in items if i.control_ids[0] == "SC.L2-3.13.8")
         assert sc.evidence_directness == "aggregate"
 
+    def test_au_3_3_1_in_orchestrated_output(self, connector):
+        """End-to-end: AU.L2-3.3.1 evidence emerges from the orchestrator
+        with audit_query_status='ok' and the records populated from
+        client.paginate."""
+        c = self._setup_all_succeed(connector)
+        items = list(c.pull())
+        au = next(i for i in items if i.control_ids[0] == "AU.L2-3.3.1")
+        assert au.metadata["audit_query_status"] == "ok"
+        assert au.metadata["audit_record_count"] == 2
+        assert au.metadata["records_capped"] is False
+        assert au.degraded is False
+        assert au.coverage_scope == "full"
+
     def test_one_control_failure_isolated(self, connector):
         """MP.L2-3.8.1 fails (Intune endpoint blows up with non-licensing
-        error); MP.L2-3.8.2, AC.L2-3.1.3, and SC.L2-3.13.8 still succeed."""
+        error); the other four still succeed."""
         c = connector
         c._now = lambda: FIXED_NOW
         fxs = {
@@ -1548,6 +1941,8 @@ class TestPullOrchestratorF3b:
                 return iter(fxs["mp_3_8_2"]["conditional_access_policies"])
             if "/beta/security/informationProtection/sensitivityLabels" in path:
                 return iter(fxs["labels"]["sensitivity_labels"])
+            if "/beta/security/auditLog/queries/" in path and "/records" in path:
+                return iter([])
             raise KeyError(f"unmatched: {path}")
 
         def get_side_effect(path):
@@ -1557,16 +1952,19 @@ class TestPullOrchestratorF3b:
 
         client.paginate.side_effect = paginate_side_effect
         client.get.side_effect = get_side_effect
+        client.post_for_async.return_value = {"id": "q1", "status": "notStarted"}
+        client.poll_until_done.return_value = {"id": "q1", "status": "succeeded"}
         c._build_client = lambda: client
 
         items = list(c.pull())
-        # MP.L2-3.8.1 fails outright; the other three succeed.
-        assert len(items) == 3
+        # MP.L2-3.8.1 fails outright; the other four succeed.
+        assert len(items) == 4
         control_ids = [i.control_ids[0] for i in items]
         assert "MP.L2-3.8.1" not in control_ids
         assert "MP.L2-3.8.2" in control_ids
         assert "AC.L2-3.1.3" in control_ids
         assert "SC.L2-3.13.8" in control_ids
+        assert "AU.L2-3.3.1" in control_ids
 
         errors = c.get_pull_errors()
         assert len(errors) == 1
@@ -1581,18 +1979,21 @@ class TestPullOrchestratorF3b:
         client.__exit__.return_value = None
         client.paginate.side_effect = RuntimeError("everything broken")
         client.get.side_effect = RuntimeError("everything broken")
+        client.post_for_async.side_effect = RuntimeError("everything broken")
+        client.poll_until_done.side_effect = RuntimeError("everything broken")
         c._build_client = lambda: client
 
         items = list(c.pull())
         assert items == []
 
         errors = c.get_pull_errors()
-        assert len(errors) == 4
+        assert len(errors) == 5
         for cid in [
             "MP.L2-3.8.1",
             "MP.L2-3.8.2",
             "AC.L2-3.1.3",
             "SC.L2-3.13.8",
+            "AU.L2-3.3.1",
         ]:
             assert any(cid in e for e in errors), f"missing {cid} in errors"
 
@@ -1604,13 +2005,15 @@ class TestPullOrchestratorF3b:
         client.__exit__.return_value = None
         client.paginate.side_effect = RuntimeError("broken")
         client.get.side_effect = RuntimeError("broken")
+        client.post_for_async.side_effect = RuntimeError("broken")
+        client.poll_until_done.side_effect = RuntimeError("broken")
         c._build_client = lambda: client
 
         list(c.pull())
-        assert len(c.get_pull_errors()) == 4
+        assert len(c.get_pull_errors()) == 5
 
         list(c.pull())
-        assert len(c.get_pull_errors()) == 4  # not 8
+        assert len(c.get_pull_errors()) == 5  # not 10
 
     def test_get_pull_errors_returns_copy(self, connector):
         c = connector
@@ -1620,6 +2023,8 @@ class TestPullOrchestratorF3b:
         client.__exit__.return_value = None
         client.paginate.side_effect = RuntimeError("broken")
         client.get.side_effect = RuntimeError("broken")
+        client.post_for_async.side_effect = RuntimeError("broken")
+        client.poll_until_done.side_effect = RuntimeError("broken")
         c._build_client = lambda: client
 
         list(c.pull())

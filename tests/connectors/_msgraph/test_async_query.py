@@ -25,6 +25,7 @@ from src.connectors._msgraph.async_query import (
 from src.connectors._msgraph.errors import (
     MsGraphAsyncFailureError,
     MsGraphAsyncTimeoutError,
+    MsGraphCapabilityError,
     MsGraphError,
     MsGraphPermissionError,
     MsGraphThrottledError,
@@ -595,3 +596,128 @@ class TestPostWithRetryDirect:
         assert isinstance(resp, httpx.Response)
         assert resp.status_code == 201
         assert resp.json() == {"ok": True}
+
+
+# ──────────────────────────────────────────────────────────────────────
+# POST-path capability-gap classification (F.3c amendment)
+# ──────────────────────────────────────────────────────────────────────
+
+class TestPostPathCapabilityGapClassification:
+    """F.3c amendment: capability-gap detectors must fire on the POST
+    path, not just the GET path. The shared _classify_400_or_raise and
+    _classify_500_or_raise helpers (extracted from retry.py's GET 4xx/5xx
+    sites) are now wired into _post_with_retry so MsGraphCapabilityError
+    is raised symmetrically across HTTP verbs.
+
+    Pre-amendment, these capability-gap shapes escaped POST as raw
+    httpx.HTTPStatusError. Surfaced by F.3c live verification: the
+    /beta/security/auditLog/queries POST returned 400 + UnknownError +
+    AuditingDisabledTenant, bubbled past the connector's
+    except MsGraphCapabilityError handler at async_query.py:174.
+    """
+
+    def test_post_400_audit_disabled_raises_capability(self, no_real_sleep):
+        """The exact F.3c live-smoke shape: 400 + UnknownError + nested
+        Status='AuditingDisabledTenant'. Now classified by the shared
+        helper as MsGraphCapabilityError instead of httpx.HTTPStatusError."""
+        def handler(req):
+            return httpx.Response(
+                400,
+                json={
+                    "error": {
+                        "code": "UnknownError",
+                        "message": (
+                            '{"CreatedTimeUtc":"0001-01-01T00:00:00",'
+                            '"Status":"AuditingDisabledTenant",'
+                            '"TotalItemCount":0}'
+                        ),
+                    }
+                },
+            )
+        with _client(handler) as c:
+            with pytest.raises(MsGraphCapabilityError) as exc_info:
+                post_for_async(
+                    c,
+                    "https://example/beta/security/auditLog/queries",
+                    {},
+                    {"displayName": "test"},
+                )
+        assert "Audit log query unavailable" in str(exc_info.value)
+        assert exc_info.value.endpoint == (
+            "https://example/beta/security/auditLog/queries"
+        )
+
+    def test_post_400_bad_request_capability_gap_raises_capability(
+        self, no_real_sleep
+    ):
+        """The F.3a/b shape: 400 + BadRequest + capability-gap fragment.
+        Also fires on POST after the helper extraction."""
+        def handler(req):
+            return httpx.Response(
+                400,
+                json={
+                    "error": {
+                        "code": "BadRequest",
+                        "message": "Tenant does not have a SPO license.",
+                    }
+                },
+            )
+        with _client(handler) as c:
+            with pytest.raises(MsGraphCapabilityError) as exc_info:
+                post_for_async(c, "https://example/x", {}, {})
+        assert "Capability gap" in str(exc_info.value)
+
+    def test_post_500_service_unavailable_raises_capability(self, no_real_sleep):
+        """The F.3b shape: 500 + generalException + token-rejection inner.
+        On POST, this raises immediately (no retry — POST doesn't retry
+        5xx) via the shared _classify_500_or_raise helper."""
+        def handler(req):
+            return httpx.Response(
+                500,
+                json={
+                    "error": {
+                        "code": "generalException",
+                        "message": "Internal error.",
+                        "innerError": {
+                            "message": "The service didn't accept the auth token.",
+                        },
+                    }
+                },
+            )
+        with _client(handler) as c:
+            with pytest.raises(MsGraphCapabilityError) as exc_info:
+                post_for_async(c, "https://example/x", {}, {})
+        assert "Service unavailable" in str(exc_info.value)
+
+    def test_post_400_generic_bad_request_falls_through_to_http_status(
+        self, no_real_sleep
+    ):
+        """Defensive: a real 400 (not a capability gap) still raises
+        httpx.HTTPStatusError on POST. The shared helper's no-match
+        path delegates to resp.raise_for_status()."""
+        def handler(req):
+            return httpx.Response(
+                400,
+                json={
+                    "error": {
+                        "code": "BadRequest",
+                        "message": "Property 'displayName' is required.",
+                    }
+                },
+            )
+        with _client(handler) as c:
+            with pytest.raises(httpx.HTTPStatusError):
+                post_for_async(c, "https://example/x", {}, {})
+
+    def test_post_500_generic_outage_falls_through_to_http_status(
+        self, no_real_sleep
+    ):
+        """Defensive load-bearing: a generic 500 (not a capability gap)
+        on POST raises httpx.HTTPStatusError immediately (POST doesn't
+        retry 5xx). The shared 500 helper's no-match path returns None
+        so caller falls through to resp.raise_for_status()."""
+        def handler(req):
+            return httpx.Response(503, json={})
+        with _client(handler) as c:
+            with pytest.raises(httpx.HTTPStatusError):
+                post_for_async(c, "https://example/x", {}, {})

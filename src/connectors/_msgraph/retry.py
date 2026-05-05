@@ -71,6 +71,26 @@ _CAPABILITY_GAP_MESSAGE_FRAGMENTS = frozenset({
     "not applicable to target tenant",
 })
 
+# Substrings observed inside Graph 400 + UnknownError error.message bodies
+# when a tenant has unified audit logging disabled. Surfaced by F.3c live
+# verification against the intranest-m365-test trial on the
+# /beta/security/auditLog/queries endpoint:
+#
+#   error.code = "UnknownError"
+#   error.message = '{"...","Status":"AuditingDisabledTenant",...}'
+#     (stringified JSON blob with internal status fields)
+#
+# Case-sensitive, substring-matched against the message. Distinct from
+# _CAPABILITY_GAP_MESSAGE_FRAGMENTS because the outer error.code is
+# "UnknownError" (not "BadRequest") AND the message is a stringified
+# JSON blob requiring substring match against the embedded Status field.
+# The narrow two-condition AND (UnknownError + AuditingDisabledTenant
+# fragment) prevents the generic UnknownError code from being silently
+# reclassified as a capability gap on every other 400 that uses it.
+_AUDIT_DISABLED_400_MESSAGE_FRAGMENTS = frozenset({
+    "AuditingDisabledTenant",
+})
+
 # Substrings observed inside Graph 500 + generalException innerError.message
 # bodies when an underlying Microsoft service backend (e.g. Purview /
 # Information Protection's "PolicyProfile" service) rejects the otherwise-
@@ -157,6 +177,112 @@ def _detect_capability_gap(response_body: dict) -> bool:
         return False
     lowered = message.lower()
     return any(frag in lowered for frag in _CAPABILITY_GAP_MESSAGE_FRAGMENTS)
+
+
+def _classify_500_or_raise(resp: httpx.Response, url: str) -> None:
+    """Inspect a 5xx response body for known capability-gap shapes; raise
+    MsGraphCapabilityError if matched, otherwise return None (caller
+    decides retry-vs-raise based on verb semantics — GET retries 5xx,
+    POST raises immediately).
+
+    Used at both GET and POST 5xx raise sites so the detector surface
+    stays symmetric across HTTP verbs. F.3c amendment for symmetry with
+    _classify_400_or_raise; the only currently-known 5xx shape is
+    Microsoft's PolicyProfile/InformationProtection 500 + generalException
+    + token-rejection inner message (F.3b discovery).
+
+    The "or_raise" suffix reflects the helper's only side effect (raising
+    MsGraphCapabilityError on match). On no-match the helper is a no-op
+    so the caller can continue with verb-specific retry-or-raise logic.
+    """
+    try:
+        body = resp.json()
+    except Exception:
+        body = {}
+    if _detect_service_unavailable_500(body):
+        error_obj = body.get("error") or {}
+        inner = error_obj.get("innerError") or {}
+        inner_msg = inner.get("message") or "service unavailable"
+        raise MsGraphCapabilityError(
+            f"Service unavailable on {url}: {inner_msg}",
+            endpoint=url,
+        )
+    return None
+
+
+def _classify_400_or_raise(resp: httpx.Response, url: str) -> None:
+    """Inspect a 400 response body for known capability-gap shapes; raise
+    MsGraphCapabilityError if any detector matches, otherwise raise the
+    raw httpx.HTTPStatusError.
+
+    Used at both GET and POST 400 raise sites (get_with_retry and
+    _post_with_retry in async_query.py) so the detection surface stays
+    uniform across HTTP verbs. F.3c amendment — before this extraction,
+    the detectors were applied only on the GET path, and POST capability
+    gaps escaped as raw httpx.HTTPStatusError (live-smoke evidence:
+    async_query.py:174 raise_for_status() bubbled past the connector's
+    except MsGraphCapabilityError handler).
+
+    Detector order at the 400 raise site is locked:
+      1. _detect_capability_gap  (BadRequest + fragment match)
+      2. _detect_audit_disabled_400  (UnknownError + AuditingDisabledTenant)
+    The two error.code values are orthogonal (BadRequest vs UnknownError)
+    so semantic ordering doesn't matter, but the explicit ordering is
+    locked by TestAuditDisabled400Detection's cross-detector ordering
+    test for future-detector-addition safety.
+    """
+    try:
+        body = resp.json()
+    except Exception:
+        body = {}
+    if _detect_capability_gap(body):
+        error_obj = body.get("error") or {}
+        graph_message = error_obj.get("message") or "Capability gap"
+        raise MsGraphCapabilityError(
+            f"Capability gap on {url}: {graph_message}",
+            endpoint=url,
+        )
+    if _detect_audit_disabled_400(body):
+        raise MsGraphCapabilityError(
+            f"Audit log query unavailable on {url}: tenant has unified "
+            f"audit logging disabled.",
+            endpoint=url,
+        )
+    # Generic 400 — not a known capability gap. Existing behavior:
+    # raise the httpx HTTPStatusError so the caller sees the status + URL.
+    resp.raise_for_status()
+
+
+def _detect_audit_disabled_400(response_body: dict) -> bool:
+    """Return True if a Graph 400 body indicates a tenant has unified
+    audit logging disabled (capability gap signaled with error.code
+    "UnknownError" rather than "BadRequest").
+
+    Match shape: error.code == "UnknownError" AND any fragment in
+    _AUDIT_DISABLED_400_MESSAGE_FRAGMENTS appears as a substring in
+    error.message (case-sensitive — Microsoft's embedded "Status"
+    string is exact-cased).
+
+    The two-condition AND is load-bearing: it prevents the generic
+    "UnknownError" code from being silently reclassified as a capability
+    gap on every 400 that uses it (Microsoft's catch-all). A 400 with
+    "UnknownError" but no audit-disabled fragment match falls through
+    to the existing httpx.HTTPStatusError path.
+
+    Defensive against absent or non-string code/message fields — returns
+    False rather than raising on any malformed shape. Surfaced by F.3c
+    live verification against /beta/security/auditLog/queries.
+    """
+    error = response_body.get("error") or {}
+    code = error.get("code")
+    message = error.get("message")
+    if not isinstance(code, str) or code != "UnknownError":
+        return False
+    if not isinstance(message, str):
+        return False
+    return any(
+        frag in message for frag in _AUDIT_DISABLED_400_MESSAGE_FRAGMENTS
+    )
 
 
 def _detect_service_unavailable_500(response_body: dict) -> bool:
@@ -249,24 +375,11 @@ def get_with_retry(
             continue
 
         if 500 <= resp.status_code < 600:
-            # F.3b amendment: classify some 500 shapes as capability gaps
-            # before burning the retry budget on an unrecoverable 500.
-            # Microsoft's InformationProtection backend (PolicyProfile)
-            # signals service-unavailability via 500 + generalException +
-            # token-rejection inner message — narrow signature, see
-            # _detect_service_unavailable_500's docstring.
-            try:
-                body = resp.json()
-            except Exception:
-                body = {}
-            if _detect_service_unavailable_500(body):
-                error_obj = body.get("error") or {}
-                inner = error_obj.get("innerError") or {}
-                inner_msg = inner.get("message") or "service unavailable"
-                raise MsGraphCapabilityError(
-                    f"Service unavailable on {url}: {inner_msg}",
-                    endpoint=url,
-                )
+            # F.3c amendment: 5xx classification shared with the POST path
+            # via _classify_500_or_raise. On capability match, raise
+            # immediately (don't burn the retry budget on an unrecoverable
+            # 500). On no match, continue to the GET-specific retry logic.
+            _classify_500_or_raise(resp, url)
             if attempt == MAX_RETRIES:
                 resp.raise_for_status()
             sleep_for = min(
@@ -301,21 +414,10 @@ def get_with_retry(
             )
 
         if resp.status_code == 400:
-            try:
-                body = resp.json()
-            except Exception:
-                body = {}
-            if _detect_capability_gap(body):
-                error_obj = body.get("error") or {}
-                graph_message = error_obj.get("message") or "Capability gap"
-                raise MsGraphCapabilityError(
-                    f"Capability gap on {url}: {graph_message}",
-                    endpoint=url,
-                )
-            # Generic 400 — not a known capability gap. Existing behavior:
-            # raise the httpx HTTPStatusError so the caller sees the
-            # status + URL, same as before this amendment.
-            resp.raise_for_status()
+            # F.3c amendment: 400 classification is shared with the POST
+            # path via _classify_400_or_raise. Detectors stay GET-and-POST
+            # symmetric.
+            _classify_400_or_raise(resp, url)
 
         if 400 <= resp.status_code < 500:
             resp.raise_for_status()

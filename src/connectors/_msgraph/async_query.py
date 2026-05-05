@@ -36,6 +36,8 @@ from src.connectors._msgraph.retry import (
     BACKOFF_MAX_SECONDS,
     MAX_RETRIES,
     MAX_RETRY_AFTER_SECONDS,
+    _classify_400_or_raise,
+    _classify_500_or_raise,
     _detect_licensing_signal,
     _identify_missing_permission,
     _parse_retry_after,
@@ -168,8 +170,20 @@ def _post_with_retry(
                 licensing_signal=licensing,
             )
 
-        # All other non-2xx (4xx, 5xx) raise immediately. 5xx is
-        # deliberately NOT retried — see body comment above.
+        # F.3c amendment: classify 400 and 5xx shapes via the shared
+        # detector helpers (extracted from get_with_retry's 4xx/5xx
+        # raise sites for GET/POST symmetry). The helpers raise
+        # MsGraphCapabilityError on match; on no match they fall through.
+        # POST does NOT retry 5xx — see body comment above — so a 500
+        # that's not a capability gap raises raw HTTPStatusError here.
+        if resp.status_code == 400:
+            _classify_400_or_raise(resp, url)
+        if 500 <= resp.status_code < 600:
+            _classify_500_or_raise(resp, url)
+
+        # All other non-2xx (4xx other than 400 already handled above,
+        # and any 5xx that didn't match a capability-gap shape) raise
+        # immediately.
         if resp.status_code >= 400:
             resp.raise_for_status()
 

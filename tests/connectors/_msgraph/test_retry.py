@@ -21,6 +21,7 @@ from src.connectors._msgraph.errors import (
     MsGraphThrottledError,
 )
 from src.connectors._msgraph.retry import (
+    _detect_audit_disabled_400,
     _detect_capability_gap,
     _detect_service_unavailable_500,
     _parse_retry_after,
@@ -449,6 +450,223 @@ class TestCapabilityGapDetection:
     def test_detect_capability_gap_returns_false_when_no_fragment_match(self):
         body = {"error": {"code": "BadRequest", "message": "Property is required."}}
         assert _detect_capability_gap(body) is False
+
+
+class TestAuditDisabled400Detection:
+    """F.3c framework amendment: a Graph 400 + UnknownError + message
+    containing "AuditingDisabledTenant" is treated as a capability gap
+    (MsGraphCapabilityError raised with an audit-specific message)
+    rather than a generic 400 bad-request bug.
+
+    The narrow two-condition AND (UnknownError code + AuditingDisabledTenant
+    fragment) is load-bearing: it prevents the generic "UnknownError" code
+    (which Microsoft uses as a catch-all on many 400s) from being silently
+    reclassified as a capability gap on every 400 that happens to use it.
+
+    Surfaced by F.3c live verification against the
+    /beta/security/auditLog/queries endpoint on the intranest-m365-test
+    trial. The Microsoft response body is unusual — error.message is a
+    stringified JSON blob with internal status fields embedded as
+    "Status":"AuditingDisabledTenant" — which is why the substring match
+    against the message is the right discriminator.
+    """
+
+    def test_400_unknown_error_with_audit_disabled_raises_capability(
+        self, _no_real_sleep
+    ):
+        """The exact shape Microsoft returns when unified audit logging
+        is disabled on the tenant."""
+        def handler(req):
+            return httpx.Response(
+                400,
+                json={
+                    "error": {
+                        "code": "UnknownError",
+                        "message": (
+                            '{"CreatedTimeUtc":"0001-01-01T00:00:00",'
+                            '"Status":"AuditingDisabledTenant",'
+                            '"TotalItemCount":0}'
+                        ),
+                    }
+                },
+            )
+        with _client(handler) as c:
+            with pytest.raises(MsGraphCapabilityError) as exc_info:
+                get_with_retry(
+                    c,
+                    "https://example/beta/security/auditLog/queries",
+                    {},
+                )
+        # Connector code references the audit-specific MsGraphCapabilityError
+        # message text via {exc} in degradation_reason.
+        assert "Audit log query unavailable" in str(exc_info.value)
+        assert "unified audit logging disabled" in str(exc_info.value).lower()
+        assert exc_info.value.endpoint == (
+            "https://example/beta/security/auditLog/queries"
+        )
+
+    # ───── Defensive cases — must NOT silently turn 400s into capability gaps ─────
+
+    def test_400_with_no_error_key_falls_through(self, _no_real_sleep):
+        """Defensive: 400 with no 'error' key → not crash, fall through
+        to httpx.HTTPStatusError."""
+        def handler(req):
+            return httpx.Response(400, json={"unexpected": "shape"})
+        with _client(handler) as c:
+            with pytest.raises(httpx.HTTPStatusError):
+                get_with_retry(c, "https://example/x", {})
+
+    def test_400_unknown_error_without_audit_fragment_falls_through(
+        self, _no_real_sleep
+    ):
+        """Defensive: error.code == 'UnknownError' alone does NOT match.
+        Without the AuditingDisabledTenant fragment, the 400 is a real
+        bad-request and falls through to httpx.HTTPStatusError. Critical
+        property — UnknownError is Microsoft's catch-all and we must not
+        absorb every 400 with that code."""
+        def handler(req):
+            return httpx.Response(
+                400,
+                json={
+                    "error": {
+                        "code": "UnknownError",
+                        "message": "Auth token does not contain valid permissions or user does not have valid roles.",
+                    }
+                },
+            )
+        with _client(handler) as c:
+            with pytest.raises(httpx.HTTPStatusError):
+                get_with_retry(c, "https://example/x", {})
+
+    def test_400_audit_fragment_with_wrong_code_falls_through(
+        self, _no_real_sleep
+    ):
+        """Defensive: AuditingDisabledTenant fragment in the message but
+        error.code is NOT 'UnknownError'. Must NOT fire — proves the AND."""
+        def handler(req):
+            return httpx.Response(
+                400,
+                json={
+                    "error": {
+                        "code": "InvalidRequest",
+                        "message": '{"Status":"AuditingDisabledTenant"}',
+                    }
+                },
+            )
+        with _client(handler) as c:
+            with pytest.raises(httpx.HTTPStatusError):
+                get_with_retry(c, "https://example/x", {})
+
+    def test_400_with_non_string_code(self, _no_real_sleep):
+        """Defensive: error.code is non-string (e.g. numeric)."""
+        def handler(req):
+            return httpx.Response(
+                400,
+                json={
+                    "error": {
+                        "code": 12345,
+                        "message": '{"Status":"AuditingDisabledTenant"}',
+                    }
+                },
+            )
+        with _client(handler) as c:
+            with pytest.raises(httpx.HTTPStatusError):
+                get_with_retry(c, "https://example/x", {})
+
+    def test_400_with_non_string_message(self, _no_real_sleep):
+        """Defensive: error.message is non-string."""
+        def handler(req):
+            return httpx.Response(
+                400,
+                json={
+                    "error": {"code": "UnknownError", "message": ["weird"]}
+                },
+            )
+        with _client(handler) as c:
+            with pytest.raises(httpx.HTTPStatusError):
+                get_with_retry(c, "https://example/x", {})
+
+    def test_400_non_json_body_falls_through(self, _no_real_sleep):
+        """Defensive: 400 whose body isn't JSON at all must not crash."""
+        def handler(req):
+            return httpx.Response(400, content=b"<html>not json</html>")
+        with _client(handler) as c:
+            with pytest.raises(httpx.HTTPStatusError):
+                get_with_retry(c, "https://example/x", {})
+
+    # ───── Cross-detector ordering test (locked by Phase 2 design) ─────
+
+    def test_bad_request_with_audit_fragment_routes_to_capability_gap(
+        self, _no_real_sleep
+    ):
+        """Locks the Phase 2 design call: when both detectors COULD match
+        (BadRequest code + AuditingDisabledTenant fragment in the message —
+        a hypothetical, since BadRequest is the F.3a/b shape and
+        AuditingDisabledTenant is the F.3c-specific status), the
+        BadRequest-fragment detector wins because it's evaluated first
+        at the 400 raise site. The two error.code values are orthogonal
+        so this test is documentary — guards against future detector
+        additions creating ambiguous routing."""
+        def handler(req):
+            return httpx.Response(
+                400,
+                json={
+                    "error": {
+                        "code": "BadRequest",
+                        # F.3a/b's fragment "does not have" + audit-disabled fragment
+                        "message": (
+                            "Tenant does not have audit logging. "
+                            "Status:AuditingDisabledTenant."
+                        ),
+                    }
+                },
+            )
+        with _client(handler) as c:
+            with pytest.raises(MsGraphCapabilityError) as exc_info:
+                get_with_retry(c, "https://example/x", {})
+        # Capability-gap detector message format — not the audit-disabled one.
+        assert "Capability gap" in str(exc_info.value)
+        assert "Audit log query unavailable" not in str(exc_info.value)
+
+    # ───── Direct unit tests of the detector helper ─────
+
+    def test_detect_helper_matches_canonical_audit_disabled_shape(self):
+        body = {
+            "error": {
+                "code": "UnknownError",
+                "message": (
+                    '{"CreatedTimeUtc":"0001-01-01T00:00:00",'
+                    '"Status":"AuditingDisabledTenant",'
+                    '"TotalItemCount":0}'
+                ),
+            }
+        }
+        assert _detect_audit_disabled_400(body) is True
+
+    def test_detect_helper_returns_false_on_empty_body(self):
+        assert _detect_audit_disabled_400({}) is False
+
+    def test_detect_helper_returns_false_on_wrong_code(self):
+        body = {
+            "error": {
+                "code": "BadRequest",
+                "message": '{"Status":"AuditingDisabledTenant"}',
+            }
+        }
+        assert _detect_audit_disabled_400(body) is False
+
+    def test_detect_helper_returns_false_on_non_matching_message(self):
+        body = {
+            "error": {
+                "code": "UnknownError",
+                "message": "Some other UnknownError message.",
+            }
+        }
+        assert _detect_audit_disabled_400(body) is False
+
+    def test_detect_helper_returns_false_when_message_missing(self):
+        body = {"error": {"code": "UnknownError"}}
+        assert _detect_audit_disabled_400(body) is False
 
 
 class TestServiceUnavailable500Detection:

@@ -1,11 +1,10 @@
-"""Microsoft 365 (GCC High) connector — Pass F.3b (4 of 5 controls live).
+"""Microsoft 365 (GCC High) connector — Pass F.3c (5 of 5 controls live).
 
 Pulls evidence from Microsoft Graph using the OAuth2 client-credentials flow
 for Application API permissions. Supports commercial Microsoft Graph as well
 as GCC High and DoD national clouds.
 
-Pass F.3b adds AC.L2-3.1.3 sensitivity-label completion and the new
-SC.L2-3.13.8 (Data in Transit) control. Live state:
+Pass F.3c adds AU.L2-3.3.1 via the F.1.5 async-query helper. Live state:
   MP.L2-3.8.1 — Media Protection (digital): SharePoint sharing posture +
                 retention labels + Intune device compliance (license-conditional).
   MP.L2-3.8.2 — Media Access (digital): SharePoint sharing posture +
@@ -24,9 +23,29 @@ SC.L2-3.13.8 (Data in Transit) control. Live state:
                 Phase 5.4 PowerShell shim. evidence_directness="aggregate"
                 because the headline signal is Microsoft's score; raw_config
                 sub-components live in metadata.
+  AU.L2-3.3.1 — Audit Logs (async): unified audit log via
+                /beta/security/auditLog/queries (POST → poll → paginate
+                records). The endpoint is beta-only — v1.0 does not have it
+                (empirically confirmed by F.3c live verification:
+                "Resource not found for the segment 'auditLog'"). First
+                real consumer of F.1.5's async-query helper.
+                coverage_scope="full" on success; degrades to "partial" with
+                missing_sources=["records_beyond_cap"] when record count
+                exceeds the 5000-record cap (evidence-blob size guard).
+
+AU.L2-3.3.1 dedup neutrality: this control is ALSO emitted by Pass E's
+EntraIdConnector via /auditLogs/signIns + /auditLogs/directoryAudits (the
+synchronous Entra-side path). Both connectors emit PulledEvidence with
+control_ids=["AU.L2-3.3.1"] — F.3c does not modify Pass E and does not add
+control sub-IDs. The cross-connector dedup discriminator lives at the
+database row level: each evidence_artifacts row links to connector_runs.id
+which transitively links to connectors.type_name ("m365_gcc_high" vs
+"entra_id"). Within metadata, the secondary provenance signature is the
+"endpoints" list — Pass E's is ["/auditLogs/signIns", "/auditLogs/directoryAudits"];
+F.3c's is ["/beta/security/auditLog/queries"]. The dedup STRATEGY (which
+implementation wins when both fire) is deferred to Phase 5.6.
 
 Outstanding sub-passes:
-  F.3c — AU.L2-3.3.1 (via /security/auditLog/queries async helper from F.1.5)
   F.3d — eager-import this module from src/connectors/__init__.py so the
          connector becomes visible on /api/connectors/types
 
@@ -66,6 +85,19 @@ Conventions established by F.3a/b (load-bearing for SSP narrative downstream):
     Secure Score (Microsoft 365 Defender) sub-component health on
     SC.L2-3.13.8's PulledEvidence.
 
+  metadata["audit_query_status"]: closed-set string literal {"ok",
+    "service_unavailable", "license_not_detected", "timeout"}. Captures
+    /security/auditLog/queries sub-component health on AU.L2-3.3.1's
+    PulledEvidence. F.3c is the first sub-component status with a
+    "timeout" value — the async-query lifecycle has a polling budget
+    that other (synchronous) endpoints don't. The four non-"ok" values
+    map to:
+      - "service_unavailable": MsGraphCapabilityError (400+BadRequest or
+        500+generalException) OR MsGraphAsyncFailureError (terminal
+        'failed'/'cancelled' status)
+      - "license_not_detected": 403 + Forbidden_LicensingError
+      - "timeout": MsGraphAsyncTimeoutError (poll budget exhausted)
+
 Until F.3d, this module is registered (via @register at class-def) but is
 NOT eager-imported from src.connectors. /api/connectors/types does not show
 m365_gcc_high. This invisibility is enforced by a static-source-check test
@@ -76,7 +108,7 @@ from __future__ import annotations
 
 import json
 import logging
-from datetime import datetime, timezone
+from datetime import datetime, timedelta, timezone
 from typing import Iterator
 
 from src.connectors.base import BaseConnector, PulledEvidence
@@ -89,8 +121,21 @@ from src.connectors._msgraph import (
     MsGraphPermissionError,
     format_pull_error,
 )
+from src.connectors._msgraph.errors import (
+    MsGraphAsyncFailureError,
+    MsGraphAsyncTimeoutError,
+)
 
 log = logging.getLogger(__name__)
+
+# AU.L2-3.3.1 records cap. The /security/auditLog/queries/{id}/records
+# pagination has no Microsoft-side limit, but a single audit pull can
+# return tens of thousands of rows on busy tenants. Cap at 5000 to keep
+# evidence blobs ~5MB (comfortable in Postgres jsonb without pathological
+# edge cases) and set coverage_scope="partial" + missing_sources=
+# ["records_beyond_cap"] when the cap fires. F.5 hardening can revisit
+# the threshold if customers report missing audit context.
+AU_3_3_1_RECORDS_CAP = 5000
 
 
 def _label_has_encryption(label: dict) -> bool:
@@ -415,6 +460,11 @@ class M365GccHighConnector(BaseConnector):
                 "/identity/conditionalAccess/policies,"
                 "/beta/security/informationProtection/sensitivityLabels (partial)",
                 self._pull_sc_3_13_8,
+            ),
+            (
+                "AU.L2-3.3.1",
+                "/beta/security/auditLog/queries (async POST/poll/records)",
+                self._pull_au_3_3_1,
             ),
         ]
 
@@ -985,4 +1035,216 @@ class M365GccHighConnector(BaseConnector):
             evidence_directness="aggregate",
             degraded=degraded,
             degradation_reason=combined_reason,
+        )
+
+    def _pull_au_3_3_1(self, client: MsGraphClient) -> PulledEvidence | None:
+        """AU.L2-3.3.1 — Audit Logs (unified audit log via async query).
+
+        First real consumer of F.1.5's async-query helper. Lifecycle:
+          1. POST /security/auditLog/queries with a date-range filter body
+          2. Poll the returned query resource until terminal status
+          3. Paginate /security/auditLog/queries/{id}/records for results
+
+        Cross-connector dedup: Pass E's EntraIdConnector also emits
+        AU.L2-3.3.1 evidence (sync /auditLogs/signIns + /auditLogs/
+        directoryAudits). F.3c stays neutral — both connectors emit
+        control_ids=["AU.L2-3.3.1"]. Dedup discriminator is the
+        evidence_artifacts row's connector_runs.id linkage; secondary
+        signature is metadata["endpoints"]. Phase 5.6 picks the dedup
+        strategy.
+
+        Capability-gap and async-lifecycle handling:
+          - 403 + Forbidden_LicensingError (license missing) → degraded,
+            audit_query_status="license_not_detected"
+          - MsGraphCapabilityError (400 BadRequest or 500 generalException
+            from POST or polling) → degraded,
+            audit_query_status="service_unavailable"
+          - MsGraphAsyncTimeoutError (poll budget exhausted) → degraded,
+            audit_query_status="timeout"
+          - MsGraphAsyncFailureError (Microsoft returned terminal 'failed'
+            or 'cancelled') → degraded, audit_query_status="service_unavailable"
+          - Non-licensing 403 → re-raise to orchestrator's per-control
+            isolator (whole-control failure, not a sub-component degradation)
+
+        Records cap: AU_3_3_1_RECORDS_CAP (5000) limits evidence-blob size.
+        When the cap fires, the parent PulledEvidence flips to
+        coverage_scope="partial" with missing_sources=["records_beyond_cap"].
+        """
+        # Compute the audit window from the existing _lookback_hours config.
+        # Match Entra's Z-suffix ISO convention for Microsoft Graph filters.
+        now = self._now()
+        window_end = now
+        window_start = now - timedelta(hours=self._lookback_hours)
+        start_iso = window_start.isoformat().replace("+00:00", "Z")
+        end_iso = window_end.isoformat().replace("+00:00", "Z")
+        utc_iso = now.isoformat()
+
+        body = {
+            "displayName": f"Intranest AU.L2-3.3.1 audit pull {utc_iso}",
+            "filterStartDateTime": start_iso,
+            "filterEndDateTime": end_iso,
+        }
+
+        # Track query_id locally so all except-handlers can cite it in
+        # degradation_reason. MsGraphCapabilityError lacks a query_id kwarg
+        # (it can fire from any GET in the polling loop, before we've
+        # captured a status response); the others have it but a uniform
+        # local keeps the handlers symmetric.
+        query_id: str | None = None
+        records: list[dict] = []
+        records_capped = False
+        audit_query_status: str = "ok"
+        audit_query_degradation_reason: str | None = None
+
+        try:
+            initial = client.post_for_async(
+                "/beta/security/auditLog/queries", body
+            )
+            raw_id = initial.get("id")
+            if isinstance(raw_id, str):
+                query_id = raw_id
+
+            polled = client.poll_until_done(
+                f"/beta/security/auditLog/queries/{query_id}"
+            )
+            # poll_until_done re-confirms id on the polled record. Prefer
+            # the polled value (defends against an unusual case where the
+            # initial POST response and the polled record disagree).
+            polled_id = polled.get("id")
+            if isinstance(polled_id, str):
+                query_id = polled_id
+
+            # Records pagination — capped at AU_3_3_1_RECORDS_CAP.
+            for record in client.paginate(
+                f"/beta/security/auditLog/queries/{query_id}/records"
+            ):
+                if len(records) >= AU_3_3_1_RECORDS_CAP:
+                    records_capped = True
+                    log.warning(
+                        "audit log records cap reached; truncating evidence",
+                        extra={
+                            "tenant_id": self._tenant_id,
+                            "query_id": query_id,
+                            "cap": AU_3_3_1_RECORDS_CAP,
+                        },
+                    )
+                    break
+                records.append(record)
+
+        except MsGraphPermissionError as exc:
+            if exc.licensing_signal:
+                audit_query_status = "license_not_detected"
+                audit_query_degradation_reason = (
+                    "Audit log query license not detected (missing AuditLog "
+                    "or RecordsManagement role/license)"
+                )
+                log.warning(
+                    "Audit log query license not detected; emitting degraded "
+                    "evidence for AU.L2-3.3.1",
+                    extra={
+                        "tenant_id": self._tenant_id,
+                        "query_id": query_id,
+                        "missing_permission": exc.missing_permission,
+                    },
+                )
+            else:
+                # Non-licensing 403 — propagate so the orchestrator records
+                # this as a control failure, not a sub-component degradation.
+                raise
+
+        except MsGraphCapabilityError as exc:
+            audit_query_status = "service_unavailable"
+            audit_query_degradation_reason = (
+                f"Audit log query service unavailable on this tenant: {exc}"
+            )
+            log.warning(
+                "Audit log query service unavailable; emitting degraded "
+                "evidence for AU.L2-3.3.1",
+                extra={
+                    "tenant_id": self._tenant_id,
+                    "query_id": query_id,
+                    "endpoint": exc.endpoint,
+                },
+            )
+
+        except MsGraphAsyncTimeoutError as exc:
+            audit_query_status = "timeout"
+            audit_query_degradation_reason = (
+                f"Audit log query did not complete within polling window "
+                f"(last_status={exc.last_status!r}, query_id={query_id!r})"
+            )
+            log.warning(
+                "Audit log query polling timed out; emitting degraded "
+                "evidence for AU.L2-3.3.1",
+                extra={
+                    "tenant_id": self._tenant_id,
+                    "query_id": query_id,
+                    "last_status": exc.last_status,
+                },
+            )
+
+        except MsGraphAsyncFailureError as exc:
+            audit_query_status = "service_unavailable"
+            audit_query_degradation_reason = (
+                f"Audit log query failed terminally "
+                f"(terminal_status={exc.terminal_status!r}, "
+                f"query_id={query_id!r})"
+            )
+            log.warning(
+                "Audit log query reached terminal failure status; emitting "
+                "degraded evidence for AU.L2-3.3.1",
+                extra={
+                    "tenant_id": self._tenant_id,
+                    "query_id": query_id,
+                    "terminal_status": exc.terminal_status,
+                },
+            )
+
+        content = json.dumps({
+            "audit_records": records,
+            "audit_query_status": audit_query_status,
+            "query_id": query_id,
+            "records_capped": records_capped,
+            "lookback_hours": self._lookback_hours,
+            "window_start": window_start.isoformat(),
+            "window_end": window_end.isoformat(),
+            "fetched_at": utc_iso,
+        }, sort_keys=True).encode("utf-8")
+
+        # coverage_scope shifts to "partial" when the records cap fires;
+        # otherwise "full" on success or "full" on degradation (degraded=True
+        # signals the gap, missing_sources stays empty unless we actually
+        # truncated content).
+        if records_capped:
+            coverage_scope = "partial"
+            missing_sources = ["records_beyond_cap"]
+        else:
+            coverage_scope = "full"
+            missing_sources = []
+
+        degraded = (audit_query_status != "ok")
+
+        return PulledEvidence(
+            filename=f"m365_au_3_3_1_{self._lookback_hours}h_{utc_iso}.json",
+            content=content,
+            mime_type="application/json",
+            description=(
+                f"Unified audit log for the last {self._lookback_hours}h via "
+                f"/security/auditLog/queries (POST/poll/records lifecycle)."
+            ),
+            control_ids=["AU.L2-3.3.1"],
+            metadata={
+                "endpoints": ["/beta/security/auditLog/queries"],
+                "audit_record_count": len(records),
+                "records_capped": records_capped,
+                "audit_query_status": audit_query_status,
+                "query_id": query_id,
+                "lookback_hours": self._lookback_hours,
+                "window_start": window_start.isoformat(),
+                "window_end": window_end.isoformat(),
+            },
+            coverage_scope=coverage_scope,
+            missing_sources=missing_sources,
+            degraded=degraded,
+            degradation_reason=audit_query_degradation_reason,
         )
